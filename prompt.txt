@@ -1,0 +1,27 @@
+7. EMPLOYEE ROLES/GROUPS - add a roles/groups system:
+   - Create a roles table: id, name, description, created_at (examples: Crew Lead, Crew Member, Chemical Applicator, Office Staff)
+   - Create a user_roles table: id, user_id, role_id, assigned_at
+   - Admin can manage roles at /admin/users - add new roles, assign roles to employees
+   - Each employee can have multiple roles
+   - On the assign videos page AND the learning path create page, show two sections in the employee selection:
+     * Assign by Role - shows all roles as buttons, clicking a role auto-selects all employees with that role
+     * Assign by Individual - shows all employees with checkboxes as before
+   - Clicking a role button toggles selection of all employees in that role
+   - Individual checkboxes still work independently
+   - Show a count of how many employees are selected total
+
+Run these migrations:
+CREATE TABLE IF NOT EXISTS roles (
+  id uuid default gen_random_uuid() primary key,
+  name text not null unique,
+  description text,
+  created_at timestamp default now()
+);
+
+CREATE TABLE IF NOT EXISTS user_roles (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references profiles(id) on delete cascade,
+  role_id uuid references roles(id) on delete cascade,
+  assigned_at timestamp default now(),
+  UNIQUE(user_id, role_id)
+);

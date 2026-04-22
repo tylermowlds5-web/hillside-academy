@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(mkdir -p C:/Users/Bret/hillside-academy/lib/supabase)",
+      "Bash(mkdir -p \"C:/Users/Bret/hillside-academy/app/\\(auth\\)/login\")",
+      "Bash(mkdir -p \"C:/Users/Bret/hillside-academy/app/\\(app\\)/dashboard\")",
+      "Bash(mkdir -p \"C:/Users/Bret/hillside-academy/app/\\(app\\)/watch/[videoId]\")",
+      "Bash(mkdir -p \"C:/Users/Bret/hillside-academy/app/\\(app\\)/admin/videos\")",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(mkdir -p \"C:/Users/Bret/hillside-academy/app/\\(app\\)/admin/employees/[id]\")",
+      "Bash(mkdir -p \"C:/Users/Bret/hillside-academy/app/\\(app\\)/admin/videos/[videoId]/quiz\")",
+      "Bash(xargs grep *)",
+      "Bash(node -e \"require\\('resend'\\)\")",
+      "Bash(node -e \"const {Resend}=require\\('resend'\\);console.log\\('ok'\\)\")",
+      "Bash(taskkill *)"
+    ]
+  }
+}
