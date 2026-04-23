@@ -453,8 +453,9 @@ export async function submitQuizAttempt(
     const type = quizQuestionType(q)
     const options = q.options ?? []
 
-    // ── Single-choice types (multiple_choice, true_false, image_question) ──
-    if (type === 'multiple_choice' || type === 'true_false' || type === 'image_question') {
+    // ── Single-choice types (multiple_choice, true_false) ─────────────────
+    // Legacy 'image_question' is normalized to 'multiple_choice' upstream.
+    if (type === 'multiple_choice' || type === 'true_false') {
       const selectedIndex = typeof answer === 'number' ? answer : -1
       const chosenOpt = options[selectedIndex]
       const correctOpt = options.find((o) => o.is_correct)

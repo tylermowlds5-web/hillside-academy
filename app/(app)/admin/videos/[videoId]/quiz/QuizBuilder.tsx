@@ -32,14 +32,6 @@ function defaultQuestion(type: QuizQuestionType = 'multiple_choice'): QuestionDr
       }
     case 'short_answer':
       return { type, question_text: '', options: [], image_url: null, correct_answers: [''] }
-    case 'image_question':
-      return {
-        type,
-        question_text: '',
-        options: [emptyOption(), emptyOption(), emptyOption(), emptyOption()],
-        image_url: null,
-        correct_answers: [],
-      }
     case 'multiple_select':
     case 'multiple_choice':
     default:
@@ -58,7 +50,6 @@ const TYPE_LABEL: Record<QuizQuestionType, string> = {
   true_false: 'True / False',
   multiple_select: 'Multiple Select (choose all that apply)',
   short_answer: 'Short Answer',
-  image_question: 'Image Question',
 }
 
 // ── Reuses the existing thumbnail upload endpoint for images ─────────────
@@ -106,9 +97,10 @@ function QuestionEditor({
   const [imageError, setImageError] = useState<string | null>(null)
 
   function updateType(newType: QuizQuestionType) {
-    // Keep question text; reset structure to fit the new type
+    // Keep question text AND image when switching types — the image is a
+    // cross-cutting feature, not specific to a question type.
     const fresh = defaultQuestion(newType)
-    onChange({ ...fresh, question_text: q.question_text })
+    onChange({ ...fresh, question_text: q.question_text, image_url: q.image_url })
   }
 
   function setOption(oi: number, text: string) {
@@ -203,58 +195,59 @@ function QuestionEditor({
         className="w-full max-w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-50 placeholder-zinc-600 text-sm focus:outline-none focus:border-emerald-500 resize-none"
       />
 
-      {/* Image upload for image_question */}
-      {q.type === 'image_question' && (
-        <div className="space-y-2">
-          <label className="block text-xs font-medium text-zinc-400">Image</label>
-          {q.image_url ? (
-            <div className="flex items-start gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={q.image_url}
-                alt="Question"
-                className="max-h-40 rounded-lg border border-zinc-700 bg-zinc-900"
-              />
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  className="text-xs text-zinc-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-zinc-700 cursor-pointer"
-                >
-                  Replace
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onChange({ ...q, image_url: null })}
-                  className="block text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 cursor-pointer"
-                >
-                  Remove
-                </button>
-              </div>
+      {/* Image — optional for ANY question type. Shown above the question
+          text to employees during the quiz. */}
+      <div className="space-y-2">
+        <label className="block text-xs font-medium text-zinc-400">
+          Image <span className="text-zinc-600 font-normal">(optional)</span>
+        </label>
+        {q.image_url ? (
+          <div className="flex items-start gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={q.image_url}
+              alt="Question"
+              className="max-h-40 rounded-lg border border-zinc-700 bg-zinc-900"
+            />
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="text-xs text-zinc-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-zinc-700 cursor-pointer"
+              >
+                Replace
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange({ ...q, image_url: null })}
+                className="block text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 cursor-pointer"
+              >
+                Remove
+              </button>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => imageInputRef.current?.click()}
-              disabled={imageUploading}
-              className="w-full flex items-center justify-center gap-2 px-3 py-3 min-h-[44px] rounded-lg border border-dashed border-zinc-600 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 text-sm disabled:opacity-50 cursor-pointer"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-              </svg>
-              {imageUploading ? 'Uploading…' : 'Upload Image'}
-            </button>
-          )}
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageFile}
-            className="sr-only"
-          />
-          {imageError && <p className="text-xs text-red-400">{imageError}</p>}
-        </div>
-      )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={imageUploading}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 min-h-[44px] rounded-lg border border-dashed border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300 text-sm disabled:opacity-50 cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+            {imageUploading ? 'Uploading…' : 'Add Image'}
+          </button>
+        )}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageFile}
+          className="sr-only"
+        />
+        {imageError && <p className="text-xs text-red-400">{imageError}</p>}
+      </div>
 
       {/* Short-answer: list of accepted answers (any one correct = full credit) */}
       {q.type === 'short_answer' && (
@@ -440,10 +433,6 @@ export default function QuizBuilder({
         if (cleaned.length === 0) {
           setError(`Question ${i + 1}: enter at least one accepted answer`); return
         }
-      } else if (q.type === 'image_question') {
-        if (!q.image_url) { setError(`Question ${i + 1}: upload an image`); return }
-        if (q.options.some((o) => !o.option_text.trim())) { setError(`Question ${i + 1}: empty options`); return }
-        if (!q.options.some((o) => o.is_correct)) { setError(`Question ${i + 1}: mark a correct answer`); return }
       } else if (q.type === 'multiple_select') {
         if (q.options.some((o) => !o.option_text.trim())) { setError(`Question ${i + 1}: empty options`); return }
         if (!q.options.some((o) => o.is_correct)) { setError(`Question ${i + 1}: check at least one correct answer`); return }
@@ -459,23 +448,14 @@ export default function QuizBuilder({
       const payload: QuizPayload = {
         passing_score: passingScore,
         questions: questions.map((q) => {
-          // Shape per type — send only the fields each type uses
+          // image_url is optional on every type — only include if present
+          const imageField = q.image_url ? { image_url: q.image_url } : {}
           if (q.type === 'short_answer') {
             return {
               type: 'short_answer',
               question_text: q.question_text.trim(),
               correct_answers: q.correct_answers.map((a) => a.trim()).filter((a) => a.length > 0),
-            }
-          }
-          if (q.type === 'image_question') {
-            return {
-              type: 'image_question',
-              question_text: q.question_text.trim(),
-              image_url: q.image_url,
-              options: q.options.map((o) => ({
-                option_text: o.option_text.trim(),
-                is_correct: o.is_correct,
-              })),
+              ...imageField,
             }
           }
           return {
@@ -485,6 +465,7 @@ export default function QuizBuilder({
               option_text: o.option_text.trim(),
               is_correct: o.is_correct,
             })),
+            ...imageField,
           }
         }),
       }

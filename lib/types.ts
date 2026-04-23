@@ -118,25 +118,44 @@ export type QuizQuestionType =
   | 'true_false'
   | 'multiple_select'
   | 'short_answer'
-  | 'image_question'
+// NOTE: 'image_question' was removed — any question type can now have an
+// optional image_url. Legacy questions with type: 'image_question' are
+// normalized to 'multiple_choice' by quizQuestionType() below.
 
 export type QuizOption = { option_text: string; is_correct: boolean }
 
 // A single question. Stored as JSONB in quizzes.questions.
 // Legacy rows (no `type`) are treated as 'multiple_choice'.
+// `image_url` is optional on ANY question type — admin can attach an image to
+// a multiple-choice, true/false, multiple-select, or short-answer question.
 export type QuizQuestion = {
-  type?: QuizQuestionType
+  // Accept legacy 'image_question' at the storage level; runtime code uses
+  // `quizQuestionType()` which normalizes it to 'multiple_choice'.
+  type?: QuizQuestionType | 'image_question'
   question_text: string
-  options?: QuizOption[]      // multiple_choice, true_false, multiple_select, image_question
-  image_url?: string | null   // image_question
+  options?: QuizOption[]      // multiple_choice, true_false, multiple_select
+  image_url?: string | null   // any question type — optional
   correct_answer?: string     // legacy short_answer (single accepted answer)
   correct_answers?: string[]  // short_answer (multiple accepted answers)
 }
 
 // Helper so the rest of the codebase doesn't have to handle the optional
-// `type` field everywhere.
+// `type` field everywhere. Normalizes legacy 'image_question' → 'multiple_choice'
+// since images are now a cross-cutting feature, not a type.
 export function quizQuestionType(q: QuizQuestion): QuizQuestionType {
-  return q.type ?? 'multiple_choice'
+  const t = q.type
+  if (!t) return 'multiple_choice'
+  if (t === 'image_question') return 'multiple_choice'
+  if (
+    t === 'multiple_choice' ||
+    t === 'true_false' ||
+    t === 'multiple_select' ||
+    t === 'short_answer'
+  ) {
+    return t
+  }
+  // Unknown legacy value — fall back to multiple_choice to remain renderable
+  return 'multiple_choice'
 }
 
 // Returns the list of accepted answers for a short_answer question.

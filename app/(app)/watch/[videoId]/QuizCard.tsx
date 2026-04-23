@@ -207,8 +207,8 @@ function QuestionBlock({
         {q.question_text}
       </p>
 
-      {/* Image question: show the image above the options */}
-      {type === 'image_question' && q.image_url && (
+      {/* Optional image — can be attached to any question type */}
+      {q.image_url && (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
           src={q.image_url}
@@ -217,8 +217,8 @@ function QuestionBlock({
         />
       )}
 
-      {/* Single-choice option list (multiple_choice, true_false, image_question) */}
-      {(type === 'multiple_choice' || type === 'true_false' || type === 'image_question') && (
+      {/* Single-choice option list (multiple_choice, true_false) */}
+      {(type === 'multiple_choice' || type === 'true_false') && (
         <div className="space-y-2">
           {(q.options ?? []).map((opt, oi) => {
             const selected = answer === oi
