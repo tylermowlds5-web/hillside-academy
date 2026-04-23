@@ -2,8 +2,11 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 
-const ALLOWED_TYPES = ['video/mp4', 'video/quicktime', 'video/webm']
-const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.webm']
+// Mobile devices emit a range of video MIME types. We accept anything that
+// starts with "video/" OR has a known video extension. Common mobile outputs:
+//   iOS: video/mp4, video/quicktime (.mov), sometimes video/hevc
+//   Android: video/mp4, video/webm, video/3gpp
+const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.m4v', '.webm', '.hevc', '.3gp', '.3gpp']
 
 function sanitizeFilename(name: string): string {
   return name
@@ -61,11 +64,14 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'No file provided' }, { status: 400 })
   }
 
-  // Validate type
-  const ext = '.' + file.name.split('.').pop()?.toLowerCase()
-  if (!ALLOWED_TYPES.includes(file.type) && !ALLOWED_EXTENSIONS.includes(ext)) {
+  // Validate type — accept any video MIME OR a known video extension
+  const ext = '.' + (file.name.split('.').pop()?.toLowerCase() ?? '')
+  const isVideoMime = file.type?.startsWith('video/') ?? false
+  if (!isVideoMime && !ALLOWED_EXTENSIONS.includes(ext)) {
     return Response.json(
-      { error: 'Only MP4, MOV, and WebM files are allowed' },
+      {
+        error: `Please upload a video file. Detected type: ${file.type || 'unknown'}, extension: ${ext || 'none'}`,
+      },
       { status: 400 }
     )
   }

@@ -68,12 +68,17 @@ export default function LoginPage() {
         window.location.href = '/dashboard'
         return
       } else {
+        // Prefer the configured production app URL so email confirmation
+        // links don't point at localhost / preview deploys. Fall back to the
+        // current origin for dev.
+        const envAppUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
+        const baseUrl = envAppUrl || window.location.origin
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: { full_name: fullName },
-            emailRedirectTo: `${location.origin}/api/auth/callback`,
+            emailRedirectTo: `${baseUrl}/auth/callback`,
           },
         })
         if (error) throw error

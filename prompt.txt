@@ -1,27 +1,18 @@
-7. EMPLOYEE ROLES/GROUPS - add a roles/groups system:
-   - Create a roles table: id, name, description, created_at (examples: Crew Lead, Crew Member, Chemical Applicator, Office Staff)
-   - Create a user_roles table: id, user_id, role_id, assigned_at
-   - Admin can manage roles at /admin/users - add new roles, assign roles to employees
-   - Each employee can have multiple roles
-   - On the assign videos page AND the learning path create page, show two sections in the employee selection:
-     * Assign by Role - shows all roles as buttons, clicking a role auto-selects all employees with that role
-     * Assign by Individual - shows all employees with checkboxes as before
-   - Clicking a role button toggles selection of all employees in that role
-   - Individual checkboxes still work independently
-   - Show a count of how many employees are selected total
+Fix these three issues:
 
-Run these migrations:
-CREATE TABLE IF NOT EXISTS roles (
-  id uuid default gen_random_uuid() primary key,
-  name text not null unique,
-  description text,
-  created_at timestamp default now()
-);
+1. EMAIL VERIFICATION REDIRECT - the confirmation email link is pointing to localhost instead of the production URL. In Supabase the email redirect URL needs to be updated. Also in the app make sure the auth callback route at /auth/callback is correctly handling the email confirmation and redirecting to /dashboard after verification. The production URL is https://hillsideacademy.com (or the current Vercel URL until the domain is set up).
 
-CREATE TABLE IF NOT EXISTS user_roles (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references profiles(id) on delete cascade,
-  role_id uuid references roles(id) on delete cascade,
-  assigned_at timestamp default now(),
-  UNIQUE(user_id, role_id)
-);
+2. MOBILE LAYOUT - fix horizontal scrolling on mobile. The app should not scroll side to side on phones. Fix these issues:
+   - Add overflow-x: hidden to the root layout
+   - Make all tables scroll horizontally within their container instead of pushing the page wider
+   - Make the sidebar collapse to a hamburger menu on small screens
+   - Make all cards and grids stack vertically on mobile
+   - Make buttons and tap targets at least 44px tall for easy tapping
+   - Test all main pages: login, dashboard, videos, watch page, learning paths
+
+3. MOBILE VIDEO UPLOAD - video upload is failing on mobile. Fix the upload to work on mobile browsers:
+   - Accept camera recorded videos on mobile (add capture attribute)
+   - Make sure the file input accepts video files from the phone's camera roll and file system
+   - The upload progress bar should work on mobile
+   - Handle larger file sizes that mobile videos can produce
+   - Make the upload button easy to tap on mobile

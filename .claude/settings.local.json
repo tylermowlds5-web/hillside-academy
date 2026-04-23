@@ -14,7 +14,8 @@
       "Bash(xargs grep *)",
       "Bash(node -e \"require\\('resend'\\)\")",
       "Bash(node -e \"const {Resend}=require\\('resend'\\);console.log\\('ok'\\)\")",
-      "Bash(taskkill *)"
+      "Bash(taskkill *)",
+      "Bash(git config *)"
     ]
   }
 }

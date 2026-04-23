@@ -27,10 +27,12 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex h-screen bg-zinc-950 overflow-hidden">
+    <div className="flex h-screen bg-zinc-950 overflow-hidden w-full">
       <Sidebar profile={profile} />
-      {/* Main content. On mobile, pad-top for the fixed mobile header */}
-      <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
+      {/* Main content. On mobile, pad-top for the fixed mobile header.
+          min-w-0 prevents flex children from forcing the parent wider than
+          the viewport (which would produce horizontal scroll on phones). */}
+      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pt-14 md:pt-0">
         {children}
       </main>
     </div>

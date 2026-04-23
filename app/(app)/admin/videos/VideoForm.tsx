@@ -302,10 +302,12 @@ export default function VideoForm({
         <label className="block text-sm font-medium text-zinc-300 mb-1.5">
           Video File <span className="text-red-500">*</span>
         </label>
+        {/* Broader accept + capture lets mobile browsers show camera/gallery */}
         <input
           ref={fileInputRef}
           type="file"
-          accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"
+          accept="video/*,.mp4,.mov,.m4v,.webm,.hevc"
+          capture="environment"
           onChange={handleFileChange}
           className="sr-only"
           id="video-file-input"
@@ -313,10 +315,10 @@ export default function VideoForm({
         />
         <label
           htmlFor="video-file-input"
-          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border text-sm cursor-pointer transition-colors ${
+          className={`flex items-center gap-3 w-full px-4 py-3 min-h-[48px] rounded-lg border text-sm cursor-pointer transition-colors touch-manipulation ${
             file
               ? 'border-emerald-600 bg-emerald-950/30 text-emerald-300'
-              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
+              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 active:bg-zinc-700'
           } ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -439,7 +441,7 @@ export default function VideoForm({
       <button
         type="submit"
         disabled={busy || !file}
-        className="w-full py-2.5 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm transition-colors"
+        className="w-full py-3 px-4 min-h-[48px] rounded-lg bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm transition-colors touch-manipulation cursor-pointer"
       >
         {status === 'uploading'
           ? `Uploading ${uploadProgress}%…`
