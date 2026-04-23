@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
 import { logSessionEnd } from '@/app/actions'
@@ -106,19 +106,37 @@ const adminItems: NavItem[] = [
   },
 ]
 
+// Returns the href of the nav item that best matches the current pathname.
+// Uses longest-prefix-match so /admin/videos picks "Manage Videos", not "Progress Report".
+function resolveActiveHref(pathname: string, items: NavItem[]): string | null {
+  let bestHref: string | null = null
+  let bestLen = -1
+  for (const item of items) {
+    const exact = pathname === item.href
+    const prefix = item.href !== '/' && pathname.startsWith(item.href + '/')
+    if ((exact || prefix) && item.href.length > bestLen) {
+      bestHref = item.href
+      bestLen = item.href.length
+    }
+  }
+  return bestHref
+}
+
 function SidebarContent({
   profile,
   isAdmin,
   pathname,
   onSignOut,
-  onNavigate,
 }: {
   profile: Profile | null
   isAdmin: boolean
   pathname: string
   onSignOut: () => void
-  onNavigate?: () => void
 }) {
+  // Combine all items the user can see to find the single most-specific match
+  const visibleItems = isAdmin ? [...navItems, ...adminItems] : navItems
+  const activeHref = resolveActiveHref(pathname, visibleItems)
+
   return (
     <>
       {/* Brand */}
@@ -138,12 +156,11 @@ function SidebarContent({
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
         {navItems.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/')
+          const active = activeHref === item.href
           return (
             <Link
               key={item.href}
               href={item.href}
-              onClick={onNavigate}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 active
                   ? 'bg-emerald-500/15 text-emerald-400'
@@ -162,12 +179,11 @@ function SidebarContent({
               <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">Admin</p>
             </div>
             {adminItems.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(item.href + '/')
+              const active = activeHref === item.href
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={onNavigate}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     active
                       ? 'bg-emerald-500/15 text-emerald-400'
@@ -221,6 +237,13 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
   const router = useRouter()
   const isAdmin = profile?.role === 'admin'
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Close the mobile drawer whenever the route actually changes. This avoids
+  // the jarring "sidebar closes, old page flashes, then new page loads" — the
+  // drawer stays up covering the old page until the new one is ready.
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
 
   async function handleSignOut() {
     await logSessionEnd()
@@ -289,7 +312,6 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
                 isAdmin={isAdmin}
                 pathname={pathname}
                 onSignOut={handleSignOut}
-                onNavigate={() => setMobileOpen(false)}
               />
             </div>
           </aside>

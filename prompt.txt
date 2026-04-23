@@ -1,18 +1,10 @@
-Fix these three issues:
+Fix these mobile issues:
 
-1. EMAIL VERIFICATION REDIRECT - the confirmation email link is pointing to localhost instead of the production URL. In Supabase the email redirect URL needs to be updated. Also in the app make sure the auth callback route at /auth/callback is correctly handling the email confirmation and redirecting to /dashboard after verification. The production URL is https://hillsideacademy.com (or the current Vercel URL until the domain is set up).
+1. REMOVE CAPTURE ATTRIBUTE - remove capture="environment" from the video file input so mobile users get a choice between camera and photo library instead of opening camera directly
 
-2. MOBILE LAYOUT - fix horizontal scrolling on mobile. The app should not scroll side to side on phones. Fix these issues:
-   - Add overflow-x: hidden to the root layout
-   - Make all tables scroll horizontally within their container instead of pushing the page wider
-   - Make the sidebar collapse to a hamburger menu on small screens
-   - Make all cards and grids stack vertically on mobile
-   - Make buttons and tap targets at least 44px tall for easy tapping
-   - Test all main pages: login, dashboard, videos, watch page, learning paths
+2. DISABLE ZOOM - add this meta tag to the root layout to prevent pinch zoom on mobile:
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 
-3. MOBILE VIDEO UPLOAD - video upload is failing on mobile. Fix the upload to work on mobile browsers:
-   - Accept camera recorded videos on mobile (add capture attribute)
-   - Make sure the file input accepts video files from the phone's camera roll and file system
-   - The upload progress bar should work on mobile
-   - Handle larger file sizes that mobile videos can produce
-   - Make the upload button easy to tap on mobile
+3. MOBILE MENU NAVIGATION - when clicking a menu item on mobile the sidebar closes and briefly shows the previous page before loading the new one. Fix this so navigation feels instant - when a menu item is clicked close the sidebar and navigate simultaneously without showing the previous page content in between
+
+4. PROGRESS REPORT ALWAYS HIGHLIGHTED - the Progress Report menu item in the sidebar is always showing as active/highlighted green even when you are on a different page. Fix the active state detection so only the current page's menu item is highlighted green

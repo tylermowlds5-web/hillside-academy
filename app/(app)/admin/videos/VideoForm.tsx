@@ -302,12 +302,11 @@ export default function VideoForm({
         <label className="block text-sm font-medium text-zinc-300 mb-1.5">
           Video File <span className="text-red-500">*</span>
         </label>
-        {/* Broader accept + capture lets mobile browsers show camera/gallery */}
+        {/* Broader accept = mobile picker shows Camera Roll + Files (no forced camera) */}
         <input
           ref={fileInputRef}
           type="file"
           accept="video/*,.mp4,.mov,.m4v,.webm,.hevc"
-          capture="environment"
           onChange={handleFileChange}
           className="sr-only"
           id="video-file-input"
