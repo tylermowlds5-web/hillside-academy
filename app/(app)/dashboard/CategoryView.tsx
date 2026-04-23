@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { AssignmentWithDetails, Video } from '@/lib/types'
 import { fmtDate } from '@/lib/format-date'
+import { getEffectiveProgress } from '@/lib/assignment-progress'
 import VideoModal from './VideoModal'
 
 function ProgressRing({ percent }: { percent: number }) {
@@ -31,8 +32,11 @@ function VideoCard({
   assignment: AssignmentWithDetails
   onPlayThumbnail: (a: AssignmentWithDetails) => void
 }) {
-  const percent = assignment.progress?.percent_watched ?? 0
-  const completed = assignment.progress?.completed ?? false
+  // Progress is assignment-relative: any watching that happened BEFORE this
+  // assignment's assigned_at doesn't count. A re-assigned video starts fresh.
+  const eff = getEffectiveProgress(assignment.progress, assignment.assigned_at)
+  const percent = eff.percent
+  const completed = eff.completed
 
   return (
     <div className="group flex flex-col bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl overflow-hidden transition-all hover:-translate-y-0.5">
@@ -203,11 +207,13 @@ export default function CategoryView({
     router.refresh()
   }, [router])
 
+  // Categorize using assignment-relative progress — a video the employee
+  // watched BEFORE being assigned counts as not completed for this assignment.
   const inProgressAssignments = assignments.filter(
-    (a) => !a.progress?.completed
+    (a) => !getEffectiveProgress(a.progress, a.assigned_at).completed
   )
   const completedAssignments = assignments.filter(
-    (a) => a.progress?.completed === true
+    (a) => getEffectiveProgress(a.progress, a.assigned_at).completed
   )
 
   const totalAssigned = assignments.length

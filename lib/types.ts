@@ -113,10 +113,49 @@ export type VideoWatchEvent = {
 
 // ── Quizzes (JSONB schema) ────────────────────────────────────────────────
 
+export type QuizQuestionType =
+  | 'multiple_choice'
+  | 'true_false'
+  | 'multiple_select'
+  | 'short_answer'
+  | 'image_question'
+
+export type QuizOption = { option_text: string; is_correct: boolean }
+
+// A single question. Stored as JSONB in quizzes.questions.
+// Legacy rows (no `type`) are treated as 'multiple_choice'.
 export type QuizQuestion = {
+  type?: QuizQuestionType
   question_text: string
-  options: { option_text: string; is_correct: boolean }[]
+  options?: QuizOption[]      // multiple_choice, true_false, multiple_select, image_question
+  image_url?: string | null   // image_question
+  correct_answer?: string     // legacy short_answer (single accepted answer)
+  correct_answers?: string[]  // short_answer (multiple accepted answers)
 }
+
+// Helper so the rest of the codebase doesn't have to handle the optional
+// `type` field everywhere.
+export function quizQuestionType(q: QuizQuestion): QuizQuestionType {
+  return q.type ?? 'multiple_choice'
+}
+
+// Returns the list of accepted answers for a short_answer question.
+// Reads new `correct_answers` (array) and falls back to legacy `correct_answer`
+// (single string) so old quizzes keep working.
+export function quizAcceptedAnswers(q: QuizQuestion): string[] {
+  if (q.correct_answers && q.correct_answers.length > 0) {
+    return q.correct_answers.filter((s) => s && s.trim().length > 0)
+  }
+  if (q.correct_answer && q.correct_answer.trim().length > 0) {
+    return [q.correct_answer]
+  }
+  return []
+}
+
+// Answer payload submitted from the client per question (indexed by question
+// position). `number` = index into options (mc/tf/iq), `number[]` = selected
+// option indices (ms), `string` = typed answer (sa).
+export type QuizSubmittedAnswer = number | number[] | string
 
 export type Quiz = {
   id: string

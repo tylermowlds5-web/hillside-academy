@@ -10,6 +10,7 @@ import type {
   Quiz,
   QuizAttempt,
 } from '@/lib/types'
+import { getEffectiveProgress } from '@/lib/assignment-progress'
 import CategoryView, { type AssignedPathCard } from './CategoryView'
 
 export default async function DashboardPage() {
@@ -111,16 +112,16 @@ export default async function DashboardPage() {
     })
     .filter((x): x is AssignedPathCard => !!x)
 
-  // Stats
+  // Stats — focused on assignments, using assignment-relative effective progress.
+  // Pre-assignment watches don't count; re-assigned videos start fresh.
   const totalVideos = allVideos.length
-  const videosWatched = [...allProgressMap.values()].filter((p) => p.completed).length
-  const inProgressCount = [...allProgressMap.values()].filter(
-    (p) => (p.percent_watched ?? 0) > 0 && !p.completed
-  ).length
+  const assignmentEffs = assignmentsWithDetails.map((a) =>
+    getEffectiveProgress(a.progress, a.assigned_at)
+  )
+  const videosWatched = assignmentEffs.filter((e) => e.completed).length
+  const inProgressCount = assignmentEffs.filter((e) => e.started && !e.completed).length
   const assignedIds = new Set(assignmentsWithDetails.map((a) => a.video_id))
-  const assignedNotStarted = assignmentsWithDetails.filter(
-    (a) => !a.progress || (a.progress.percent_watched ?? 0) === 0
-  ).length
+  const assignedNotStarted = assignmentEffs.filter((e) => !e.started).length
 
   const unwatchedVideos = allVideos.filter((v) => {
     if (assignedIds.has(v.id)) return false

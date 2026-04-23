@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Profile, Video, Assignment, Progress, JobRole, UserJobRole } from '@/lib/types'
 import { fmtDate } from '@/lib/format-date'
 import { deleteAssignment } from '@/app/actions'
+import { getEffectiveProgress } from '@/lib/assignment-progress'
 import AssignForm from './AssignForm'
 
 function RemoveButton({ assignmentId }: { assignmentId: string }) {
@@ -22,16 +23,9 @@ function RemoveButton({ assignmentId }: { assignmentId: string }) {
   )
 }
 
-function StatusBadge({ progress }: { progress: Progress | null }) {
-  if (!progress || (progress.percent_watched ?? 0) === 0) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-zinc-400">
-        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 inline-block" />
-        Not Started
-      </span>
-    )
-  }
-  if (progress.completed) {
+function StatusBadge({ progress, assignedAt }: { progress: Progress | null; assignedAt: string }) {
+  const eff = getEffectiveProgress(progress, assignedAt)
+  if (eff.completed) {
     return (
       <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
@@ -39,10 +33,18 @@ function StatusBadge({ progress }: { progress: Progress | null }) {
       </span>
     )
   }
+  if (eff.started) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
+        In Progress · {Math.round(eff.percent)}%
+      </span>
+    )
+  }
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-400">
-      <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
-      In Progress · {Math.round(progress.percent_watched ?? 0)}%
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-zinc-400">
+      <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 inline-block" />
+      Not Started
     </span>
   )
 }
@@ -137,6 +139,7 @@ export default async function AdminAssignPage() {
                 <tbody className="divide-y divide-zinc-800">
                   {typedAssignments.map((a) => {
                     const progress = progressMap.get(`${a.user_id}::${a.video_id}`) ?? null
+                    const eff = getEffectiveProgress(progress, a.assigned_at)
                     return (
                       <tr key={a.id} className="hover:bg-zinc-800/40 transition-colors">
                         <td className="px-4 py-3 text-zinc-200 whitespace-nowrap">
@@ -146,8 +149,8 @@ export default async function AdminAssignPage() {
                           {a.video?.title ?? a.video_id}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <StatusBadge progress={progress} />
-                          {progress?.completed && progress.last_watched_at && (
+                          <StatusBadge progress={progress} assignedAt={a.assigned_at} />
+                          {eff.completed && progress?.last_watched_at && (
                             <div className="text-[11px] text-zinc-600 mt-0.5">
                               {fmtDate(progress.last_watched_at)}
                             </div>

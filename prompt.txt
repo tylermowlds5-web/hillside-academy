@@ -1,19 +1,13 @@
-Fix these mobile issues:
+Add the following quiz question types to the quiz builder:
 
-1. MOBILE VIDEO UPLOAD 413 ERROR - Vercel has a 4.5MB request body limit which is too small for mobile videos. Switch to presigned direct-to-R2 uploads:
-   - Create an API route /api/get-upload-url that generates a presigned PUT URL for R2 using @aws-sdk/client-s3 and getSignedUrl
-   - The upload form should PUT the file directly to R2 using the presigned URL instead of going through Vercel
-   - This bypasses the Vercel size limit entirely - videos upload straight from the browser to R2
-   - Keep the progress bar working during upload
-   - After the direct upload completes, save the video record to Supabase as before
+1. TRUE/FALSE - simple two option true or false question, shows two buttons or radio options for True and False
 
-2. MOBILE CATEGORY CREATION - on mobile the "New category..." option in the category dropdown during video upload does not show the text input to type a new category name. Fix this so it works the same as desktop - selecting "New category..." shows a text input field to type a new category name on mobile as well.
+2. MULTIPLE CHOICE - current type, keep as is but make sure it is clearly labeled as Multiple Choice when adding a question
 
-3. On iPhone the layout is broken - grey cards/boxes are overflowing off the right side of the screen. Fix this for all pages:
-   - Make sure every card, box, and container has max-w-full and does not overflow the viewport width
-   - Add w-full to all card components so they fill their container without exceeding it
-   - Make sure padding and margins on mobile dont push content off screen - use px-4 on mobile containers
-   - Check the dashboard, videos page, learning paths, and admin pages specifically
-   - Any grid layouts should be grid-cols-1 on mobile screens
-   - Make sure the main content area accounts for the sidebar width correctly - on mobile the sidebar should be fully hidden and the main content should use the full width
-   - Test all pages at 390px width (iPhone 14 size)
+3. IMAGE QUESTION - admin can upload an image (stored to R2) as part of the question. Employee sees the image above the answer choices. Great for plant ID, equipment ID, weed identification tests. Use the existing R2 upload infrastructure for the image.
+
+4. MULTIPLE SELECT - employee can select more than one correct answer (checkbox style instead of radio buttons). Admin can mark multiple options as correct.
+
+5. SHORT ANSWER - employee types a short text answer. Admin sets the correct answer text and it checks for a match case insensitive and ignoring extra spaces.
+
+Update the quiz builder UI so admin can pick the question type from a dropdown when adding each question. Each type shows the appropriate input fields. Update the quiz taking UI to render each question type correctly. Make sure all question types save and score correctly.

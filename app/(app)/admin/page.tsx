@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { Profile, Video, Progress, QuizAttempt, Quiz } from '@/lib/types'
+import { getEffectiveProgress } from '@/lib/assignment-progress'
 import AutoRefresh from './AutoRefresh'
 
 type ProgressCell = { percent: number; completed: boolean }
@@ -55,7 +56,7 @@ export default async function AdminPage() {
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('role', 'employee').order('full_name'),
     supabase.from('videos').select('*').order('created_at'),
-    supabase.from('assignments').select('user_id, video_id'),
+    supabase.from('assignments').select('user_id, video_id, assigned_at'),
     supabase.from('progress').select('*'),
     supabase.from('quizzes').select('id, video_id, passing_score'),
     supabase.from('quiz_attempts').select('user_id, quiz_id, score, passed'),
@@ -63,13 +64,20 @@ export default async function AdminPage() {
 
   const typedEmployees = (employees ?? []) as Profile[]
   const typedVideos = (videos ?? []) as Video[]
-  const typedAssignments = (assignments ?? []) as { user_id: string; video_id: string }[]
+  const typedAssignments = (assignments ?? []) as { user_id: string; video_id: string; assigned_at: string }[]
   const typedProgress = (allProgress ?? []) as Progress[]
   const typedQuizzes = (quizzes ?? []) as Quiz[]
   const typedAttempts = (quizAttempts ?? []) as (QuizAttempt & { quiz_id: string })[]
 
-  // Lookup maps
-  const assignedSet = new Set(typedAssignments.map((a) => `${a.user_id}:${a.video_id}`))
+  // Lookup maps — assignedAt used to compute per-assignment effective progress
+  const assignedAtByPair = new Map<string, string>()
+  for (const a of typedAssignments) {
+    const key = `${a.user_id}:${a.video_id}`
+    // If somehow duplicated, keep the latest assigned_at
+    const existing = assignedAtByPair.get(key)
+    if (!existing || a.assigned_at > existing) assignedAtByPair.set(key, a.assigned_at)
+  }
+  const assignedSet = new Set(assignedAtByPair.keys())
   const progressMap = new Map<string, Progress>()
   for (const p of typedProgress) progressMap.set(`${p.user_id}:${p.video_id}`, p)
 
@@ -84,12 +92,18 @@ export default async function AdminPage() {
     if (!existing || a.score > existing.score) bestAttemptMap.set(key, a)
   }
 
-  // Stats
+  // Stats — completion is now assignment-relative (watch must post-date
+  // the assignment's assigned_at to count).
   const totalAssigned = typedAssignments.length
-  const completedCount = typedProgress.filter((p) => p.completed).length
+  const assignmentEffectives = typedAssignments.map((a) => {
+    const key = `${a.user_id}:${a.video_id}`
+    return getEffectiveProgress(progressMap.get(key) ?? null, a.assigned_at)
+  })
+  const completedCount = assignmentEffectives.filter((e) => e.completed).length
+  const withProgress = assignmentEffectives.filter((e) => e.percent > 0)
   const avgPercent =
-    typedProgress.length > 0
-      ? Math.round(typedProgress.reduce((s, p) => s + p.percent_watched, 0) / typedProgress.length)
+    withProgress.length > 0
+      ? Math.round(withProgress.reduce((s, e) => s + e.percent, 0) / withProgress.length)
       : 0
   const quizPassCount = [...bestAttemptMap.values()].filter((a) => a.passed).length
 
@@ -177,10 +191,17 @@ export default async function AdminPage() {
               <tbody className="divide-y divide-zinc-800">
                 {typedEmployees.map((emp) => {
                   const empAssigned = typedVideos.filter((v) => assignedSet.has(`${emp.id}:${v.id}`))
-                  const done = empAssigned.filter((v) => progressMap.get(`${emp.id}:${v.id}`)?.completed).length
-                  const withProg = empAssigned.filter((v) => (progressMap.get(`${emp.id}:${v.id}`)?.percent_watched ?? 0) > 0)
+                  // Per-employee stats use assignment-relative progress:
+                  // a video only counts as done/in-progress if the watch
+                  // happened after the assignment's assigned_at.
+                  const empEffective = empAssigned.map((v) => {
+                    const key = `${emp.id}:${v.id}`
+                    return getEffectiveProgress(progressMap.get(key) ?? null, assignedAtByPair.get(key) ?? null)
+                  })
+                  const done = empEffective.filter((e) => e.completed).length
+                  const withProg = empEffective.filter((e) => e.percent > 0)
                   const avg = withProg.length > 0
-                    ? Math.round(withProg.reduce((s, v) => s + (progressMap.get(`${emp.id}:${v.id}`)?.percent_watched ?? 0), 0) / withProg.length)
+                    ? Math.round(withProg.reduce((s, e) => s + e.percent, 0) / withProg.length)
                     : 0
 
                   return (
@@ -218,27 +239,31 @@ export default async function AdminPage() {
                           return <td key={v.id} className="px-3 py-3 text-center text-zinc-700">—</td>
                         }
                         const prog = progressMap.get(`${emp.id}:${v.id}`) ?? null
+                        const assignedAt = assignedAtByPair.get(`${emp.id}:${v.id}`) ?? null
+                        // Effective progress: progress older than the
+                        // assignment's assigned_at counts as "not started"
+                        const eff = getEffectiveProgress(prog, assignedAt)
                         const quiz = quizByVideo.get(v.id) ?? null
                         const best = quiz ? bestAttemptMap.get(`${emp.id}:${quiz.id}`) ?? null : null
-                        const pct = prog ? Math.round(prog.percent_watched) : 0
-                        const isInProgress = !prog?.completed && pct > 5
+                        const pct = Math.round(eff.percent)
+                        const isInProgress = !eff.completed && pct > 5
 
                         return (
                           <td key={v.id} className="px-3 py-3 text-center">
                             <div className="flex flex-col items-center gap-0.5">
                               {/* Video progress */}
                               <span className={`text-sm font-semibold ${
-                                prog?.completed ? 'text-emerald-400' : pct > 5 ? 'text-amber-400' : 'text-zinc-600'
+                                eff.completed ? 'text-emerald-400' : pct > 5 ? 'text-amber-400' : 'text-zinc-600'
                               }`}>
                                 {pct}%
                               </span>
                               <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full ${prog?.completed ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                  className={`h-full rounded-full ${eff.completed ? 'bg-emerald-500' : 'bg-amber-500'}`}
                                   style={{ width: `${pct}%` }}
                                 />
                               </div>
-                              {prog?.completed ? (
+                              {eff.completed ? (
                                 <span className="text-[10px] text-emerald-500 font-medium">Completed</span>
                               ) : isInProgress ? (
                                 <span className="text-[10px] text-amber-500 font-medium">In Progress</span>

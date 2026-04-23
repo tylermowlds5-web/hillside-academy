@@ -6,7 +6,8 @@ import { sendAssignmentEmail, sendPathAssignmentEmail } from '@/lib/send-email'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
-import type { QuizQuestion, StoredAnswer, Category, SubCategory } from '@/lib/types'
+import type { QuizQuestion, StoredAnswer, Category, SubCategory, QuizSubmittedAnswer } from '@/lib/types'
+import { quizQuestionType, quizAcceptedAnswers } from '@/lib/types'
 
 // ── Auth helpers ──────────────────────────────────────────────────────────
 
@@ -399,10 +400,7 @@ export async function deleteAssignment(assignmentId: string) {
 
 export type QuizPayload = {
   passing_score: number
-  questions: {
-    question_text: string
-    options: { option_text: string; is_correct: boolean }[]
-  }[]
+  questions: QuizQuestion[]
 }
 
 export async function saveQuiz(videoId: string, payload: QuizPayload) {
@@ -436,7 +434,7 @@ export async function deleteQuiz(quizId: string, videoId: string) {
 export async function submitQuizAttempt(
   quizId: string,
   videoId: string,
-  answers: Record<number, number> // questionIndex → optionIndex
+  answers: Record<number, QuizSubmittedAnswer>
 ) {
   const { supabase, user } = await getUser()
   if (!user) throw new Error('Unauthorized')
@@ -451,18 +449,68 @@ export async function submitQuizAttempt(
 
   let correct = 0
   const storedAnswers: StoredAnswer[] = quiz.questions.map((q, qi) => {
-    const selectedIndex = answers[qi]
-    const chosen = selectedIndex !== undefined
-      ? (q.options[selectedIndex]?.option_text ?? '(no answer)')
-      : '(no answer)'
-    const correctOption = q.options.find((o) => o.is_correct)
-    const isCorrect = selectedIndex !== undefined && q.options[selectedIndex]?.is_correct === true
-    if (isCorrect) correct++
+    const answer = answers[qi]
+    const type = quizQuestionType(q)
+    const options = q.options ?? []
+
+    // ── Single-choice types (multiple_choice, true_false, image_question) ──
+    if (type === 'multiple_choice' || type === 'true_false' || type === 'image_question') {
+      const selectedIndex = typeof answer === 'number' ? answer : -1
+      const chosenOpt = options[selectedIndex]
+      const correctOpt = options.find((o) => o.is_correct)
+      const isCorrect = !!chosenOpt?.is_correct
+      if (isCorrect) correct++
+      return {
+        question_text: q.question_text,
+        chosen: chosenOpt?.option_text ?? '(no answer)',
+        correct: correctOpt?.option_text ?? '?',
+        is_correct: isCorrect,
+      }
+    }
+
+    // ── Multiple-select: all and only correct options must be chosen ──────
+    if (type === 'multiple_select') {
+      const picked = Array.isArray(answer) ? (answer as number[]) : []
+      const pickedSet = new Set(picked)
+      // Correct iff each option's selected-state matches its is_correct flag
+      const isCorrect = options.length > 0 && options.every((o, i) => pickedSet.has(i) === !!o.is_correct)
+      if (isCorrect) correct++
+      const chosenTexts = picked
+        .map((i) => options[i]?.option_text)
+        .filter((t): t is string => !!t)
+      const correctTexts = options.filter((o) => o.is_correct).map((o) => o.option_text)
+      return {
+        question_text: q.question_text,
+        chosen: chosenTexts.length ? chosenTexts.join(', ') : '(no answer)',
+        correct: correctTexts.length ? correctTexts.join(', ') : '?',
+        is_correct: isCorrect,
+      }
+    }
+
+    // ── Short answer: case-insensitive, whitespace-collapsed compare against
+    //    ANY of the accepted answers ───────────────────────────────────────
+    if (type === 'short_answer') {
+      const given = typeof answer === 'string' ? answer : ''
+      const accepted = quizAcceptedAnswers(q)
+      const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ')
+      const normGiven = norm(given)
+      const isCorrect = normGiven.length > 0 && accepted.some((a) => norm(a) === normGiven)
+      if (isCorrect) correct++
+      return {
+        question_text: q.question_text,
+        chosen: given || '(no answer)',
+        // Show all accepted answers, joined, so the admin can see what was acceptable
+        correct: accepted.length > 0 ? accepted.join(' / ') : '?',
+        is_correct: isCorrect,
+      }
+    }
+
+    // Unknown type — treat as incorrect
     return {
       question_text: q.question_text,
-      chosen,
-      correct: correctOption?.option_text ?? '?',
-      is_correct: isCorrect,
+      chosen: '(no answer)',
+      correct: '?',
+      is_correct: false,
     }
   })
 

@@ -80,6 +80,16 @@ function putFileToR2(
   contentType: string,
   onProgress?: (pct: number) => void
 ): Promise<void> {
+  // Detailed logging so production failures surface real info in the console.
+  console.log('[uploadToR2] starting PUT')
+  console.log('[uploadToR2] presigned URL (first 100):', url.slice(0, 100))
+  console.log('[uploadToR2] content-type sent:', contentType)
+  console.log('[uploadToR2] file:', {
+    name: file.name,
+    size: file.size,
+    type: file.type || '(empty)',
+  })
+
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     if (onProgress) {
@@ -88,10 +98,42 @@ function putFileToR2(
       })
     }
     xhr.addEventListener('load', () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve()
-      else reject(new Error(`Upload to R2 failed (status ${xhr.status})`))
+      const headers = xhr.getAllResponseHeaders()
+      console.log('[uploadToR2] load — status:', xhr.status, xhr.statusText)
+      console.log('[uploadToR2] response headers:\n' + headers)
+      console.log('[uploadToR2] response body (first 500):', xhr.responseText.slice(0, 500))
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve()
+      } else {
+        // Surface R2's XML error body so the "SignatureDoesNotMatch" etc. is visible
+        const body = xhr.responseText?.slice(0, 300) ?? ''
+        reject(
+          new Error(
+            `R2 rejected upload (status ${xhr.status} ${xhr.statusText}). ${body || '(empty response body)'}`
+          )
+        )
+      }
     })
-    xhr.addEventListener('error', () => reject(new Error('Network error during upload')))
+    xhr.addEventListener('error', () => {
+      console.error('[uploadToR2] error event fired')
+      console.error('[uploadToR2] xhr.status:', xhr.status, 'statusText:', xhr.statusText)
+      console.error('[uploadToR2] xhr.readyState:', xhr.readyState)
+      const headers = xhr.getAllResponseHeaders()
+      console.error('[uploadToR2] response headers:\n' + (headers || '(none — request likely never reached server)'))
+      console.error('[uploadToR2] response body:', xhr.responseText || '(empty)')
+
+      // status === 0 + no headers = CORS rejection OR the browser blocked the request
+      if (xhr.status === 0) {
+        reject(
+          new Error(
+            'Upload blocked before reaching R2. This is almost always a CORS issue on the R2 bucket. In Cloudflare → R2 → your bucket → Settings → CORS, add: AllowedMethods [PUT], AllowedHeaders [*], AllowedOrigins [your app origin]. Open DevTools Console for full details.'
+          )
+        )
+      } else {
+        reject(new Error(`Network error during upload (status ${xhr.status} ${xhr.statusText})`))
+      }
+    })
     xhr.addEventListener('abort', () => reject(new Error('Upload aborted')))
     xhr.open('PUT', url)
     xhr.setRequestHeader('Content-Type', contentType)
@@ -355,10 +397,21 @@ export default function VideoForm({
     const contentType = file.type || 'application/octet-stream'
     let videoUrl: string
     try {
+      console.log('[videoUpload] requesting presigned URL — file:', file.name, '| contentType:', contentType, '| size:', file.size)
       const presign = await getPresignedVideoUpload(file.name, contentType)
-      await putFileToR2(presign.uploadUrl, file, contentType, setUploadProgress)
+      console.log('[videoUpload] presign response:', {
+        uploadUrl: presign.uploadUrl.slice(0, 100) + '…',
+        publicUrl: presign.publicUrl,
+        contentType: presign.contentType,
+      })
+
+      // Use the server-echoed contentType so the PUT header matches what was
+      // signed byte-for-byte (R2 returns SignatureDoesNotMatch on a mismatch).
+      await putFileToR2(presign.uploadUrl, file, presign.contentType, setUploadProgress)
       videoUrl = presign.publicUrl
+      console.log('[videoUpload] PUT succeeded, public URL:', videoUrl)
     } catch (err) {
+      console.error('[videoUpload] upload failed:', err)
       setStatus('error')
       setError(err instanceof Error ? err.message : 'Upload failed')
       return

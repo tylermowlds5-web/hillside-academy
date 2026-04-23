@@ -92,9 +92,16 @@ export async function POST(request: NextRequest) {
     )
 
     const publicUrl = `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`
+
+    console.log('[get-upload-url] signed PUT for', key, 'contentType:', contentType)
+    console.log('[get-upload-url] uploadUrl (first 120):', uploadUrl.slice(0, 120))
+
+    // Return the SAME contentType the URL was signed with so the client can
+    // echo it in its PUT request header (R2 requires an exact match).
     return Response.json({ uploadUrl, publicUrl, key, contentType })
   } catch (err) {
-    console.error('[get-upload-url] error:', err)
-    return Response.json({ error: 'Failed to generate upload URL' }, { status: 500 })
+    console.error('[get-upload-url] signing error:', err)
+    const message = err instanceof Error ? err.message : 'Unknown error signing URL'
+    return Response.json({ error: `Failed to generate upload URL: ${message}` }, { status: 500 })
   }
 }
