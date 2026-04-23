@@ -106,7 +106,7 @@ export default async function AdminAssignPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 w-full max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-zinc-50">Assign Videos</h1>
         <p className="text-zinc-400 text-sm mt-1">Assign training videos to employees</p>

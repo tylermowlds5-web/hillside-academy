@@ -32,8 +32,22 @@ body {
   font-family: var(--font-geist-sans, Arial, Helvetica, sans-serif);
 }
 
+html, body {
+  /* Belt-and-suspenders against horizontal scroll on iPhone */
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* Long unbreakable strings (URLs, filenames) inside cards wrap instead of
+   forcing the card wider than the viewport on mobile. Scoped so code/pre are
+   unaffected. */
+p, span, div, li, td, th, h1, h2, h3, h4, h5, h6 {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 ::-webkit-scrollbar {

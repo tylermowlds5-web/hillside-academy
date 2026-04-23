@@ -1,10 +1,19 @@
 Fix these mobile issues:
 
-1. REMOVE CAPTURE ATTRIBUTE - remove capture="environment" from the video file input so mobile users get a choice between camera and photo library instead of opening camera directly
+1. MOBILE VIDEO UPLOAD 413 ERROR - Vercel has a 4.5MB request body limit which is too small for mobile videos. Switch to presigned direct-to-R2 uploads:
+   - Create an API route /api/get-upload-url that generates a presigned PUT URL for R2 using @aws-sdk/client-s3 and getSignedUrl
+   - The upload form should PUT the file directly to R2 using the presigned URL instead of going through Vercel
+   - This bypasses the Vercel size limit entirely - videos upload straight from the browser to R2
+   - Keep the progress bar working during upload
+   - After the direct upload completes, save the video record to Supabase as before
 
-2. DISABLE ZOOM - add this meta tag to the root layout to prevent pinch zoom on mobile:
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+2. MOBILE CATEGORY CREATION - on mobile the "New category..." option in the category dropdown during video upload does not show the text input to type a new category name. Fix this so it works the same as desktop - selecting "New category..." shows a text input field to type a new category name on mobile as well.
 
-3. MOBILE MENU NAVIGATION - when clicking a menu item on mobile the sidebar closes and briefly shows the previous page before loading the new one. Fix this so navigation feels instant - when a menu item is clicked close the sidebar and navigate simultaneously without showing the previous page content in between
-
-4. PROGRESS REPORT ALWAYS HIGHLIGHTED - the Progress Report menu item in the sidebar is always showing as active/highlighted green even when you are on a different page. Fix the active state detection so only the current page's menu item is highlighted green
+3. On iPhone the layout is broken - grey cards/boxes are overflowing off the right side of the screen. Fix this for all pages:
+   - Make sure every card, box, and container has max-w-full and does not overflow the viewport width
+   - Add w-full to all card components so they fill their container without exceeding it
+   - Make sure padding and margins on mobile dont push content off screen - use px-4 on mobile containers
+   - Check the dashboard, videos page, learning paths, and admin pages specifically
+   - Any grid layouts should be grid-cols-1 on mobile screens
+   - Make sure the main content area accounts for the sidebar width correctly - on mobile the sidebar should be fully hidden and the main content should use the full width
+   - Test all pages at 390px width (iPhone 14 size)

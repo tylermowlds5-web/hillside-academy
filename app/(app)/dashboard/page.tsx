@@ -129,7 +129,7 @@ export default async function DashboardPage() {
   })
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
       <div className="mb-6 sm:mb-8">
         <h1 className="text-xl sm:text-2xl font-bold text-zinc-50">My Training</h1>
         <p className="text-zinc-400 text-sm mt-1">Your assigned paths, videos, and progress</p>

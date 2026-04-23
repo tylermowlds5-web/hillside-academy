@@ -126,7 +126,7 @@ export default async function EmployeeDetailPage(props: {
     : 0
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 w-full max-w-5xl mx-auto">
       {/* Back */}
       <Link
         href="/admin"
