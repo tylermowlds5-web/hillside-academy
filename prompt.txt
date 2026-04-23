@@ -1,13 +1,9 @@
-Add the following quiz question types to the quiz builder:
+The R2 presigned upload is being blocked by CORS even though the CORS policy is correctly configured. The issue is likely the endpoint URL being used to generate the presigned URL.
 
-1. TRUE/FALSE - simple two option true or false question, shows two buttons or radio options for True and False
+In /api/get-upload-url/route.ts check the S3 client configuration:
+1. The endpoint should be https://${ACCOUNT_ID}.r2.cloudflarestorage.com - make sure this is set correctly
+2. Add region: "auto" to the S3 client config
+3. Make sure forcePathStyle is not set or is set to false
+4. Log the full endpoint URL being used so we can verify it
 
-2. MULTIPLE CHOICE - current type, keep as is but make sure it is clearly labeled as Multiple Choice when adding a question
-
-3. IMAGE QUESTION - admin can upload an image (stored to R2) as part of the question. Employee sees the image above the answer choices. Great for plant ID, equipment ID, weed identification tests. Use the existing R2 upload infrastructure for the image.
-
-4. MULTIPLE SELECT - employee can select more than one correct answer (checkbox style instead of radio buttons). Admin can mark multiple options as correct.
-
-5. SHORT ANSWER - employee types a short text answer. Admin sets the correct answer text and it checks for a match case insensitive and ignoring extra spaces.
-
-Update the quiz builder UI so admin can pick the question type from a dropdown when adding each question. Each type shows the appropriate input fields. Update the quiz taking UI to render each question type correctly. Make sure all question types save and score correctly.
+Also check that R2_ACCOUNT_ID in the environment variables on Vercel matches exactly: 2ad46bfd20711383125fb58b4faeeed4

@@ -14,12 +14,38 @@ function sanitizeFilename(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
+// Expected R2 account id (for verification in logs — not a secret). If the
+// value in Vercel env doesn't match this, CORS / auth errors are likely.
+const EXPECTED_R2_ACCOUNT_ID = '2ad46bfd20711383125fb58b4faeeed4'
+
 function getS3Client() {
   const accountId = process.env.R2_ACCOUNT_ID
   if (!accountId) throw new Error('R2_ACCOUNT_ID is not configured')
+
+  const endpoint = `https://${accountId}.r2.cloudflarestorage.com`
+
+  // Verbose startup-of-request diagnostic — surfaces in Vercel function logs.
+  console.log('[get-upload-url] ── S3 client config ──')
+  console.log('[get-upload-url] endpoint        :', endpoint)
+  console.log('[get-upload-url] region          : auto')
+  console.log('[get-upload-url] forcePathStyle  : (default — false, virtual-hosted style)')
+  console.log('[get-upload-url] R2_ACCOUNT_ID   :', accountId)
+  console.log('[get-upload-url]   expected      :', EXPECTED_R2_ACCOUNT_ID)
+  console.log('[get-upload-url]   matches?      :', accountId === EXPECTED_R2_ACCOUNT_ID)
+  console.log('[get-upload-url] R2_BUCKET_NAME  :', process.env.R2_BUCKET_NAME ?? '(MISSING)')
+  console.log('[get-upload-url] R2_PUBLIC_URL   :', process.env.R2_PUBLIC_URL ?? '(MISSING)')
+  console.log('[get-upload-url] access key set? :', !!process.env.R2_ACCESS_KEY_ID,
+    process.env.R2_ACCESS_KEY_ID ? `(length ${process.env.R2_ACCESS_KEY_ID.length})` : '')
+  console.log('[get-upload-url] secret key set? :', !!process.env.R2_SECRET_ACCESS_KEY,
+    process.env.R2_SECRET_ACCESS_KEY ? `(length ${process.env.R2_SECRET_ACCESS_KEY.length})` : '')
+
   return new S3Client({
     region: 'auto',
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    endpoint,
+    // Explicitly virtual-hosted style — R2 CORS is scoped per bucket, and the
+    // virtual-hosted hostname <bucket>.<account>.r2.cloudflarestorage.com is
+    // the one the browser will send preflight requests to.
+    forcePathStyle: false,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -93,8 +119,18 @@ export async function POST(request: NextRequest) {
 
     const publicUrl = `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`
 
-    console.log('[get-upload-url] signed PUT for', key, 'contentType:', contentType)
-    console.log('[get-upload-url] uploadUrl (first 120):', uploadUrl.slice(0, 120))
+    // Parse out the host of the signed URL so we can sanity-check that the
+    // browser will hit the bucket's virtual-hosted URL (which is what CORS
+    // policies on the R2 bucket apply to).
+    let signedUrlHost = '(unknown)'
+    try { signedUrlHost = new URL(uploadUrl).host } catch { /* ignore */ }
+
+    console.log('[get-upload-url] ── signed URL ──')
+    console.log('[get-upload-url] key             :', key)
+    console.log('[get-upload-url] contentType     :', contentType)
+    console.log('[get-upload-url] signed URL host :', signedUrlHost,
+      '(this is the host the browser will PUT to; CORS must be set on the R2 bucket)')
+    console.log('[get-upload-url] uploadUrl (120) :', uploadUrl.slice(0, 120))
 
     // Return the SAME contentType the URL was signed with so the client can
     // echo it in its PUT request header (R2 requires an exact match).
