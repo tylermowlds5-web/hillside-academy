@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createVideoFromUpload, createCategory, createSubCategory } from '@/app/actions'
 import type { Category, SubCategory } from '@/lib/types'
+import { useGenerateDescription } from './useGenerateDescription'
+import GenerateDescriptionButton from './GenerateDescriptionButton'
 
 type Status = 'idle' | 'uploading' | 'uploaded' | 'saving' | 'done' | 'error'
 
@@ -398,6 +400,9 @@ export default function VideoForm({
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
+  // AI description generation — shared with the edit form (EditVideoPanel).
+  const { genState, genError, generate } = useGenerateDescription(setDescription)
+
   useEffect(() => {
     if (!file) { setFileUrl(null); return }
     const url = URL.createObjectURL(file)
@@ -728,7 +733,18 @@ export default function VideoForm({
 
       {/* Description */}
       <div className="w-full max-w-full">
-        <label className="block text-sm font-medium text-zinc-300 mb-1.5">Description</label>
+        <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+          <label className="block text-sm font-medium text-zinc-300">Description</label>
+          {/* Only available once the video is in R2 (we need its URL to transcribe). */}
+          {videoUrl && (
+            <GenerateDescriptionButton
+              genState={genState}
+              genError={genError}
+              disabled={saving}
+              onClick={() => generate(videoUrl)}
+            />
+          )}
+        </div>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}

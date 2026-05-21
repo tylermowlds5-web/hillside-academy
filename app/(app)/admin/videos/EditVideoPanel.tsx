@@ -3,29 +3,8 @@
 import { useState, useRef } from 'react'
 import type { Video, Category, SubCategory } from '@/lib/types'
 import { updateVideoMetadata } from '@/app/actions'
-
-type GenState = 'idle' | 'transcribing' | 'generating' | 'error'
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-// Calls /api/generate-description, which splits the work into short calls the
-// client polls between so nothing exceeds the serverless function timeout.
-async function generateDescriptionApi<T>(body: object): Promise<T> {
-  const res = await fetch('/api/generate-description', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    let message = `Description request failed (${res.status})`
-    try {
-      const data = await res.json()
-      if (data?.error) message = data.error
-    } catch {}
-    throw new Error(message)
-  }
-  return res.json()
-}
+import { useGenerateDescription } from './useGenerateDescription'
+import GenerateDescriptionButton from './GenerateDescriptionButton'
 
 function uploadThumbnail(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -73,8 +52,7 @@ export default function EditVideoPanel({
   const [uploadingThumb, setUploadingThumb] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [genState, setGenState] = useState<GenState>('idle')
-  const [genError, setGenError] = useState<string | null>(null)
+  const { genState, genError, generate } = useGenerateDescription(setDescription)
   const thumbInputRef = useRef<HTMLInputElement>(null)
 
   // Sub-categories filtered to the selected category
@@ -100,41 +78,6 @@ export default function EditVideoPanel({
       setThumbnailPreview(thumbnailUrl)
     } finally {
       setUploadingThumb(false)
-    }
-  }
-
-  // Transcribes the already-saved video (public R2 URL) and writes a generated
-  // description into the field. The admin can edit the result before saving.
-  async function handleGenerateDescription() {
-    if (genState === 'transcribing' || genState === 'generating') return
-    setGenError(null)
-    setGenState('transcribing')
-    try {
-      const { transcriptId } = await generateDescriptionApi<{ transcriptId: string }>({
-        videoUrl: video.url,
-      })
-
-      // Poll until AssemblyAI finishes (or fails).
-      for (;;) {
-        const { status: tStatus, error: tError } = await generateDescriptionApi<{
-          status: string
-          error: string | null
-        }>({ transcriptId })
-        if (tStatus === 'completed') break
-        if (tStatus === 'error') throw new Error(tError || 'Transcription failed')
-        await sleep(3000)
-      }
-
-      setGenState('generating')
-      const { description: generated } = await generateDescriptionApi<{ description: string }>({
-        transcriptId,
-        summarize: true,
-      })
-      setDescription(generated)
-      setGenState('idle')
-    } catch (err) {
-      setGenState('error')
-      setGenError(err instanceof Error ? err.message : 'Failed to generate description')
     }
   }
 
@@ -221,41 +164,17 @@ export default function EditVideoPanel({
 
           {/* Description */}
           <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
               <label className="block text-sm font-medium text-zinc-300">Description</label>
-              <button
-                type="button"
-                onClick={handleGenerateDescription}
-                disabled={saving || genState === 'transcribing' || genState === 'generating'}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {genState === 'transcribing' || genState === 'generating' ? (
-                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                  </svg>
-                )}
-                {genState === 'transcribing'
-                  ? 'Transcribing video…'
-                  : genState === 'generating'
-                  ? 'Generating description…'
-                  : 'Generate Description with AI'}
-              </button>
+              <GenerateDescriptionButton
+                genState={genState}
+                genError={genError}
+                disabled={saving}
+                onClick={() => generate(video.url)}
+              />
             </div>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={12}
               className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors resize-y" />
-            {(genState === 'transcribing' || genState === 'generating') && (
-              <p className="text-xs text-zinc-500 mt-1">
-                {genState === 'transcribing'
-                  ? 'Transcribing the video audio — this can take a minute…'
-                  : 'Writing a description from the transcript…'}
-              </p>
-            )}
-            {genError && <p className="text-xs text-red-400 mt-1 break-words">{genError}</p>}
           </div>
 
           {/* Category */}
