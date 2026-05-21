@@ -20,7 +20,7 @@ const SYSTEM_PROMPT = `You write the instructional content for a lawn care and l
 Requirements:
 - Write in the second person ("you should", "start by", "always make sure").
 - Teach the actual techniques, steps, and key information from the video.
-- Keep it tight: 100-200 words MAX. Include only the most important steps and tips — condense, don't pad.
+- Aim for 200-300 words. Include enough detail to genuinely teach the skill, but don't pad — concise enough to read quickly.
 - Use bullet points and numbered steps for lists.
 - For section headings, use bold text on its own line (e.g. **Steps** or **Tips**). NEVER use markdown headers like #, ##, or ### — the output is shown in a web app where those render wrong.
 - Formatting allowed: bold with **double asterisks**, bullet points, numbered steps, and line breaks. Nothing else.
