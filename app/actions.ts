@@ -234,10 +234,14 @@ export async function deleteVideo(videoId: string) {
     .eq('id', videoId)
     .single<{ url: string; thumbnail_url: string | null }>()
 
-  // Delete associated DB rows first
+  // Delete associated DB rows first. These run under the admin's session, so
+  // RLS may stop them from removing *other* users' rows — the ON DELETE CASCADE
+  // foreign keys (see supabase/migrations.sql) are what guarantee a clean sweep
+  // when the video row itself is deleted. These explicit deletes are a backstop.
   await supabase.from('video_watch_events').delete().eq('video_id', videoId)
   await supabase.from('progress').delete().eq('video_id', videoId)
   await supabase.from('assignments').delete().eq('video_id', videoId)
+  await supabase.from('learning_path_items').delete().eq('video_id', videoId)
   await supabase.from('videos').delete().eq('id', videoId)
 
   // Delete files from R2 (errors are logged, not thrown)
@@ -245,8 +249,12 @@ export async function deleteVideo(videoId: string) {
     await deleteR2Files([video.url, video.thumbnail_url])
   }
 
+  // Revalidate every surface that lists videos/assignments so deleted videos
+  // don't linger as un-clickable "ghosts" on employees' dashboards.
   revalidatePath('/admin/videos')
   revalidatePath('/admin')
+  revalidatePath('/dashboard')
+  revalidatePath('/videos')
 }
 
 // ── Video ordering (admin) ────────────────────────────────────────────────

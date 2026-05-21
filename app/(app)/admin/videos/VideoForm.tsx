@@ -460,6 +460,11 @@ export default function VideoForm({
     setError(null)
     if (!file) { setError('Please choose a video file'); return }
     if (!title.trim()) { setError('Title is required'); return }
+    // Category is required so videos never end up uncategorized and invisible.
+    if (!categorySelect) { setError('Please select or create a category'); return }
+    if (categorySelect === '__new__' && !newCategoryName.trim()) {
+      setError('Enter a name for the new category'); return
+    }
 
     setStatus('uploading')
     setUploadProgress(0)
@@ -606,7 +611,9 @@ export default function VideoForm({
 
       {/* Category */}
       <div className="w-full max-w-full">
-        <label className="block text-sm font-medium text-zinc-300 mb-1.5">Category</label>
+        <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+          Category <span className="text-red-500">*</span>
+        </label>
         <select
           value={categorySelect}
           onChange={(e) => handleCategoryChange(e.target.value)}

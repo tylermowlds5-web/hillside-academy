@@ -61,6 +61,8 @@ export default async function DashboardPage() {
   const assignmentsWithDetails: AssignmentWithDetails[] = []
   for (const a of assignments) {
     const video = videoMap.get(a.video_id as string)
+    // Skip assignments whose video no longer exists (e.g. orphaned rows left by
+    // a delete that RLS couldn't fully cascade) so they never render as ghosts.
     if (!video) continue
     assignmentsWithDetails.push({
       id: a.id as string,

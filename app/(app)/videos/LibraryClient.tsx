@@ -4,6 +4,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import type { Video, Category, SubCategory } from '@/lib/types'
 
+const UNCATEGORIZED = '__uncategorized__'
+
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
@@ -57,7 +59,7 @@ export default function LibraryClient({ videos, categories, subCategories }: Pro
   // Videos grouped by category_id → sub_category_id
   const videosByCategory = new Map<string, Video[]>()
   for (const v of videos) {
-    const key = v.category_id ?? '__uncategorized__'
+    const key = v.category_id ?? UNCATEGORIZED
     if (!videosByCategory.has(key)) videosByCategory.set(key, [])
     videosByCategory.get(key)!.push(v)
   }
@@ -65,14 +67,21 @@ export default function LibraryClient({ videos, categories, subCategories }: Pro
   const selectedCat = categories.find((c) => c.id === selectedCategoryId)
   const selectedSubCat = selectedSubCategoryId ? subCategoryMap.get(selectedSubCategoryId) : null
 
+  // Videos with no category are surfaced under a synthetic "Uncategorized"
+  // group so they're never silently hidden from the library.
+  const uncategorizedVideos = videosByCategory.get(UNCATEGORIZED) ?? []
+  const selectedCatName =
+    selectedCategoryId === UNCATEGORIZED ? 'Uncategorized' : selectedCat?.name
+
   // ── Level 0: All Categories ───────────────────────────────────────────
   if (selectedCategoryId === null) {
+    const totalGroups = categories.length + (uncategorizedVideos.length > 0 ? 1 : 0)
     return (
       <div>
         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
-          Library ({categories.length} {categories.length === 1 ? 'category' : 'categories'})
+          Library ({totalGroups} {totalGroups === 1 ? 'category' : 'categories'})
         </h2>
-        {categories.length === 0 ? (
+        {totalGroups === 0 ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
             <p className="text-zinc-500 text-sm">No videos in the library yet.</p>
           </div>
@@ -97,13 +106,30 @@ export default function LibraryClient({ videos, categories, subCategories }: Pro
                 </button>
               )
             })}
+            {uncategorizedVideos.length > 0 && (
+              <button onClick={() => setSelectedCategoryId(UNCATEGORIZED)}
+                className="text-left bg-zinc-900 border border-dashed border-zinc-700 hover:border-zinc-500 rounded-xl p-4 transition-colors group">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-medium text-zinc-300 group-hover:text-white break-words">Uncategorized</span>
+                  <svg className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1.5">
+                  {uncategorizedVideos.length} {uncategorizedVideos.length === 1 ? 'video' : 'videos'}
+                </p>
+              </button>
+            )}
           </div>
         )}
       </div>
     )
   }
 
-  const catSubCats = subCategories.filter((sc) => sc.category_id === selectedCategoryId)
+  const catSubCats =
+    selectedCategoryId === UNCATEGORIZED
+      ? []
+      : subCategories.filter((sc) => sc.category_id === selectedCategoryId)
   const catAllVideos = videosByCategory.get(selectedCategoryId) ?? []
   const catDirectVideos = catAllVideos.filter((v) => !v.sub_category_id)
 
@@ -122,7 +148,7 @@ export default function LibraryClient({ videos, categories, subCategories }: Pro
             All Categories
           </button>
           <span className="text-zinc-700">/</span>
-          <h2 className="text-sm font-semibold text-zinc-200">{selectedCat?.name}</h2>
+          <h2 className="text-sm font-semibold text-zinc-200">{selectedCatName}</h2>
         </div>
 
         <div className="space-y-6">
@@ -181,7 +207,7 @@ export default function LibraryClient({ videos, categories, subCategories }: Pro
       <div className="flex items-center gap-2 mb-5">
         <button onClick={() => setSelectedCategoryId(null)} className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">All Categories</button>
         <span className="text-zinc-700">/</span>
-        <button onClick={() => setSelectedSubCategoryId(null)} className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">{selectedCat?.name}</button>
+        <button onClick={() => setSelectedSubCategoryId(null)} className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">{selectedCatName}</button>
         <span className="text-zinc-700">/</span>
         <h2 className="text-sm font-semibold text-zinc-200">{selectedSubCat?.name}</h2>
         <span className="text-xs text-zinc-600">({subCatVideos.length})</span>

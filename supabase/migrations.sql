@@ -188,3 +188,57 @@ CREATE POLICY IF NOT EXISTS "quiz_attempts_insert" ON public.quiz_attempts
 -- Allow authenticated users to read their own attempts
 CREATE POLICY IF NOT EXISTS "quiz_attempts_read" ON public.quiz_attempts
   FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
+-- ── Cascade deletes for video-dependent rows ──────────────────────────────
+-- Deleting a video must remove its assignments / progress / watch events so
+-- they never linger as un-clickable "ghosts" on employee dashboards. Doing it
+-- via ON DELETE CASCADE guarantees the sweep even when the delete runs under a
+-- session whose RLS can't touch other users' rows.
+
+-- 1. Remove any already-orphaned rows (video_id pointing at a deleted video).
+--    Must happen BEFORE adding the FK, or the constraint creation would fail.
+DELETE FROM public.assignments        WHERE video_id IS NOT NULL AND video_id NOT IN (SELECT id FROM public.videos);
+DELETE FROM public.progress           WHERE video_id IS NOT NULL AND video_id NOT IN (SELECT id FROM public.videos);
+
+DO $$
+BEGIN
+  IF to_regclass('public.video_watch_events') IS NOT NULL THEN
+    DELETE FROM public.video_watch_events WHERE video_id IS NOT NULL AND video_id NOT IN (SELECT id FROM public.videos);
+  END IF;
+  IF to_regclass('public.learning_path_items') IS NOT NULL THEN
+    DELETE FROM public.learning_path_items WHERE video_id IS NOT NULL AND video_id NOT IN (SELECT id FROM public.videos);
+  END IF;
+END $$;
+
+-- 2. Drop whatever FK currently links each table's video_id to videos (name
+--    unknown / may not exist), then re-add it with ON DELETE CASCADE. Wrapped
+--    in a loop so it's idempotent and re-run safe.
+DO $$
+DECLARE
+  tbl text;
+  con record;
+BEGIN
+  FOREACH tbl IN ARRAY ARRAY['assignments', 'progress', 'video_watch_events', 'learning_path_items']
+  LOOP
+    IF to_regclass('public.' || tbl) IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    -- Drop existing FK(s) on this table that reference public.videos
+    FOR con IN
+      SELECT conname
+      FROM pg_constraint
+      WHERE contype = 'f'
+        AND conrelid = ('public.' || tbl)::regclass
+        AND confrelid = 'public.videos'::regclass
+    LOOP
+      EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I', tbl, con.conname);
+    END LOOP;
+
+    -- Re-create it with ON DELETE CASCADE
+    EXECUTE format(
+      'ALTER TABLE public.%I ADD CONSTRAINT %I FOREIGN KEY (video_id) REFERENCES public.videos(id) ON DELETE CASCADE',
+      tbl, tbl || '_video_id_fkey'
+    );
+  END LOOP;
+END $$;
