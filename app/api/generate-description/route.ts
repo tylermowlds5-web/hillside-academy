@@ -11,9 +11,9 @@ import { NextRequest } from 'next/server'
 
 const ASSEMBLYAI_BASE = 'https://api.assemblyai.com/v2'
 
-// User-requested model. Claude Sonnet 4 — a single, short summarization needs no
-// extended thinking or prompt caching (the transcript differs every time).
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514'
+// User-requested model. Claude Sonnet 4.5 — a single, short summarization needs
+// no extended thinking or prompt caching (the transcript differs every time).
+const CLAUDE_MODEL = 'claude-sonnet-4-5'
 
 const SYSTEM_PROMPT =
   'You write short descriptions for training videos on a lawn care and landscaping ' +
