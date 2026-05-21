@@ -212,10 +212,10 @@ function UploadModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative ml-auto w-full max-w-md bg-zinc-950 border-l border-zinc-800 flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+      <form onSubmit={handleSubmit} className="relative w-full max-w-md max-h-[90vh] bg-zinc-950 border border-zinc-800 rounded-2xl flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
           <h2 className="text-base font-semibold text-zinc-50">Upload Document</h2>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -275,7 +275,7 @@ function UploadModal({
           {error && <div className="rounded-lg bg-red-950 border border-red-800 px-3 py-2 text-sm text-red-400">{error}</div>}
         </div>
 
-        <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
+        <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end flex-shrink-0">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm">Cancel</button>
           <button type="submit" disabled={!file || status === 'uploading' || status === 'saving'}
             className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white text-sm font-medium">

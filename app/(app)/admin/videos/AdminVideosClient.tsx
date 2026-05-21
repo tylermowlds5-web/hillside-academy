@@ -898,10 +898,10 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
         />
       )}
 
-      {/* Add video panel */}
-      <div className={`fixed inset-0 z-50 flex transition-opacity duration-200 ${showAddVideo ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+      {/* Add video modal */}
+      <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-200 ${showAddVideo ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={requestCloseAddVideo} />
-        <div className={`relative ml-auto w-full max-w-md bg-zinc-950 border-l border-zinc-800 flex flex-col shadow-2xl transition-transform duration-200 ${showAddVideo ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className={`relative w-full max-w-md max-h-[90vh] bg-zinc-950 border border-zinc-800 rounded-2xl flex flex-col shadow-2xl overflow-hidden transition-transform duration-200 ${showAddVideo ? 'scale-100' : 'scale-95'}`}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
             <h2 className="text-base font-semibold text-zinc-50">Upload Video</h2>
             <button onClick={requestCloseAddVideo} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors">
