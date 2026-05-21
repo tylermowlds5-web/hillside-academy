@@ -33,13 +33,13 @@ export default async function AppLayout({
           min-w-0 prevents flex children from forcing the parent wider than
           the viewport (which would produce horizontal scroll on phones). */}
       <main className="relative flex-1 min-w-0 overflow-y-auto overflow-x-hidden pt-14 md:pt-0">
-        {/* Faded Hillside brand watermark, fixed bottom-right behind content */}
+        {/* Faded Hillside brand watermark, centered + rotated behind content */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/hillside-icon.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none select-none fixed bottom-8 right-8 w-[450px] max-w-[55vw] opacity-[0.05] z-0"
+          className="pointer-events-none select-none fixed left-1/2 md:left-[calc(50%+7.5rem)] top-1/2 w-[650px] max-w-[80vw] opacity-[0.09] z-0 -translate-x-1/2 -translate-y-1/2 rotate-45"
         />
         <div className="relative z-10">
           {children}
