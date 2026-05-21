@@ -92,8 +92,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-plum px-4 py-8">
-      <div className="w-full max-w-sm">
+    <div className="relative min-h-screen flex items-center justify-center bg-plum px-4 py-8 overflow-hidden">
+      {/* Faded Hillside brand watermark, centered behind the login card */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/hillside-icon.png"
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none select-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] max-w-[85vw] opacity-[0.06]"
+      />
+      <div className="relative z-10 w-full max-w-sm">
         {/* Logo / Brand */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-500 mb-4">
