@@ -92,7 +92,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-plum px-4 py-8 overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center bg-zinc-950 px-4 py-8 overflow-hidden">
       {/* Faded Hillside brand watermark, centered behind the login card */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -129,7 +129,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-plum-light border border-white/10 rounded-2xl p-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-zinc-50 mb-6">
             {mode === 'signin' ? 'Sign in to your account' : 'Create an account'}
           </h2>
