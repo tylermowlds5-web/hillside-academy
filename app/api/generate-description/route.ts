@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
   try {
     // ── 1. Start transcription ──────────────────────────────────────────
     if (body.videoUrl) {
+      console.log('[generate-description] submitting to AssemblyAI — audio_url:', body.videoUrl)
       const res = await fetch(`${ASSEMBLYAI_BASE}/transcript`, {
         method: 'POST',
         headers: assemblyHeaders(),
@@ -64,8 +65,19 @@ export async function POST(request: NextRequest) {
       })
       if (!res.ok) {
         const detail = await res.text()
-        console.error('[generate-description] AssemblyAI submit failed:', res.status, detail)
-        return Response.json({ error: `Failed to start transcription (${res.status})` }, { status: 502 })
+        console.error(
+          `[generate-description] AssemblyAI submit failed (status ${res.status}) for audio_url ${body.videoUrl}\nResponse body: ${detail}`
+        )
+        // Surface AssemblyAI's exact rejection (and the URL we sent) to the client.
+        return Response.json(
+          {
+            error: `AssemblyAI rejected the request (${res.status}): ${detail || '(empty response body)'}`,
+            assemblyAiStatus: res.status,
+            assemblyAiBody: detail,
+            audioUrl: body.videoUrl,
+          },
+          { status: 502 }
+        )
       }
       const data = (await res.json()) as { id: string }
       return Response.json({ transcriptId: data.id })
