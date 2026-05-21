@@ -92,7 +92,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-[#111827] px-4 py-8 overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center bg-zinc-950 px-4 py-8 overflow-hidden">
       {/* Faded Hillside brand watermark, centered behind the login card */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -124,7 +124,7 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-zinc-50">Hillside University</h1>
+          <h1 className="text-2xl font-bold text-zinc-50">Hillside Academy</h1>
           <p className="text-sm text-zinc-400 mt-1">Employee Training Portal</p>
         </div>
 

@@ -144,7 +144,7 @@ function SidebarContent({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/hillside-icon.png" alt="Hillside" className="w-8 h-8 object-contain flex-shrink-0" />
         <div>
-          <p className="text-sm font-bold text-emerald-400 leading-tight">Hillside University</p>
+          <p className="text-sm font-bold text-emerald-400 leading-tight">Hillside Academy</p>
           <p className="text-xs text-zinc-400 leading-tight">Training Platform</p>
         </div>
       </div>
@@ -256,7 +256,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/hillside-icon.png" alt="Hillside" className="w-7 h-7 object-contain flex-shrink-0" />
-          <p className="text-sm font-semibold text-emerald-400">Hillside University</p>
+          <p className="text-sm font-semibold text-emerald-400">Hillside Academy</p>
         </div>
         <button
           onClick={() => setMobileOpen(true)}

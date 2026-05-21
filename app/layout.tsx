@@ -22,12 +22,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Hillside University',
+  title: 'Hillside Academy',
   description: 'Employee training and development platform',
-  icons: {
-    icon: '/hillside-icon.png',
-    apple: '/hillside-icon.png',
-  },
 }
 
 export default function RootLayout({
