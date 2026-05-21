@@ -378,12 +378,19 @@ function ThumbnailScrubber({
 export default function VideoForm({
   categories,
   subCategories = [],
+  onDirtyChange,
 }: {
   categories: Category[]
   subCategories?: SubCategory[]
+  // Lets the parent (the slide-over panel) know a video is selected/uploading so
+  // it can warn before closing. "Dirty" = a file has been chosen.
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Bumped each time a new file is chosen, so a superseded background upload
+  // can't clobber state for the file the admin actually kept.
+  const uploadTokenRef = useRef(0)
 
   const [file, setFile] = useState<File | null>(null)
   const [fileUrl, setFileUrl] = useState<string | null>(null)
@@ -418,6 +425,14 @@ export default function VideoForm({
     return () => URL.revokeObjectURL(url)
   }, [file])
 
+  // Report dirty state (a file is selected/uploading) up to the parent panel.
+  useEffect(() => {
+    onDirtyChange?.(!!file)
+  }, [file, onDirtyChange])
+
+  // Only saving locks the form. While the video uploads in the background, every
+  // field stays editable — just the Save button waits for the upload to finish.
+  const saving = status === 'saving'
   const busy = status === 'uploading' || status === 'saving'
 
   // For the sub-category select: show only sub-cats that belong to the chosen
@@ -439,6 +454,8 @@ export default function VideoForm({
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = e.target.files?.[0] ?? null
+    // Invalidate any in-flight upload from a previously-selected file.
+    const token = ++uploadTokenRef.current
     setFile(picked)
     setThumbnailUrl(null)
     setVideoUrl(null)
@@ -450,20 +467,26 @@ export default function VideoForm({
     }
     // Upload to R2 right away so the thumbnail scrubber, AI description button,
     // and Save can all work against the stored video.
-    if (picked) void startVideoUpload(picked)
+    if (picked) void startVideoUpload(picked, token)
+    else setStatus('idle')
   }
 
   // Uploads the chosen video to R2 in the background; videoUrl is set on success.
-  async function startVideoUpload(picked: File) {
+  // `token` guards against a stale upload (from a replaced file) writing state.
+  async function startVideoUpload(picked: File, token: number) {
     setStatus('uploading')
     setUploadProgress(0)
     const contentType = picked.type || 'application/octet-stream'
     try {
-      const url = await uploadVideoMultipart(picked, contentType, setUploadProgress)
+      const url = await uploadVideoMultipart(picked, contentType, (pct) => {
+        if (token === uploadTokenRef.current) setUploadProgress(pct)
+      })
+      if (token !== uploadTokenRef.current) return // a newer file replaced this one
       setVideoUrl(url)
       setStatus('uploaded')
       console.log('[videoUpload] upload complete, public URL:', url)
     } catch (err) {
+      if (token !== uploadTokenRef.current) return
       console.error('[videoUpload] upload failed:', err)
       setStatus('error')
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -611,7 +634,7 @@ export default function VideoForm({
           onChange={handleFileChange}
           className="sr-only"
           id="video-file-input"
-          disabled={busy}
+          disabled={saving}
         />
         <label
           htmlFor="video-file-input"
@@ -619,7 +642,7 @@ export default function VideoForm({
             file
               ? 'border-emerald-600 bg-emerald-950/30 text-emerald-300'
               : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 active:bg-zinc-700'
-          } ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}
+          } ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
@@ -647,17 +670,29 @@ export default function VideoForm({
         </div>
       )}
 
-      {/* Upload progress */}
-      {(status === 'uploading' || status === 'saving') && (
+      {/* Upload progress — stays visible at 100% once the upload finishes so the
+          admin can see it's ready (saving only happens when they click Save). */}
+      {(status === 'uploading' || status === 'uploaded' || status === 'saving') && (
         <div className="space-y-1.5 w-full max-w-full">
           <div className="flex justify-between text-xs text-zinc-400">
-            <span>{status === 'uploading' ? 'Uploading video…' : 'Saving to library…'}</span>
+            <span>
+              {status === 'uploading'
+                ? 'Uploading video…'
+                : status === 'uploaded'
+                ? 'Upload complete — ready to save'
+                : 'Saving to library…'}
+            </span>
             {status === 'uploading' && <span>{uploadProgress}%</span>}
+            {status === 'uploaded' && <span className="text-emerald-400">100%</span>}
           </div>
           <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-200 ${
-                status === 'saving' ? 'bg-emerald-400 animate-pulse w-full' : 'bg-emerald-500'
+                status === 'saving'
+                  ? 'bg-emerald-400 animate-pulse w-full'
+                  : status === 'uploaded'
+                  ? 'bg-emerald-500 w-full'
+                  : 'bg-emerald-500'
               }`}
               style={status === 'uploading' ? { width: `${uploadProgress}%` } : undefined}
             />
@@ -676,7 +711,7 @@ export default function VideoForm({
           onChange={(e) => setTitle(e.target.value)}
           required
           placeholder="e.g. Safety Orientation"
-          disabled={busy}
+          disabled={saving}
           className="w-full max-w-full px-3 py-2.5 min-h-[44px] rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors disabled:opacity-50"
         />
       </div>
@@ -689,7 +724,7 @@ export default function VideoForm({
         <select
           value={categorySelect}
           onChange={(e) => handleCategoryChange(e.target.value)}
-          disabled={busy}
+          disabled={saving}
           className="w-full max-w-full px-3 py-2.5 min-h-[44px] rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors disabled:opacity-50"
         >
           <option value="">None</option>
@@ -704,7 +739,7 @@ export default function VideoForm({
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
             placeholder="Category name"
-            disabled={busy}
+            disabled={saving}
             autoFocus
             className="mt-2 w-full max-w-full px-3 py-2.5 min-h-[44px] rounded-lg bg-zinc-800 border border-emerald-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors disabled:opacity-50"
           />
@@ -720,7 +755,7 @@ export default function VideoForm({
           <select
             value={subCategorySelect}
             onChange={(e) => handleSubCategoryChange(e.target.value)}
-            disabled={busy || categorySelect === '__new__'}
+            disabled={saving || categorySelect === '__new__'}
             className="w-full max-w-full px-3 py-2.5 min-h-[44px] rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors disabled:opacity-50"
           >
             <option value="">None</option>
@@ -737,7 +772,7 @@ export default function VideoForm({
               value={newSubCategoryName}
               onChange={(e) => setNewSubCategoryName(e.target.value)}
               placeholder="Sub category name"
-              disabled={busy}
+              disabled={saving}
               autoFocus
               className="mt-2 w-full max-w-full px-3 py-2.5 min-h-[44px] rounded-lg bg-zinc-800 border border-emerald-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors disabled:opacity-50"
             />
@@ -783,7 +818,7 @@ export default function VideoForm({
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
           placeholder="Brief description…"
-          disabled={busy}
+          disabled={saving}
           className="w-full max-w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors resize-none disabled:opacity-50"
         />
         {(genState === 'transcribing' || genState === 'generating') && (

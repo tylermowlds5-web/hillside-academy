@@ -35,6 +35,9 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
+// Sentinel "category" for videos with no category_id.
+const UNCATEGORIZED = '__uncategorized__'
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function formatDuration(seconds: number): string {
@@ -147,6 +150,73 @@ function SortableVideoRow({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Plain video row (no drag — used for the Uncategorized list) ───────────
+
+function PlainVideoRow({
+  video,
+  onDeleted,
+  onEdit,
+}: {
+  video: Video
+  onDeleted: () => void
+  onEdit: (video: Video) => void
+}) {
+  const router = useRouter()
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    if (!confirm('Delete this video? This cannot be undone.')) return
+    setDeleting(true)
+    try {
+      await deleteVideo(video.id)
+      onDeleted()
+      router.refresh()
+    } catch {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="flex items-start gap-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors">
+      {/* Thumbnail */}
+      <div className="w-20 h-12 rounded-lg bg-zinc-800 flex-shrink-0 overflow-hidden">
+        {video.thumbnail_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={video.thumbnail_url} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-5 h-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+            </svg>
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-medium text-zinc-100 truncate">{video.title}</h3>
+        {video.description && <p className="text-xs text-zinc-500 mt-0.5 line-clamp-1">{video.description}</p>}
+        <div className="flex items-center gap-3 mt-1">
+          <span className="text-xs text-zinc-600 truncate max-w-[200px]" title={video.url}>
+            {video.url.replace(/^https?:\/\//, '')}
+          </span>
+          {video.duration && <span className="text-xs text-zinc-600 flex-shrink-0">{formatDuration(video.duration)}</span>}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <Link href={`/watch/${video.id}`} className="text-xs text-zinc-400 hover:text-emerald-400 transition-colors px-2 py-1 rounded hover:bg-zinc-800">Preview</Link>
+        <Link href={`/admin/videos/${video.id}/quiz`} className="text-xs text-zinc-400 hover:text-emerald-400 transition-colors px-2 py-1 rounded hover:bg-zinc-800">Quiz</Link>
+        <button type="button" onClick={() => onEdit(video)} className="text-xs text-zinc-400 hover:text-emerald-400 transition-colors px-2 py-1 rounded hover:bg-zinc-800">Edit</button>
+        <button type="button" onClick={handleDelete} disabled={deleting} className="text-xs text-red-500 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10 disabled:opacity-50">
+          {deleting ? 'Deleting…' : 'Delete'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -281,6 +351,10 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
   const [showAddVideo, setShowAddVideo] = useState(false)
   const [videoFormKey, setVideoFormKey] = useState(0)
   const [editingVideo, setEditingVideo] = useState<Video | null>(null)
+  // True while the add-video form has a file selected/uploading — used to warn
+  // before closing the panel.
+  const [addVideoDirty, setAddVideoDirty] = useState(false)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   // Category modals
   const [showCreateCategory, setShowCreateCategory] = useState(false)
@@ -451,6 +525,22 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
     }
   }
 
+  // ── Add-video panel close handling ────────────────────────────────────────
+
+  // Closing with a selected/uploading video would discard the upload — warn first.
+  function requestCloseAddVideo() {
+    if (addVideoDirty) setShowCloseConfirm(true)
+    else setShowAddVideo(false)
+  }
+
+  function confirmCloseAddVideo() {
+    setShowCloseConfirm(false)
+    setShowAddVideo(false)
+    setAddVideoDirty(false)
+    // Remount the form so the in-flight upload and all its state are dropped.
+    setVideoFormKey((k) => k + 1)
+  }
+
   // ── DnD helpers ─────────────────────────────────────────────────────────
 
   function findSectionForVideo(videoId: string): string | null {
@@ -537,10 +627,20 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
     if (v.category_id) videoCountByCategory.set(v.category_id, (videoCountByCategory.get(v.category_id) ?? 0) + 1)
   }
 
-  const selectedCat = selectedCategoryId ? initialCategories.find((c) => c.id === selectedCategoryId) : null
+  // Videos with no category — surfaced in their own "Uncategorized" section so
+  // admins can edit/delete them (employees already see them on the videos tab).
+  const uncategorizedVideos = initialVideos.filter((v) => !v.category_id)
+
+  const isUncategorizedView = selectedCategoryId === UNCATEGORIZED
+  const selectedCat =
+    selectedCategoryId && selectedCategoryId !== UNCATEGORIZED
+      ? initialCategories.find((c) => c.id === selectedCategoryId)
+      : null
   const selectedSubCat = selectedSubCategoryId ? initialSubCategories.find((sc) => sc.id === selectedSubCategoryId) : null
-  const showingCategoryLevel = selectedCategoryId !== null && selectedSubCategoryId === null
-  const showingSubCatLevel = selectedCategoryId !== null && selectedSubCategoryId !== null
+  const showingCategoryLevel =
+    selectedCategoryId !== null && selectedCategoryId !== UNCATEGORIZED && selectedSubCategoryId === null
+  const showingSubCatLevel =
+    selectedCategoryId !== null && selectedCategoryId !== UNCATEGORIZED && selectedSubCategoryId !== null
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -581,7 +681,9 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
               <span className="text-sm font-semibold text-zinc-200">{selectedSubCat?.name ?? 'Direct Videos'}</span>
             </>
           ) : (
-            <span className="text-sm font-semibold text-zinc-200">{selectedCat?.name}</span>
+            <span className="text-sm font-semibold text-zinc-200">
+              {isUncategorizedView ? 'Uncategorized' : selectedCat?.name}
+            </span>
           )}
         </div>
       )}
@@ -592,9 +694,9 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
             Library ({initialCategories.length} {initialCategories.length === 1 ? 'category' : 'categories'})
           </h2>
-          {initialCategories.length === 0 ? (
+          {initialCategories.length === 0 && uncategorizedVideos.length === 0 ? (
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
-              <p className="text-zinc-500 text-sm">No categories yet. Click "Add Category" to create one.</p>
+              <p className="text-zinc-500 text-sm">No categories yet. Click &quot;Add Category&quot; to create one.</p>
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -626,9 +728,42 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
                   </div>
                 )
               })}
+              {uncategorizedVideos.length > 0 && (
+                <button
+                  onClick={() => setSelectedCategoryId(UNCATEGORIZED)}
+                  className="text-left bg-zinc-900 border border-dashed border-zinc-700 hover:border-zinc-500 rounded-xl p-4 transition-colors group flex items-start gap-2"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium text-zinc-300 group-hover:text-white break-words">Uncategorized</span>
+                      <svg className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-1.5">
+                      {uncategorizedVideos.length} {uncategorizedVideos.length === 1 ? 'video' : 'videos'} · needs a category
+                    </p>
+                  </div>
+                </button>
+              )}
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Uncategorized videos (edit/delete, no drag) ── */}
+      {isUncategorizedView && (
+        uncategorizedVideos.length === 0 ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
+            <p className="text-zinc-500 text-sm">No uncategorized videos.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {uncategorizedVideos.map((v) => (
+              <PlainVideoRow key={v.id} video={v} onDeleted={() => router.refresh()} onEdit={(vid) => setEditingVideo(vid)} />
+            ))}
+          </div>
+        )
       )}
 
       {/* ── Level 1: Category detail — sections with DnD ── */}
@@ -765,21 +900,47 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
 
       {/* Add video panel */}
       <div className={`fixed inset-0 z-50 flex transition-opacity duration-200 ${showAddVideo ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddVideo(false)} />
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={requestCloseAddVideo} />
         <div className={`relative ml-auto w-full max-w-md bg-zinc-950 border-l border-zinc-800 flex flex-col shadow-2xl transition-transform duration-200 ${showAddVideo ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
             <h2 className="text-base font-semibold text-zinc-50">Upload Video</h2>
-            <button onClick={() => setShowAddVideo(false)} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors">
+            <button onClick={requestCloseAddVideo} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-5">
-            <VideoForm key={videoFormKey} categories={initialCategories} subCategories={initialSubCategories} />
+            <VideoForm
+              key={videoFormKey}
+              categories={initialCategories}
+              subCategories={initialSubCategories}
+              onDirtyChange={setAddVideoDirty}
+            />
           </div>
         </div>
       </div>
+
+      {/* Unsaved-changes confirmation when closing the add-video panel */}
+      {showCloseConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCloseConfirm(false)} />
+          <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h2 className="text-base font-semibold text-zinc-50 mb-2">Unsaved changes</h2>
+            <p className="text-sm text-zinc-400 mb-5">
+              You have unsaved changes. Are you sure you want to close? Your upload progress will be lost.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setShowCloseConfirm(false)} className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition-colors">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmCloseAddVideo} className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors">
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
