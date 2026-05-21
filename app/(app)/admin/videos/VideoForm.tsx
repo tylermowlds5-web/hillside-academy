@@ -53,92 +53,162 @@ function uploadWithProgress(
   })
 }
 
-// Videos use direct-to-R2 presigned PUT (bypasses Vercel 4.5 MB body limit)
-async function getPresignedVideoUpload(
+// ── Direct-to-R2 multipart upload ─────────────────────────────────────────
+// Large videos (300 MB+) are split into 10 MB parts, each PUT straight to R2.
+// Bytes never pass through Vercel, so the 4.5 MB function body limit and the
+// practical limits of a single presigned PUT no longer apply.
+
+const PART_SIZE = 10 * 1024 * 1024 // 10 MB per part
+const MAX_CONCURRENT_PARTS = 4 // upload a few parts at once for throughput
+
+async function readError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json()
+    if (body?.error) return body.error
+  } catch {}
+  return `${fallback} (${res.status})`
+}
+
+async function startMultipartUpload(
   filename: string,
   contentType: string
-): Promise<{ uploadUrl: string; publicUrl: string; contentType: string }> {
-  const res = await fetch('/api/get-upload-url', {
+): Promise<{ uploadId: string; key: string; publicUrl: string }> {
+  const res = await fetch('/api/get-multipart-upload-url', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ filename, contentType }),
   })
-  if (!res.ok) {
-    let message = `Failed to get upload URL (${res.status})`
-    try {
-      const body = await res.json()
-      if (body.error) message = body.error
-    } catch {}
-    throw new Error(message)
-  }
+  if (!res.ok) throw new Error(await readError(res, 'Failed to start upload'))
   return res.json()
 }
 
-function putFileToR2(
-  url: string,
-  file: File,
-  contentType: string,
-  onProgress?: (pct: number) => void
-): Promise<void> {
-  // Detailed logging so production failures surface real info in the console.
-  console.log('[uploadToR2] starting PUT')
-  console.log('[uploadToR2] presigned URL (first 100):', url.slice(0, 100))
-  console.log('[uploadToR2] content-type sent:', contentType)
-  console.log('[uploadToR2] file:', {
-    name: file.name,
-    size: file.size,
-    type: file.type || '(empty)',
+async function getPartUrl(key: string, uploadId: string, partNumber: number): Promise<string> {
+  const res = await fetch('/api/get-part-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, uploadId, partNumber }),
   })
+  if (!res.ok) throw new Error(await readError(res, 'Failed to get part URL'))
+  const { url } = await res.json()
+  return url as string
+}
 
+// PUTs a single chunk to R2 and resolves with its ETag (needed to complete the
+// upload). Note: we deliberately do NOT set a Content-Type header — the part
+// URL is signed without one, and adding an unsigned header risks a signature
+// mismatch. Reading the ETag back requires "ETag" in the bucket's CORS
+// ExposeHeaders.
+function putPart(
+  url: string,
+  chunk: Blob,
+  onProgress: (loadedBytes: number) => void
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    if (onProgress) {
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
-      })
-    }
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) onProgress(e.loaded)
+    })
     xhr.addEventListener('load', () => {
-      const headers = xhr.getAllResponseHeaders()
-      console.log('[uploadToR2] load — status:', xhr.status, xhr.statusText)
-      console.log('[uploadToR2] response headers:\n' + headers)
-      console.log('[uploadToR2] response body (first 500):', xhr.responseText.slice(0, 500))
-
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve()
-      } else {
-        // Surface R2's XML error body so the "SignatureDoesNotMatch" etc. is visible
-        const body = xhr.responseText?.slice(0, 300) ?? ''
-        reject(
-          new Error(
-            `R2 rejected upload (status ${xhr.status} ${xhr.statusText}). ${body || '(empty response body)'}`
+        const etag = xhr.getResponseHeader('ETag')
+        if (!etag) {
+          reject(
+            new Error(
+              'R2 did not return an ETag for an uploaded part. Add "ETag" to the bucket CORS ExposeHeaders in the Cloudflare R2 dashboard.'
+            )
           )
-        )
+          return
+        }
+        onProgress(chunk.size) // mark this part fully done
+        resolve(etag)
+      } else {
+        const body = xhr.responseText?.slice(0, 300) ?? ''
+        reject(new Error(`R2 rejected a part (status ${xhr.status} ${xhr.statusText}). ${body}`))
       }
     })
     xhr.addEventListener('error', () => {
-      console.error('[uploadToR2] error event fired')
-      console.error('[uploadToR2] xhr.status:', xhr.status, 'statusText:', xhr.statusText)
-      console.error('[uploadToR2] xhr.readyState:', xhr.readyState)
-      const headers = xhr.getAllResponseHeaders()
-      console.error('[uploadToR2] response headers:\n' + (headers || '(none — request likely never reached server)'))
-      console.error('[uploadToR2] response body:', xhr.responseText || '(empty)')
-
-      // status === 0 + no headers = CORS rejection OR the browser blocked the request
       if (xhr.status === 0) {
         reject(
           new Error(
-            'Upload blocked before reaching R2. This is almost always a CORS issue on the R2 bucket. In Cloudflare → R2 → your bucket → Settings → CORS, add: AllowedMethods [PUT], AllowedHeaders [*], AllowedOrigins [your app origin]. Open DevTools Console for full details.'
+            'Part upload blocked before reaching R2 — almost always a CORS issue. In Cloudflare → R2 → bucket → Settings → CORS, allow methods [PUT], headers [*], your app origin, and expose the ETag header.'
           )
         )
       } else {
-        reject(new Error(`Network error during upload (status ${xhr.status} ${xhr.statusText})`))
+        reject(new Error(`Network error uploading a part (status ${xhr.status} ${xhr.statusText})`))
       }
     })
-    xhr.addEventListener('abort', () => reject(new Error('Upload aborted')))
+    xhr.addEventListener('abort', () => reject(new Error('Part upload aborted')))
     xhr.open('PUT', url)
-    xhr.setRequestHeader('Content-Type', contentType)
-    xhr.send(file)
+    xhr.send(chunk)
   })
+}
+
+async function abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+  try {
+    await fetch('/api/complete-multipart-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, uploadId, abort: true }),
+    })
+  } catch {
+    // Best-effort cleanup — ignore failures here so the original error surfaces.
+  }
+}
+
+// Splits the file into parts, uploads them (a few in parallel) directly to R2
+// while reporting overall progress, then finalizes the multipart upload.
+// Returns the public URL of the assembled object.
+async function uploadVideoMultipart(
+  file: File,
+  contentType: string,
+  onProgress: (pct: number) => void
+): Promise<string> {
+  const { uploadId, key, publicUrl } = await startMultipartUpload(file.name, contentType)
+  console.log('[videoUpload] multipart started', { key, uploadId, size: file.size })
+
+  const totalParts = Math.ceil(file.size / PART_SIZE)
+  const loaded = new Array<number>(totalParts).fill(0)
+  const etags = new Array<{ PartNumber: number; ETag: string }>(totalParts)
+
+  const reportProgress = () => {
+    const sum = loaded.reduce((a, b) => a + b, 0)
+    // Hold at 99% until the completion call returns, so 100% means truly done.
+    onProgress(Math.min(99, Math.round((sum / file.size) * 100)))
+  }
+
+  try {
+    let nextPart = 0
+    async function worker() {
+      while (nextPart < totalParts) {
+        const idx = nextPart++
+        const partNumber = idx + 1
+        const start = idx * PART_SIZE
+        const chunk = file.slice(start, Math.min(start + PART_SIZE, file.size))
+        const url = await getPartUrl(key, uploadId, partNumber)
+        const etag = await putPart(url, chunk, (bytes) => {
+          loaded[idx] = bytes
+          reportProgress()
+        })
+        etags[idx] = { PartNumber: partNumber, ETag: etag }
+      }
+    }
+
+    const workerCount = Math.min(MAX_CONCURRENT_PARTS, totalParts)
+    await Promise.all(Array.from({ length: workerCount }, () => worker()))
+
+    const res = await fetch('/api/complete-multipart-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, uploadId, parts: etags }),
+    })
+    if (!res.ok) throw new Error(await readError(res, 'Failed to complete upload'))
+    const { publicUrl: finalUrl } = await res.json()
+    onProgress(100)
+    return (finalUrl as string) || publicUrl
+  } catch (err) {
+    await abortMultipartUpload(key, uploadId)
+    throw err
+  }
 }
 
 async function captureFrameAsFile(video: HTMLVideoElement): Promise<File> {
@@ -393,23 +463,12 @@ export default function VideoForm({
       return
     }
 
-    // Direct-to-R2 upload
+    // Direct-to-R2 multipart upload (handles arbitrarily large videos)
     const contentType = file.type || 'application/octet-stream'
     let videoUrl: string
     try {
-      console.log('[videoUpload] requesting presigned URL — file:', file.name, '| contentType:', contentType, '| size:', file.size)
-      const presign = await getPresignedVideoUpload(file.name, contentType)
-      console.log('[videoUpload] presign response:', {
-        uploadUrl: presign.uploadUrl.slice(0, 100) + '…',
-        publicUrl: presign.publicUrl,
-        contentType: presign.contentType,
-      })
-
-      // Use the server-echoed contentType so the PUT header matches what was
-      // signed byte-for-byte (R2 returns SignatureDoesNotMatch on a mismatch).
-      await putFileToR2(presign.uploadUrl, file, presign.contentType, setUploadProgress)
-      videoUrl = presign.publicUrl
-      console.log('[videoUpload] PUT succeeded, public URL:', videoUrl)
+      videoUrl = await uploadVideoMultipart(file, contentType, setUploadProgress)
+      console.log('[videoUpload] multipart upload complete, public URL:', videoUrl)
     } catch (err) {
       console.error('[videoUpload] upload failed:', err)
       setStatus('error')
