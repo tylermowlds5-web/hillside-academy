@@ -15,16 +15,15 @@ const ASSEMBLYAI_BASE = 'https://api.assemblyai.com/v2'
 // extended thinking or prompt caching (the transcript differs every time).
 const CLAUDE_MODEL = 'claude-sonnet-4-5'
 
-const SYSTEM_PROMPT = `You write the instructional content for a lawn care and landscaping training platform used by field employees. You are given the transcript of a training video. Write a self-contained training guide that teaches the skill demonstrated — NOT a summary of the video.
+const SYSTEM_PROMPT = `You write the instructional content for a lawn care and landscaping training platform used by field employees. You are given the transcript of a training video. Write a short, self-contained training guide that teaches the skill demonstrated — NOT a summary of the video.
 
 Requirements:
 - Write in the second person ("you should", "start by", "always make sure").
 - Teach the actual techniques, steps, and key information from the video.
-- Use numbered steps, bullet points, and short tips sections wherever they make the content clearer and easier to read.
-- Include any specific tips, tricks, safety notes, or best practices mentioned.
-- Be detailed enough that someone could learn the skill from your text alone, without watching the video.
-- Aim for 150-300 words.
-- Format cleanly with line breaks and bullet points where appropriate.
+- Keep it tight: 100-200 words MAX. Include only the most important steps and tips — condense, don't pad.
+- Use bullet points and numbered steps for lists.
+- For section headings, use bold text on its own line (e.g. **Steps** or **Tips**). NEVER use markdown headers like #, ##, or ### — the output is shown in a web app where those render wrong.
+- Formatting allowed: bold with **double asterisks**, bullet points, numbered steps, and line breaks. Nothing else.
 
 Do NOT summarize what the video covers and do NOT refer to "the video" or "the instructor" — write the instructional content directly. Output only the guide, with no preamble or title.`
 
