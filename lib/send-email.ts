@@ -5,7 +5,7 @@ const _key = process.env.RESEND_API_KEY
 console.log('[send-email] module loaded — RESEND_API_KEY:', _key ? _key.slice(0, 10) + '...' : 'MISSING')
 const resend = new Resend(_key)
 
-const FROM = 'Hillside Academy <training@hlmaintenance.com>'
+const FROM = 'Hillside University <training@hlmaintenance.com>'
 
 export interface AssignmentEmailParams {
   to: string
@@ -73,7 +73,7 @@ export async function sendAssignmentEmail(params: AssignmentEmailParams) {
                   </div>
                 </td>
                 <td style="vertical-align:middle;">
-                  <span style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:-0.3px;">Hillside Academy</span>
+                  <span style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:-0.3px;">Hillside University</span>
                 </td>
               </tr>
             </table>
@@ -149,7 +149,7 @@ export async function sendAssignmentEmail(params: AssignmentEmailParams) {
         <tr>
           <td align="center" style="padding-top:24px;">
             <p style="margin:0;font-size:12px;color:#a1a1aa;">
-              Hillside Academy &middot; Employee Training Platform
+              Hillside University &middot; Employee Training Platform
             </p>
           </td>
         </tr>
@@ -239,7 +239,7 @@ export async function sendPathAssignmentEmail(params: PathAssignmentEmailParams)
                   <div style="width:36px;height:36px;background:rgba(255,255,255,0.22);border-radius:8px;"></div>
                 </td>
                 <td style="vertical-align:middle;">
-                  <span style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:-0.3px;">Hillside Academy</span>
+                  <span style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:-0.3px;">Hillside University</span>
                 </td>
               </tr>
             </table>
@@ -311,7 +311,7 @@ export async function sendPathAssignmentEmail(params: PathAssignmentEmailParams)
         <tr>
           <td align="center" style="padding-top:24px;">
             <p style="margin:0;font-size:12px;color:#a1a1aa;">
-              Hillside Academy &middot; Employee Training Platform
+              Hillside University &middot; Employee Training Platform
             </p>
           </td>
         </tr>
