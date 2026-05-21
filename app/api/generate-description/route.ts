@@ -61,7 +61,14 @@ export async function POST(request: NextRequest) {
       const res = await fetch(`${ASSEMBLYAI_BASE}/transcript`, {
         method: 'POST',
         headers: assemblyHeaders(),
-        body: JSON.stringify({ audio_url: body.videoUrl, speech_model: 'universal' }),
+        // Current API requires `speech_models` (array, priority order). The docs
+        // recommend ["universal-3-pro", "universal-2"] — newest model first, with
+        // universal-2 as the broad-language fallback. (`speech_model`/"universal"
+        // are legacy and get rejected.)
+        body: JSON.stringify({
+          audio_url: body.videoUrl,
+          speech_models: ['universal-3-pro', 'universal-2'],
+        }),
       })
       if (!res.ok) {
         const detail = await res.text()
