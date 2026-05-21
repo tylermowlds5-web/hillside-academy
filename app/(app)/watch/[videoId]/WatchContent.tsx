@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { Video, Progress, Quiz, QuizAttempt } from '@/lib/types'
 import VideoPlayer from './VideoPlayer'
 import QuizCard from './QuizCard'
+import FormattedDescription from './FormattedDescription'
 import { markPathCompleted, getNextVideoInPath, updateVideoProgress } from '@/app/actions'
 import { fmtDate } from '@/lib/format-date'
 
@@ -132,7 +133,10 @@ export default function WatchContent({
         <div className="p-4 sm:p-6">
           <h1 className="text-lg sm:text-xl font-semibold text-zinc-50">{video.title}</h1>
           {video.description && (
-            <p className="text-zinc-400 text-sm mt-2 leading-relaxed">{video.description}</p>
+            <FormattedDescription
+              text={video.description}
+              className="text-zinc-400 text-sm mt-2 leading-relaxed"
+            />
           )}
 
           {initialProgress && (

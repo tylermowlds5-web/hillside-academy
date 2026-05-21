@@ -99,7 +99,7 @@ export default function LoginPage() {
         src="/hillside-icon.png"
         alt=""
         aria-hidden="true"
-        className="pointer-events-none select-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-45 w-[650px] max-w-[90vw] opacity-[0.09]"
+        className="pointer-events-none select-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45 w-[650px] max-w-[90vw] opacity-[0.10]"
       />
       <div className="relative z-10 w-full max-w-sm">
         {/* Logo / Brand */}

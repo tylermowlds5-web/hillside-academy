@@ -39,7 +39,7 @@ export default async function AppLayout({
           src="/hillside-icon.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none select-none fixed left-1/2 md:left-[calc(50%+7.5rem)] top-1/2 w-[650px] max-w-[80vw] opacity-[0.09] z-0 -translate-x-1/2 -translate-y-1/2 rotate-45"
+          className="pointer-events-none select-none fixed left-1/2 md:left-[calc(50%+7.5rem)] top-1/2 w-[650px] max-w-[80vw] opacity-[0.10] z-0 -translate-x-1/2 -translate-y-1/2 -rotate-45"
         />
         <div className="relative z-10">
           {children}
