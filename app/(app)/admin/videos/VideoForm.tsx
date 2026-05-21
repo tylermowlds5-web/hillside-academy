@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createVideoFromUpload, createCategory, createSubCategory } from '@/app/actions'
 import type { Category, SubCategory } from '@/lib/types'
 
-type Status = 'idle' | 'uploading' | 'saving' | 'done' | 'error'
+type Status = 'idle' | 'uploading' | 'uploaded' | 'saving' | 'done' | 'error'
+type GenState = 'idle' | 'transcribing' | 'generating' | 'error'
 
 function formatTime(s: number): string {
   if (!isFinite(s) || s < 0) return '0:00'
@@ -222,6 +223,22 @@ async function uploadVideoMultipart(
   }
 }
 
+// ── AI description generation ─────────────────────────────────────────────
+// Talks to /api/generate-description, which splits the work into short calls so
+// nothing exceeds the serverless function timeout (see that route for details).
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+async function generateDescriptionApi<T>(body: object): Promise<T> {
+  const res = await fetch('/api/generate-description', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await readError(res, 'Description request failed'))
+  return res.json()
+}
+
 async function captureFrameAsFile(video: HTMLVideoElement): Promise<File> {
   const canvas = document.createElement('canvas')
   canvas.width = video.videoWidth || 1280
@@ -383,9 +400,16 @@ export default function VideoForm({
 
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
 
+  // The R2 public URL, set once the chosen video finishes uploading. Until it's
+  // set, the video isn't in storage yet — Save and Generate Description wait on it.
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+
   const [status, setStatus] = useState<Status>('idle')
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+
+  const [genState, setGenState] = useState<GenState>('idle')
+  const [genError, setGenError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!file) { setFileUrl(null); return }
@@ -417,8 +441,65 @@ export default function VideoForm({
     const picked = e.target.files?.[0] ?? null
     setFile(picked)
     setThumbnailUrl(null)
+    setVideoUrl(null)
+    setGenState('idle')
+    setGenError(null)
+    setError(null)
     if (picked && !title) {
       setTitle(picked.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '))
+    }
+    // Upload to R2 right away so the thumbnail scrubber, AI description button,
+    // and Save can all work against the stored video.
+    if (picked) void startVideoUpload(picked)
+  }
+
+  // Uploads the chosen video to R2 in the background; videoUrl is set on success.
+  async function startVideoUpload(picked: File) {
+    setStatus('uploading')
+    setUploadProgress(0)
+    const contentType = picked.type || 'application/octet-stream'
+    try {
+      const url = await uploadVideoMultipart(picked, contentType, setUploadProgress)
+      setVideoUrl(url)
+      setStatus('uploaded')
+      console.log('[videoUpload] upload complete, public URL:', url)
+    } catch (err) {
+      console.error('[videoUpload] upload failed:', err)
+      setStatus('error')
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    }
+  }
+
+  // Transcribes the uploaded video and writes a generated description into the
+  // field. The admin can edit the result before saving.
+  async function handleGenerateDescription() {
+    if (!videoUrl || genState === 'transcribing' || genState === 'generating') return
+    setGenError(null)
+    setGenState('transcribing')
+    try {
+      const { transcriptId } = await generateDescriptionApi<{ transcriptId: string }>({ videoUrl })
+
+      // Poll until AssemblyAI finishes (or fails).
+      for (;;) {
+        const { status: tStatus, error: tError } = await generateDescriptionApi<{
+          status: string
+          error: string | null
+        }>({ transcriptId })
+        if (tStatus === 'completed') break
+        if (tStatus === 'error') throw new Error(tError || 'Transcription failed')
+        await sleep(3000)
+      }
+
+      setGenState('generating')
+      const { description: generated } = await generateDescriptionApi<{ description: string }>({
+        transcriptId,
+        summarize: true,
+      })
+      setDescription(generated)
+      setGenState('idle')
+    } catch (err) {
+      setGenState('error')
+      setGenError(err instanceof Error ? err.message : 'Failed to generate description')
     }
   }
 
@@ -465,30 +546,18 @@ export default function VideoForm({
     if (categorySelect === '__new__' && !newCategoryName.trim()) {
       setError('Enter a name for the new category'); return
     }
+    // The video uploads as soon as it's chosen — wait for it before saving.
+    if (status === 'uploading' || !videoUrl) {
+      setError('Please wait for the video to finish uploading'); return
+    }
 
-    setStatus('uploading')
-    setUploadProgress(0)
-
-    // Resolve category/sub-category IDs (creating new rows if needed) before upload
+    // Resolve category/sub-category IDs (creating new rows if needed) before save
     let resolved
     try {
       resolved = await resolveCategoryIds()
     } catch (err) {
       setStatus('error')
       setError(err instanceof Error ? err.message : 'Invalid category')
-      return
-    }
-
-    // Direct-to-R2 multipart upload (handles arbitrarily large videos)
-    const contentType = file.type || 'application/octet-stream'
-    let videoUrl: string
-    try {
-      videoUrl = await uploadVideoMultipart(file, contentType, setUploadProgress)
-      console.log('[videoUpload] multipart upload complete, public URL:', videoUrl)
-    } catch (err) {
-      console.error('[videoUpload] upload failed:', err)
-      setStatus('error')
-      setError(err instanceof Error ? err.message : 'Upload failed')
       return
     }
 
@@ -506,8 +575,11 @@ export default function VideoForm({
       })
       setStatus('done')
       setFile(null)
+      setVideoUrl(null)
       setTitle('')
       setDescription('')
+      setGenState('idle')
+      setGenError(null)
       setCategorySelect('')
       setNewCategoryName('')
       setSubCategorySelect('')
@@ -678,7 +750,34 @@ export default function VideoForm({
 
       {/* Description */}
       <div className="w-full max-w-full">
-        <label className="block text-sm font-medium text-zinc-300 mb-1.5">Description</label>
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <label className="block text-sm font-medium text-zinc-300">Description</label>
+          {/* Only available once the video is in R2 (we need its URL to transcribe). */}
+          {videoUrl && (
+            <button
+              type="button"
+              onClick={handleGenerateDescription}
+              disabled={busy || genState === 'transcribing' || genState === 'generating'}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {genState === 'transcribing' || genState === 'generating' ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                </svg>
+              )}
+              {genState === 'transcribing'
+                ? 'Transcribing video…'
+                : genState === 'generating'
+                ? 'Generating description…'
+                : 'Generate Description with AI'}
+            </button>
+          )}
+        </div>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -687,6 +786,14 @@ export default function VideoForm({
           disabled={busy}
           className="w-full max-w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors resize-none disabled:opacity-50"
         />
+        {(genState === 'transcribing' || genState === 'generating') && (
+          <p className="text-xs text-zinc-500 mt-1">
+            {genState === 'transcribing'
+              ? 'Transcribing the video audio — this can take a minute…'
+              : 'Writing a description from the transcript…'}
+          </p>
+        )}
+        {genError && <p className="text-xs text-red-400 mt-1 break-words">{genError}</p>}
       </div>
 
       {error && (
@@ -706,14 +813,14 @@ export default function VideoForm({
 
       <button
         type="submit"
-        disabled={busy || !file}
+        disabled={busy || !file || !videoUrl}
         className="w-full py-3 px-4 min-h-[48px] rounded-lg bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm transition-colors touch-manipulation cursor-pointer"
       >
         {status === 'uploading'
           ? `Uploading ${uploadProgress}%…`
           : status === 'saving'
           ? 'Saving…'
-          : 'Upload Video'}
+          : 'Save Video'}
       </button>
     </form>
   )
