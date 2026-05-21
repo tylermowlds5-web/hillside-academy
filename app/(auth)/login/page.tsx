@@ -124,7 +124,7 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-zinc-50">Hillside Academy</h1>
+          <h1 className="text-2xl font-bold text-zinc-50">Hillside University</h1>
           <p className="text-sm text-zinc-400 mt-1">Employee Training Portal</p>
         </div>
 
