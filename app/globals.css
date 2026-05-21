@@ -6,10 +6,37 @@
   --surface: #18181b;
   --surface-elevated: #27272a;
   --border: #3f3f46;
-  --brand: #10b981;
-  --brand-light: #34d399;
-  --brand-dark: #059669;
+  /* Hillside Landscape Maintenance brand */
+  --brand: #77b131;
+  --brand-light: #8cc63f;
+  --brand-dark: #689c2a;
   --muted: #71717a;
+}
+
+/* ── Hillside brand palette ───────────────────────────────────────────────
+   The app was built on Tailwind's "emerald" green. We remap the emerald color
+   ramp to the Hillside green (#77b131) so every existing emerald-* utility
+   across the app rebrands at once, and override red-500/600 to the Hillside
+   red (#e92b2b) for destructive actions. Named brand/plum colors are added for
+   the login screen and sidebar shell. */
+@theme {
+  --color-brand-green: #77b131;
+  --color-brand-red: #e92b2b;
+  --color-plum: #2e192a;
+  --color-plum-light: #3a2135;
+  --color-plum-dark: #241420;
+
+  --color-emerald-300: #a3d36b;
+  --color-emerald-400: #8cc63f;
+  --color-emerald-500: #77b131;
+  --color-emerald-600: #689c2a;
+  --color-emerald-700: #547f22;
+  --color-emerald-800: #3f5f19;
+  --color-emerald-900: #2c4212;
+  --color-emerald-950: #18260a;
+
+  --color-red-500: #e92b2b;
+  --color-red-600: #cf1f1f;
 }
 
 @theme inline {

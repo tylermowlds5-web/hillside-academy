@@ -109,7 +109,7 @@ function SortableVideoRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }}
-      className={`flex items-start gap-3 bg-zinc-900 border rounded-xl p-4 transition-colors ${isDragOverlay ? 'border-emerald-500 shadow-xl shadow-black/40' : 'border-zinc-800 hover:border-zinc-700'}`}
+      className={`flex items-start gap-3 bg-zinc-900 border rounded-xl p-4 transition-colors ${isDragOverlay ? 'border-emerald-500 shadow-xl shadow-black/40' : 'border-zinc-800 hover:border-emerald-500/50'}`}
     >
       <DragHandle {...attributes} {...listeners} />
 
@@ -181,7 +181,7 @@ function PlainVideoRow({
   }
 
   return (
-    <div className="flex items-start gap-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors">
+    <div className="flex items-start gap-3 bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 rounded-xl p-4 transition-colors">
       {/* Thumbnail */}
       <div className="w-20 h-12 rounded-lg bg-zinc-800 flex-shrink-0 overflow-hidden">
         {video.thumbnail_url ? (
@@ -704,7 +704,7 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
                 const subCatCount = initialSubCategories.filter((sc) => sc.category_id === cat.id).length
                 const videoCount = videoCountByCategory.get(cat.id) ?? 0
                 return (
-                  <div key={cat.id} className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors group flex items-start gap-2">
+                  <div key={cat.id} className="bg-zinc-900 border border-zinc-800 border-l-2 border-l-emerald-500 hover:border-emerald-500/50 rounded-xl p-4 transition-colors group flex items-start gap-2">
                     <button className="flex-1 text-left" onClick={() => setSelectedCategoryId(cat.id)}>
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-sm font-medium text-zinc-100 group-hover:text-white break-words">{cat.name}</span>

@@ -15,7 +15,7 @@ function formatDuration(seconds: number): string {
 function VideoRow({ video }: { video: Video }) {
   return (
     <Link href={`/watch/${video.id}?from=library`}
-      className="flex items-start gap-4 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors group">
+      className="flex items-start gap-4 bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 rounded-xl p-4 transition-colors group">
       <div className="w-20 h-12 rounded-lg bg-zinc-800 flex-shrink-0 overflow-hidden">
         {video.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -92,7 +92,7 @@ export default function LibraryClient({ videos, categories, subCategories }: Pro
               const catSubCats = subCategories.filter((sc) => sc.category_id === cat.id)
               return (
                 <button key={cat.id} onClick={() => setSelectedCategoryId(cat.id)}
-                  className="text-left bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl p-4 transition-colors group">
+                  className="text-left bg-zinc-900 border border-zinc-800 border-l-2 border-l-emerald-500 hover:border-zinc-600 rounded-xl p-4 transition-colors group">
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-sm font-medium text-zinc-100 group-hover:text-white break-words">{cat.name}</span>
                     <svg className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -160,7 +160,7 @@ export default function LibraryClient({ videos, categories, subCategories }: Pro
                   const scVideos = catAllVideos.filter((v) => v.sub_category_id === sc.id)
                   return (
                     <button key={sc.id} onClick={() => setSelectedSubCategoryId(sc.id)}
-                      className="text-left bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl p-4 transition-colors group">
+                      className="text-left bg-zinc-900 border border-zinc-800 border-l-2 border-l-emerald-500 hover:border-zinc-600 rounded-xl p-4 transition-colors group">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <svg className="w-4 h-4 text-zinc-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

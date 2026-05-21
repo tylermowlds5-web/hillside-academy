@@ -140,7 +140,7 @@ function SidebarContent({
   return (
     <>
       {/* Brand */}
-      <div className="flex items-center gap-2.5 px-4 py-5 border-b border-zinc-800">
+      <div className="flex items-center gap-2.5 px-4 py-5 border-b border-white/10">
         <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
           <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l9-5-9-5-9 5 9 5z" />
@@ -148,8 +148,8 @@ function SidebarContent({
           </svg>
         </div>
         <div>
-          <p className="text-sm font-semibold text-zinc-50 leading-tight">Hillside Academy</p>
-          <p className="text-xs text-zinc-500 leading-tight">Training Platform</p>
+          <p className="text-sm font-bold text-emerald-400 leading-tight">Hillside Academy</p>
+          <p className="text-xs text-zinc-400 leading-tight">Training Platform</p>
         </div>
       </div>
 
@@ -163,8 +163,8 @@ function SidebarContent({
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-emerald-500/15 text-emerald-400'
-                  : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'text-zinc-200 hover:text-emerald-400 hover:bg-emerald-500/10'
               }`}
             >
               {item.icon}
@@ -200,7 +200,7 @@ function SidebarContent({
       </nav>
 
       {/* User */}
-      <div className="px-3 py-4 border-t border-zinc-800 flex-shrink-0">
+      <div className="px-3 py-4 border-t border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3 px-2 py-2">
           <div className="w-8 h-8 rounded-full bg-emerald-900 flex items-center justify-center flex-shrink-0">
             <span className="text-xs font-semibold text-emerald-400">
@@ -256,7 +256,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
   return (
     <>
       {/* Mobile top bar with hamburger */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-plum border-b border-white/10">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -277,7 +277,7 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
       </div>
 
       {/* Desktop sidebar — always visible on md+ */}
-      <aside className="hidden md:flex w-60 flex-shrink-0 bg-zinc-900 border-r border-zinc-800 flex-col">
+      <aside className="hidden md:flex w-60 flex-shrink-0 bg-plum border-r border-white/10 flex-col">
         <SidebarContent
           profile={profile}
           isAdmin={isAdmin}
@@ -293,8 +293,8 @@ export default function Sidebar({ profile }: { profile: Profile | null }) {
             className="md:hidden fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="md:hidden fixed inset-y-0 left-0 z-50 w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between px-3 py-3 border-b border-zinc-800">
+          <aside className="md:hidden fixed inset-y-0 left-0 z-50 w-64 bg-plum border-r border-white/10 flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-3 py-3 border-b border-white/10">
               <p className="text-sm font-semibold text-zinc-50 pl-2">Menu</p>
               <button
                 onClick={() => setMobileOpen(false)}

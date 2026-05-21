@@ -92,7 +92,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center bg-plum px-4 py-8">
       <div className="w-full max-w-sm">
         {/* Logo / Brand */}
         <div className="text-center mb-8">
@@ -117,11 +117,11 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-zinc-50">Hillside Academy</h1>
-          <p className="text-sm text-zinc-400 mt-1">Employee Training Platform</p>
+          <p className="text-sm text-zinc-400 mt-1">Employee Training Portal</p>
         </div>
 
         {/* Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <div className="bg-plum-light border border-white/10 rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-zinc-50 mb-6">
             {mode === 'signin' ? 'Sign in to your account' : 'Create an account'}
           </h2>

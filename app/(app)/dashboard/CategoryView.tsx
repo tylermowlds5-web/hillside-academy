@@ -39,7 +39,7 @@ function VideoCard({
   const completed = eff.completed
 
   return (
-    <div className="group flex flex-col bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl overflow-hidden transition-all hover:-translate-y-0.5">
+    <div className="group flex flex-col bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 rounded-xl overflow-hidden transition-all hover:-translate-y-0.5">
       {/* ── Thumbnail — click to open modal ── */}
       <button
         type="button"
@@ -128,7 +128,7 @@ function LibraryVideoCard({ video }: { video: Video }) {
   return (
     <Link
       href={`/watch/${video.id}`}
-      className="group flex flex-col bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl overflow-hidden transition-all hover:-translate-y-0.5"
+      className="group flex flex-col bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 rounded-xl overflow-hidden transition-all hover:-translate-y-0.5"
     >
       <div className="relative aspect-video bg-zinc-800 overflow-hidden">
         {video.thumbnail_url ? (
@@ -223,19 +223,19 @@ export default function CategoryView({
     <>
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Total Videos</p>
           <p className="text-3xl font-bold text-zinc-50 mt-1">{totalVideos}</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Watched</p>
           <p className="text-3xl font-bold text-emerald-400 mt-1">{videosWatched}</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">In Progress</p>
           <p className="text-3xl font-bold text-yellow-400 mt-1">{inProgressCount}</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Assigned</p>
           <p className="text-3xl font-bold text-zinc-50 mt-1">{assignedNotStarted}</p>
         </div>
@@ -243,14 +243,14 @@ export default function CategoryView({
 
       {/* Overall progress bar for assigned videos */}
       {totalAssigned > 0 && (
-        <div className="mb-8 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="mb-8 bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium text-zinc-300">Assignment completion</span>
             <span className="text-sm font-semibold text-emerald-400">
               {Math.round((completedCount / totalAssigned) * 100)}%
             </span>
           </div>
-          <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div className="h-2 bg-plum rounded-full overflow-hidden">
             <div
               className="h-full bg-emerald-500 rounded-full transition-all duration-500"
               style={{ width: `${(completedCount / totalAssigned) * 100}%` }}
@@ -274,7 +274,7 @@ export default function CategoryView({
                 <Link
                   key={p.id}
                   href={`/paths/${p.id}`}
-                  className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 transition-colors"
+                  className="group bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 rounded-xl p-4 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <h3 className="text-base font-semibold text-zinc-100 group-hover:text-white break-words">
@@ -299,7 +299,7 @@ export default function CategoryView({
                         {pct}%
                       </span>
                     </div>
-                    <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="h-2 bg-plum rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
