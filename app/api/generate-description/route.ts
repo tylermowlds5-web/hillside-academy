@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       const res = await fetch(`${ASSEMBLYAI_BASE}/transcript`, {
         method: 'POST',
         headers: assemblyHeaders(),
-        body: JSON.stringify({ audio_url: body.videoUrl }),
+        body: JSON.stringify({ audio_url: body.videoUrl, speech_model: 'universal-2' }),
       })
       if (!res.ok) {
         const detail = await res.text()
