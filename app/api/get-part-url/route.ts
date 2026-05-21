@@ -5,12 +5,15 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest } from 'next/server'
 
 /**
- * Returns a presigned PUT URL for a single part of an in-progress multipart
- * upload. The browser PUTs the chunk directly to R2 and reads the ETag from the
- * response, which it later passes to /api/complete-multipart-upload.
+ * Presigns PUT URLs for parts of an in-progress multipart upload.
  *
- * Request body: { key: string, uploadId: string, partNumber: number }
- * Response:     { url }
+ * Accepts a batch of part numbers and returns every URL in one round trip, so
+ * the browser performs a single authenticated request up front instead of one
+ * per part during the upload. Presigning is a local HMAC operation (no network
+ * to R2), so signing many at once is cheap.
+ *
+ * Request body: { key: string, uploadId: string, partNumbers: number[] }
+ * Response:     { urls: Array<{ partNumber: number, url: string }> }
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -26,7 +29,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  let body: { key?: string; uploadId?: string; partNumber?: number }
+  let body: { key?: string; uploadId?: string; partNumbers?: number[] }
   try {
     body = await request.json()
   } catch {
@@ -35,13 +38,24 @@ export async function POST(request: NextRequest) {
 
   const key = body.key?.trim()
   const uploadId = body.uploadId?.trim()
-  const partNumber = body.partNumber
+  const partNumbers = body.partNumbers
   if (!key || !uploadId) {
     return Response.json({ error: 'key and uploadId are required' }, { status: 400 })
   }
-  // S3/R2 part numbers are 1–10000.
-  if (!Number.isInteger(partNumber) || partNumber! < 1 || partNumber! > 10000) {
-    return Response.json({ error: 'partNumber must be an integer between 1 and 10000' }, { status: 400 })
+  if (!Array.isArray(partNumbers) || partNumbers.length === 0) {
+    return Response.json({ error: 'partNumbers must be a non-empty array' }, { status: 400 })
+  }
+  // S3/R2 allow at most 10000 parts; numbers are 1-based.
+  if (partNumbers.length > 10000) {
+    return Response.json({ error: 'too many parts (max 10000)' }, { status: 400 })
+  }
+  for (const n of partNumbers) {
+    if (!Number.isInteger(n) || n < 1 || n > 10000) {
+      return Response.json(
+        { error: 'each partNumber must be an integer between 1 and 10000' },
+        { status: 400 }
+      )
+    }
   }
   if (!process.env.R2_BUCKET_NAME) {
     return Response.json({ error: 'R2 storage is not fully configured' }, { status: 500 })
@@ -49,21 +63,27 @@ export async function POST(request: NextRequest) {
 
   try {
     const s3 = getR2Client()
-    const url = await getSignedUrl(
-      s3,
-      new UploadPartCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
-        Key: key,
-        UploadId: uploadId,
-        PartNumber: partNumber,
-      }),
-      { expiresIn: 3600 } // 1 hour per part
+    const bucket = process.env.R2_BUCKET_NAME
+    const urls = await Promise.all(
+      partNumbers.map(async (partNumber) => ({
+        partNumber,
+        url: await getSignedUrl(
+          s3,
+          new UploadPartCommand({
+            Bucket: bucket,
+            Key: key,
+            UploadId: uploadId,
+            PartNumber: partNumber,
+          }),
+          { expiresIn: 3600 } // 1 hour — generous for large uploads
+        ),
+      }))
     )
 
-    return Response.json({ url })
+    return Response.json({ urls })
   } catch (err) {
     console.error('[get-part-url] error:', err)
     const message = err instanceof Error ? err.message : 'Unknown error'
-    return Response.json({ error: `Failed to sign part URL: ${message}` }, { status: 500 })
+    return Response.json({ error: `Failed to sign part URLs: ${message}` }, { status: 500 })
   }
 }

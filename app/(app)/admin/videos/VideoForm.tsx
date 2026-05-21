@@ -58,8 +58,8 @@ function uploadWithProgress(
 // Bytes never pass through Vercel, so the 4.5 MB function body limit and the
 // practical limits of a single presigned PUT no longer apply.
 
-const PART_SIZE = 10 * 1024 * 1024 // 10 MB per part
-const MAX_CONCURRENT_PARTS = 4 // upload a few parts at once for throughput
+const PART_SIZE = 50 * 1024 * 1024 // 50 MB per part — a 300 MB video is just 6 parts
+const MAX_CONCURRENT_PARTS = 10 // R2 multiplexes these over HTTP/2
 
 async function readError(res: Response, fallback: string): Promise<string> {
   try {
@@ -82,15 +82,21 @@ async function startMultipartUpload(
   return res.json()
 }
 
-async function getPartUrl(key: string, uploadId: string, partNumber: number): Promise<string> {
+// Fetches presigned URLs for every part in a single request, then returns them
+// keyed by part number so workers can look one up without a round trip.
+async function getAllPartUrls(
+  key: string,
+  uploadId: string,
+  partNumbers: number[]
+): Promise<Map<number, string>> {
   const res = await fetch('/api/get-part-url', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key, uploadId, partNumber }),
+    body: JSON.stringify({ key, uploadId, partNumbers }),
   })
-  if (!res.ok) throw new Error(await readError(res, 'Failed to get part URL'))
-  const { url } = await res.json()
-  return url as string
+  if (!res.ok) throw new Error(await readError(res, 'Failed to get part URLs'))
+  const { urls } = (await res.json()) as { urls: { partNumber: number; url: string }[] }
+  return new Map(urls.map((u) => [u.partNumber, u.url]))
 }
 
 // PUTs a single chunk to R2 and resolves with its ETag (needed to complete the
@@ -177,6 +183,10 @@ async function uploadVideoMultipart(
   }
 
   try {
+    // One authenticated round trip for all part URLs, before any bytes move.
+    const partNumbers = Array.from({ length: totalParts }, (_, i) => i + 1)
+    const partUrls = await getAllPartUrls(key, uploadId, partNumbers)
+
     let nextPart = 0
     async function worker() {
       while (nextPart < totalParts) {
@@ -184,7 +194,8 @@ async function uploadVideoMultipart(
         const partNumber = idx + 1
         const start = idx * PART_SIZE
         const chunk = file.slice(start, Math.min(start + PART_SIZE, file.size))
-        const url = await getPartUrl(key, uploadId, partNumber)
+        const url = partUrls.get(partNumber)
+        if (!url) throw new Error(`Missing presigned URL for part ${partNumber}`)
         const etag = await putPart(url, chunk, (bytes) => {
           loaded[idx] = bytes
           reportProgress()
