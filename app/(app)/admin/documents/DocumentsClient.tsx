@@ -214,7 +214,7 @@ function UploadModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-md max-h-[90vh] bg-zinc-950 border border-zinc-800 rounded-2xl flex flex-col shadow-2xl overflow-hidden">
+      <form onSubmit={handleSubmit} className="relative w-full max-w-3xl max-h-[90vh] bg-zinc-950 border border-zinc-800 rounded-2xl flex flex-col shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
           <h2 className="text-base font-semibold text-zinc-50">Upload Document</h2>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400">
@@ -321,7 +321,7 @@ function EditModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <form onSubmit={handleSave} className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-5 w-full max-w-md shadow-2xl">
+      <form onSubmit={handleSave} className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-5 w-full max-w-3xl shadow-2xl">
         <h2 className="text-base font-semibold text-zinc-50 mb-4">Edit Document</h2>
         <div className="space-y-3">
           <div>

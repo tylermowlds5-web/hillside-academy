@@ -160,7 +160,7 @@ function RoleFormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-5 w-full max-w-md shadow-2xl">
+      <form onSubmit={handleSubmit} className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-5 w-full max-w-3xl shadow-2xl">
         <h2 className="text-base font-semibold text-zinc-50 mb-4">{isEdit ? 'Edit Role' : 'Add Role'}</h2>
         <div className="space-y-3">
           <div>

@@ -11,16 +11,22 @@ import { NextRequest } from 'next/server'
 
 const ASSEMBLYAI_BASE = 'https://api.assemblyai.com/v2'
 
-// User-requested model. Claude Sonnet 4.5 — a single, short summarization needs
-// no extended thinking or prompt caching (the transcript differs every time).
+// User-requested model. Claude Sonnet 4.5 — a single generation call needs no
+// extended thinking or prompt caching (the transcript differs every time).
 const CLAUDE_MODEL = 'claude-sonnet-4-5'
 
-const SYSTEM_PROMPT =
-  'You write short descriptions for training videos on a lawn care and landscaping ' +
-  'training platform used by field employees. Given a transcript, write a concise ' +
-  '2-3 sentence description of what the video covers and what the viewer will learn. ' +
-  'Use plain, direct language. Output only the description — no preamble, no quotes, ' +
-  'no markdown.'
+const SYSTEM_PROMPT = `You write the instructional content for a lawn care and landscaping training platform used by field employees. You are given the transcript of a training video. Write a self-contained training guide that teaches the skill demonstrated — NOT a summary of the video.
+
+Requirements:
+- Write in the second person ("you should", "start by", "always make sure").
+- Teach the actual techniques, steps, and key information from the video.
+- Use numbered steps, bullet points, and short tips sections wherever they make the content clearer and easier to read.
+- Include any specific tips, tricks, safety notes, or best practices mentioned.
+- Be detailed enough that someone could learn the skill from your text alone, without watching the video.
+- Aim for 150-300 words.
+- Format cleanly with line breaks and bullet points where appropriate.
+
+Do NOT summarize what the video covers and do NOT refer to "the video" or "the instructor" — write the instructional content directly. Output only the guide, with no preamble or title.`
 
 function assemblyHeaders(): HeadersInit {
   return { authorization: process.env.ASSEMBLYAI_API_KEY!, 'content-type': 'application/json' }
@@ -115,9 +121,14 @@ export async function POST(request: NextRequest) {
       const anthropic = new Anthropic() // reads ANTHROPIC_API_KEY
       const message = await anthropic.messages.create({
         model: CLAUDE_MODEL,
-        max_tokens: 300,
+        max_tokens: 1024, // room for a 150-300 word formatted guide
         system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Video transcript:\n\n${transcript}` }],
+        messages: [
+          {
+            role: 'user',
+            content: `Here is the transcript of the training video. Write the training guide:\n\n${transcript}`,
+          },
+        ],
       })
       const description = message.content
         .filter((block): block is Anthropic.TextBlock => block.type === 'text')
