@@ -78,6 +78,10 @@ export type Progress = {
   completed: boolean
   quiz_passed: boolean
   watch_time_seconds: number
+  // Real playback time actually watched (seconds). Accumulated from playback
+  // time deltas — scrubbing/seeking does not inflate it. Completion requires
+  // this to reach ≥85% of the video's duration.
+  actual_seconds_watched: number
 }
 
 export type AssignmentWithDetails = Assignment & {
