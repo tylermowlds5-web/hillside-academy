@@ -59,6 +59,39 @@ function AnswersModal({
                   <span className="text-xs text-zinc-500 flex-shrink-0 font-medium mt-0.5">Q{i + 1}</span>
                   <p className="text-sm font-medium text-zinc-200 leading-snug">{a.question_text}</p>
                 </div>
+                {a.sequence ? (
+                  /* ── Sequence: per-slot correct order vs. their order ──── */
+                  <div className="space-y-1.5 pl-5">
+                    {a.sequence.correct_order.map((correctText, p) => {
+                      const slotOk = a.sequence!.slot_correct[p]
+                      const theirs = a.sequence!.chosen_order[p]
+                      return (
+                        <div key={p} className="flex items-start gap-2">
+                          {slotOk ? (
+                            <svg className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <span className="text-xs text-zinc-500 mr-1">Step {p + 1}:</span>
+                            <span className={`text-xs font-medium ${slotOk ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {theirs || '(empty)'}
+                            </span>
+                            {!slotOk && (
+                              <span className="text-xs text-zinc-500">
+                                {' '}— should be <span className="text-emerald-400 font-medium">{correctText}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
                 <div className="space-y-2 pl-5">
                   {/* Their answer */}
                   <div className="flex items-start gap-2">
@@ -91,6 +124,7 @@ function AnswersModal({
                     </div>
                   )}
                 </div>
+                )}
               </div>
             ))
           )}

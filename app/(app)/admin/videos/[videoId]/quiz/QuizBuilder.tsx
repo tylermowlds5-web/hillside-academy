@@ -1,6 +1,24 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { saveQuiz, type QuizPayload } from '@/app/actions'
 import type { Quiz, QuizQuestionType } from '@/lib/types'
 import { quizQuestionType, quizAcceptedAnswers } from '@/lib/types'
@@ -13,34 +31,36 @@ type QuestionDraft = {
   options: OptionDraft[]
   image_url: string | null
   correct_answers: string[]
+  // sequence ("order the steps") — items in the correct order
+  sequence_items: string[]
+  partial_credit: boolean
 }
 
 const emptyOption = (): OptionDraft => ({ option_text: '', is_correct: false })
 
 function defaultQuestion(type: QuizQuestionType = 'multiple_choice'): QuestionDraft {
+  const base = { question_text: '', options: [], image_url: null, correct_answers: [], sequence_items: [], partial_credit: false }
   switch (type) {
     case 'true_false':
       return {
+        ...base,
         type,
-        question_text: '',
         options: [
           { option_text: 'True', is_correct: false },
           { option_text: 'False', is_correct: false },
         ],
-        image_url: null,
-        correct_answers: [],
       }
     case 'short_answer':
-      return { type, question_text: '', options: [], image_url: null, correct_answers: [''] }
+      return { ...base, type, correct_answers: [''] }
+    case 'sequence':
+      return { ...base, type, sequence_items: ['', '', ''], partial_credit: true }
     case 'multiple_select':
     case 'multiple_choice':
     default:
       return {
+        ...base,
         type,
-        question_text: '',
         options: [emptyOption(), emptyOption(), emptyOption(), emptyOption()],
-        image_url: null,
-        correct_answers: [],
       }
   }
 }
@@ -50,6 +70,7 @@ const TYPE_LABEL: Record<QuizQuestionType, string> = {
   true_false: 'True / False',
   multiple_select: 'Multiple Select (choose all that apply)',
   short_answer: 'Short Answer',
+  sequence: 'Sequence / Order the Steps',
 }
 
 // ── Reuses the existing thumbnail upload endpoint for images ─────────────
@@ -75,6 +96,171 @@ function uploadImage(file: File): Promise<string> {
     xhr.open('POST', '/api/upload-thumbnail')
     xhr.send(fd)
   })
+}
+
+// ── Sequence editor ──────────────────────────────────────────────────────
+// Admin arranges the steps top-to-bottom in the CORRECT order. Rows are
+// drag-reorderable (touch + mouse + keyboard) and the step number reflects the
+// current position. Stable ids keep React/dnd-kit happy while text is edited.
+
+type StepDraft = { id: string; text: string }
+
+let stepIdSeq = 0
+const newStepId = () => `step-${Date.now()}-${stepIdSeq++}`
+
+function SortableStep({
+  step,
+  position,
+  canRemove,
+  onChange,
+  onRemove,
+}: {
+  step: StepDraft
+  position: number
+  canRemove: boolean
+  onChange: (text: string) => void
+  onRemove: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 ${isDragging ? 'opacity-60 z-10 relative' : ''}`}
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="flex-shrink-0 p-2 -ml-1 text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing touch-none"
+        title="Drag to reorder"
+        aria-label="Drag to reorder step"
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M7 4a1 1 0 11-2 0 1 1 0 012 0zM7 10a1 1 0 11-2 0 1 1 0 012 0zM7 16a1 1 0 11-2 0 1 1 0 012 0zM15 4a1 1 0 11-2 0 1 1 0 012 0zM15 10a1 1 0 11-2 0 1 1 0 012 0zM15 16a1 1 0 11-2 0 1 1 0 012 0z" />
+        </svg>
+      </button>
+      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-semibold flex items-center justify-center">
+        {position + 1}
+      </span>
+      <input
+        type="text"
+        value={step.text}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={`Step ${position + 1}`}
+        className="flex-1 min-w-0 px-3 py-2 min-h-[44px] rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-50 placeholder-zinc-600 text-sm focus:outline-none focus:border-emerald-500"
+      />
+      {canRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex-shrink-0 p-2 text-zinc-600 hover:text-red-400 transition-colors cursor-pointer"
+          title="Remove step"
+          aria-label="Remove step"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
+}
+
+function SequenceEditor({
+  q,
+  onChange,
+}: {
+  q: QuestionDraft
+  onChange: (q: QuestionDraft) => void
+}) {
+  // Keep stable ids alongside the plain string[] stored on the draft.
+  const [steps, setSteps] = useState<StepDraft[]>(() =>
+    (q.sequence_items.length > 0 ? q.sequence_items : ['', '', '']).map((text) => ({ id: newStepId(), text }))
+  )
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  // Push the ordered text array up to the parent draft.
+  function sync(next: StepDraft[]) {
+    setSteps(next)
+    onChange({ ...q, sequence_items: next.map((s) => s.text) })
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = steps.findIndex((s) => s.id === active.id)
+    const newIndex = steps.findIndex((s) => s.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    sync(arrayMove(steps, oldIndex, newIndex))
+  }
+
+  return (
+    <div className="space-y-3 pl-6">
+      <p className="text-xs text-zinc-500">
+        List the steps in the <span className="text-zinc-300">correct order</span>. Drag the handle to
+        rearrange. Employees see them shuffled and drag them back into order.
+      </p>
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {steps.map((step, i) => (
+              <SortableStep
+                key={step.id}
+                step={step}
+                position={i}
+                canRemove={steps.length > 2}
+                onChange={(text) => sync(steps.map((s, idx) => (idx === i ? { ...s, text } : s)))}
+                onRemove={() => sync(steps.filter((_, idx) => idx !== i))}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+
+      {steps.length < 8 && (
+        <button
+          type="button"
+          onClick={() => sync([...steps, { id: newStepId(), text: '' }])}
+          className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer"
+        >
+          + Add step
+        </button>
+      )}
+
+      {/* Partial credit toggle */}
+      <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={q.partial_credit}
+          onClick={() => onChange({ ...q, partial_credit: !q.partial_credit })}
+          className={`mt-0.5 relative w-9 h-5 rounded-full flex-shrink-0 transition-colors cursor-pointer ${
+            q.partial_credit ? 'bg-emerald-500' : 'bg-zinc-700'
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+              q.partial_credit ? 'translate-x-4' : ''
+            }`}
+          />
+        </button>
+        <span className="text-xs text-zinc-400">
+          <span className="text-zinc-300 font-medium">Partial credit</span> — each correctly placed step
+          counts (e.g. 3 of 4 correct = 75%). Off = all-or-nothing.
+        </span>
+      </label>
+    </div>
+  )
 }
 
 // ── Question editor (type-aware) ─────────────────────────────────────────
@@ -155,7 +341,7 @@ function QuestionEditor({
     }
   }
 
-  const hasOptions = q.type !== 'short_answer'
+  const hasOptions = q.type !== 'short_answer' && q.type !== 'sequence'
   const isMultipleSelect = q.type === 'multiple_select'
 
   return (
@@ -301,6 +487,9 @@ function QuestionEditor({
         </div>
       )}
 
+      {/* Sequence / order-the-steps editor */}
+      {q.type === 'sequence' && <SequenceEditor q={q} onChange={onChange} />}
+
       {/* Options for option-based types */}
       {hasOptions && (
         <div className="space-y-2 pl-6">
@@ -402,6 +591,8 @@ export default function QuizBuilder({
           correct_answers: type === 'short_answer'
             ? (accepted.length > 0 ? accepted : [''])
             : accepted,
+          sequence_items: q.sequence_items ?? base.sequence_items,
+          partial_credit: q.partial_credit ?? base.partial_credit,
         }
       })
     }
@@ -433,6 +624,14 @@ export default function QuizBuilder({
         if (cleaned.length === 0) {
           setError(`Question ${i + 1}: enter at least one accepted answer`); return
         }
+      } else if (q.type === 'sequence') {
+        const cleaned = q.sequence_items.map((s) => s.trim()).filter((s) => s.length > 0)
+        if (cleaned.length < 2) {
+          setError(`Question ${i + 1}: add at least 2 steps to order`); return
+        }
+        if (q.sequence_items.some((s) => !s.trim())) {
+          setError(`Question ${i + 1}: every step needs text`); return
+        }
       } else if (q.type === 'multiple_select') {
         if (q.options.some((o) => !o.option_text.trim())) { setError(`Question ${i + 1}: empty options`); return }
         if (!q.options.some((o) => o.is_correct)) { setError(`Question ${i + 1}: check at least one correct answer`); return }
@@ -455,6 +654,15 @@ export default function QuizBuilder({
               type: 'short_answer',
               question_text: q.question_text.trim(),
               correct_answers: q.correct_answers.map((a) => a.trim()).filter((a) => a.length > 0),
+              ...imageField,
+            }
+          }
+          if (q.type === 'sequence') {
+            return {
+              type: 'sequence',
+              question_text: q.question_text.trim(),
+              sequence_items: q.sequence_items.map((s) => s.trim()).filter((s) => s.length > 0),
+              partial_credit: q.partial_credit,
               ...imageField,
             }
           }

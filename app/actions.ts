@@ -455,7 +455,11 @@ export async function submitQuizAttempt(
 
   if (!quiz || !quiz.questions.length) throw new Error('Quiz not found')
 
+  // `correct` counts FULLY-correct questions (used for the "X of Y" display).
+  // `creditSum` accumulates fractional credit so sequence questions with
+  // partial credit can contribute less than a full point to the score.
   let correct = 0
+  let creditSum = 0
   const storedAnswers: StoredAnswer[] = quiz.questions.map((q, qi) => {
     const answer = answers[qi]
     const type = quizQuestionType(q)
@@ -468,7 +472,7 @@ export async function submitQuizAttempt(
       const chosenOpt = options[selectedIndex]
       const correctOpt = options.find((o) => o.is_correct)
       const isCorrect = !!chosenOpt?.is_correct
-      if (isCorrect) correct++
+      if (isCorrect) { correct++; creditSum++ }
       return {
         question_text: q.question_text,
         chosen: chosenOpt?.option_text ?? '(no answer)',
@@ -483,7 +487,7 @@ export async function submitQuizAttempt(
       const pickedSet = new Set(picked)
       // Correct iff each option's selected-state matches its is_correct flag
       const isCorrect = options.length > 0 && options.every((o, i) => pickedSet.has(i) === !!o.is_correct)
-      if (isCorrect) correct++
+      if (isCorrect) { correct++; creditSum++ }
       const chosenTexts = picked
         .map((i) => options[i]?.option_text)
         .filter((t): t is string => !!t)
@@ -504,13 +508,50 @@ export async function submitQuizAttempt(
       const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ')
       const normGiven = norm(given)
       const isCorrect = normGiven.length > 0 && accepted.some((a) => norm(a) === normGiven)
-      if (isCorrect) correct++
+      if (isCorrect) { correct++; creditSum++ }
       return {
         question_text: q.question_text,
         chosen: given || '(no answer)',
         // Show all accepted answers, joined, so the admin can see what was acceptable
         correct: accepted.length > 0 ? accepted.join(' / ') : '?',
         is_correct: isCorrect,
+      }
+    }
+
+    // ── Sequence: items are stored in the correct order, so slot p is correct
+    //    iff the placed item's original index === p. Full credit only when all
+    //    slots match; partial credit (if enabled) gives correctSlots / n. ─────
+    if (type === 'sequence') {
+      const items = q.sequence_items ?? []
+      const n = items.length
+      const order = Array.isArray(answer) ? (answer as number[]) : []
+      const slotCorrect: boolean[] = []
+      let correctSlots = 0
+      for (let p = 0; p < n; p++) {
+        const ok = order[p] === p
+        slotCorrect.push(ok)
+        if (ok) correctSlots++
+      }
+      const allCorrect = n > 0 && correctSlots === n
+      const credit = n === 0 ? 0 : q.partial_credit === true ? correctSlots / n : allCorrect ? 1 : 0
+      if (allCorrect) correct++
+      creditSum += credit
+
+      const chosenOrder = items.map((_, p) => {
+        const idx = order[p]
+        return idx >= 0 && idx < n ? items[idx] : ''
+      })
+      return {
+        question_text: q.question_text,
+        chosen: chosenOrder.map((t) => t || '(empty)').join(' → '),
+        correct: items.join(' → '),
+        is_correct: allCorrect,
+        type: 'sequence',
+        sequence: {
+          correct_order: items.slice(),
+          chosen_order: chosenOrder,
+          slot_correct: slotCorrect,
+        },
       }
     }
 
@@ -523,7 +564,9 @@ export async function submitQuizAttempt(
     }
   })
 
-  const score = Math.round((correct / quiz.questions.length) * 100)
+  // Score uses fractional credit (sequence partial credit); for quizzes with no
+  // sequence questions this is identical to correct / total.
+  const score = Math.round((creditSum / quiz.questions.length) * 100)
   const passed = score >= quiz.passing_score
 
   const { error: insertError } = await supabase.from('quiz_attempts').insert({
