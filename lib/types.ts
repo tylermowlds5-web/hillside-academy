@@ -118,6 +118,7 @@ export type QuizQuestionType =
   | 'true_false'
   | 'multiple_select'
   | 'short_answer'
+  | 'sequence'        // "Order the Steps" — drag items into the correct order
 // NOTE: 'image_question' was removed — any question type can now have an
 // optional image_url. Legacy questions with type: 'image_question' are
 // normalized to 'multiple_choice' by quizQuestionType() below.
@@ -137,6 +138,13 @@ export type QuizQuestion = {
   image_url?: string | null   // any question type — optional
   correct_answer?: string     // legacy short_answer (single accepted answer)
   correct_answers?: string[]  // short_answer (multiple accepted answers)
+  // ── sequence ("order the steps") ──────────────────────────────────────
+  // Items stored in the CORRECT order: sequence_items[0] is step 1, etc.
+  // Employees see them shuffled and drag them into numbered slots.
+  sequence_items?: string[]
+  // When true, each correctly-placed step earns partial credit (e.g. 3/4 = 75%).
+  // When false/absent, the whole question is all-or-nothing.
+  partial_credit?: boolean
 }
 
 // Helper so the rest of the codebase doesn't have to handle the optional
@@ -150,7 +158,8 @@ export function quizQuestionType(q: QuizQuestion): QuizQuestionType {
     t === 'multiple_choice' ||
     t === 'true_false' ||
     t === 'multiple_select' ||
-    t === 'short_answer'
+    t === 'short_answer' ||
+    t === 'sequence'
   ) {
     return t
   }
@@ -173,7 +182,9 @@ export function quizAcceptedAnswers(q: QuizQuestion): string[] {
 
 // Answer payload submitted from the client per question (indexed by question
 // position). `number` = index into options (mc/tf/iq), `number[]` = selected
-// option indices (ms), `string` = typed answer (sa).
+// option indices (ms), `string` = typed answer (sa). For `sequence`, `number[]`
+// is the chosen ordering: position p holds the original index (into
+// sequence_items) of the item the employee placed in slot p; -1 = empty slot.
 export type QuizSubmittedAnswer = number | number[] | string
 
 export type Quiz = {
@@ -190,6 +201,14 @@ export type StoredAnswer = {
   chosen: string
   correct: string
   is_correct: boolean
+  // Present for sequence questions — lets the review screen render a per-slot
+  // breakdown (correct order vs. chosen order with green check / red X).
+  type?: QuizQuestionType
+  sequence?: {
+    correct_order: string[]   // correct item text, slot 0 = step 1
+    chosen_order: string[]    // employee's item text per slot ('' = left empty)
+    slot_correct: boolean[]   // whether each slot matches the correct order
+  }
 }
 
 export type QuizAttempt = {
