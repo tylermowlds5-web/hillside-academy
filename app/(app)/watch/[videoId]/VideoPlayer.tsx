@@ -4,6 +4,23 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import type { Video, Progress } from '@/lib/types'
 import { updateVideoProgress, logWatchEvent } from '@/app/actions'
 
+// Fraction of the video's duration that must be watched, in REAL playback time,
+// for it to count as completed. Must match the server (updateVideoProgress).
+const WATCH_COMPLETION_RATIO = 0.85
+
+// A single playback-time step larger than this (in seconds) is treated as a
+// seek/scrub and is NOT counted toward real watch time. Normal playback advances
+// in small steps (timeupdate fires ~4×/sec natively; we poll YouTube ~1×/sec).
+const MAX_NATIVE_STEP = 1.5
+const MAX_YT_STEP = 2.0
+
+// What the inner players report up to the container on each progress tick.
+type ProgressUpdate = {
+  percent: number // scrubber position 0–100 (for the progress bar + resume)
+  watchedSeconds: number // cumulative real playback time actually watched
+  duration: number // total video length in seconds
+}
+
 function getVideoType(url: string): 'youtube' | 'vimeo' | 'native' {
   if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube'
   if (url.includes('vimeo.com')) return 'vimeo'
@@ -33,14 +50,21 @@ function getVimeoId(url: string): string | null {
 function NativePlayer({
   url,
   initialPercent,
+  initialSeconds,
   onProgress,
 }: {
   url: string
   initialPercent: number
-  onProgress: (percent: number) => void
+  initialSeconds: number
+  onProgress: (u: ProgressUpdate) => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const lastSaved = useRef(0)
+  // Cumulative real watch time, seeded with what was already watched in prior
+  // sessions so completion can be reached across multiple visits.
+  const watchedRef = useRef(initialSeconds)
+  // currentTime at the previous tick; null until the first tick after load.
+  const lastTimeRef = useRef<number | null>(null)
+  const lastReportedPct = useRef(0)
   const seekedToStart = useRef(false)
 
   useEffect(() => {
@@ -48,23 +72,42 @@ function NativePlayer({
     if (!el) return
 
     function handleLoaded() {
-      if (!seekedToStart.current && el && el.duration > 0 && initialPercent > 0) {
+      if (!el) return
+      if (!seekedToStart.current && el.duration > 0 && initialPercent > 0) {
         el.currentTime = (initialPercent / 100) * el.duration
+        // Anchor the delta baseline at the resumed position so the jump from 0
+        // to the resume point isn't counted as watched time.
+        lastTimeRef.current = el.currentTime
         seekedToStart.current = true
       }
     }
 
     function handleTimeUpdate() {
       if (!el || !el.duration) return
-      const pct = (el.currentTime / el.duration) * 100
-      if (pct - lastSaved.current >= 2) {
-        lastSaved.current = pct
-        onProgress(pct)
+      const cur = el.currentTime
+      const dur = el.duration
+
+      // Accumulate only small forward steps (actual playback). Large jumps
+      // (seeking ahead) and rewinds are ignored — they just move the baseline.
+      if (lastTimeRef.current !== null) {
+        const delta = cur - lastTimeRef.current
+        if (delta > 0 && delta <= MAX_NATIVE_STEP) watchedRef.current += delta
+      }
+      lastTimeRef.current = cur
+
+      const pct = (cur / dur) * 100
+      if (pct - lastReportedPct.current >= 2) {
+        lastReportedPct.current = pct
+        onProgress({ percent: pct, watchedSeconds: watchedRef.current, duration: dur })
       }
     }
 
     function handleEnded() {
-      onProgress(100)
+      onProgress({
+        percent: 100,
+        watchedSeconds: watchedRef.current,
+        duration: el?.duration ?? 0,
+      })
     }
 
     el.addEventListener('loadedmetadata', handleLoaded)
@@ -120,16 +163,20 @@ type YTPlayer = {
 function YouTubePlayer({
   videoId,
   initialPercent,
+  initialSeconds,
   onProgress,
 }: {
   videoId: string
   initialPercent: number
-  onProgress: (percent: number) => void
+  initialSeconds: number
+  onProgress: (u: ProgressUpdate) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<YTPlayer | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastSaved = useRef(0)
+  const watchedRef = useRef(initialSeconds)
+  const lastTimeRef = useRef<number | null>(null)
+  const lastReportedPct = useRef(0)
   const onProgressRef = useRef(onProgress)
   onProgressRef.current = onProgress
 
@@ -153,23 +200,37 @@ function YouTubePlayer({
             const playing = window.YT.PlayerState.PLAYING
             const ended = window.YT.PlayerState.ENDED
             if (e.data === playing) {
+              // Re-anchor the delta baseline so any paused/seek gap before this
+              // play isn't counted, then poll real playback time once a second.
+              lastTimeRef.current = playerRef.current?.getCurrentTime() ?? null
               intervalRef.current = setInterval(() => {
                 const p = playerRef.current
                 if (!p) return
                 const dur = p.getDuration()
                 const cur = p.getCurrentTime()
-                if (dur > 0) {
-                  const pct = (cur / dur) * 100
-                  if (pct - lastSaved.current >= 2) {
-                    lastSaved.current = pct
-                    onProgressRef.current(pct)
-                  }
+                if (dur <= 0) return
+
+                if (lastTimeRef.current !== null) {
+                  const delta = cur - lastTimeRef.current
+                  if (delta > 0 && delta <= MAX_YT_STEP) watchedRef.current += delta
                 }
-              }, 3000)
+                lastTimeRef.current = cur
+
+                const pct = (cur / dur) * 100
+                if (pct - lastReportedPct.current >= 2) {
+                  lastReportedPct.current = pct
+                  onProgressRef.current({ percent: pct, watchedSeconds: watchedRef.current, duration: dur })
+                }
+              }, 1000)
             } else {
               if (intervalRef.current) clearInterval(intervalRef.current)
               if (e.data === ended) {
-                onProgressRef.current(100)
+                const p = playerRef.current
+                onProgressRef.current({
+                  percent: 100,
+                  watchedSeconds: watchedRef.current,
+                  duration: p?.getDuration() ?? 0,
+                })
               }
             }
           },
@@ -202,6 +263,8 @@ function YouTubePlayer({
 }
 
 // ── Vimeo player ────────────────────────────────────────────────────────
+// Plain embed — no JS timing API wired up, so it does not report real watch
+// time and cannot auto-complete from playback (unchanged behavior).
 
 function VimeoPlayer({
   vimeoId,
@@ -234,11 +297,12 @@ export default function VideoPlayer({
   initialProgress: Progress | null
   onComplete?: () => void
 }) {
-  const [currentPercent, setCurrentPercent] = useState(
-    initialProgress?.percent_watched ?? 0
-  )
+  const initialPercent = initialProgress?.percent_watched ?? 0
+  const initialSeconds = initialProgress?.actual_seconds_watched ?? 0
+
+  const [currentPercent, setCurrentPercent] = useState(initialPercent)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingPercent = useRef(currentPercent)
+  const pending = useRef<ProgressUpdate>({ percent: initialPercent, watchedSeconds: initialSeconds, duration: 0 })
   const lastSaveWallTime = useRef(Date.now())
   // Prevent onComplete from firing multiple times per session.
   // The parent remounts this component (via a key prop) when progress resets,
@@ -246,25 +310,25 @@ export default function VideoPlayer({
   const completedFired = useRef(initialProgress?.completed ?? false)
 
   const saveProgress = useCallback(
-    (percent: number) => {
-      const now = Date.now()
-      const secondsWatched = Math.max(0, Math.round((now - lastSaveWallTime.current) / 1000))
-      lastSaveWallTime.current = now
+    (u: ProgressUpdate) => {
+      pending.current = u
+      setCurrentPercent(u.percent)
 
-      setCurrentPercent(percent)
-      pendingPercent.current = percent
-
-      // Fire onComplete exactly once when video reaches 100%
-      if (percent >= 100 && !completedFired.current) {
+      // Completion is gated on REAL watch time, not scrubber position.
+      const isComplete = u.duration > 0 && u.watchedSeconds >= WATCH_COMPLETION_RATIO * u.duration
+      if (isComplete && !completedFired.current) {
         completedFired.current = true
         onComplete?.()
       }
 
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(() => {
-        const pct = pendingPercent.current
-        updateVideoProgress(video.id, pct)
-        logWatchEvent(video.id, pct, secondsWatched)
+        const now = Date.now()
+        const sessionSeconds = Math.max(0, Math.round((now - lastSaveWallTime.current) / 1000))
+        lastSaveWallTime.current = now
+        const p = pending.current
+        updateVideoProgress(video.id, p.percent, p.watchedSeconds, p.duration)
+        logWatchEvent(video.id, p.percent, sessionSeconds)
       }, 4000)
     },
     [video.id, onComplete]
@@ -275,16 +339,16 @@ export default function VideoPlayer({
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
-        const pct = pendingPercent.current
-        const seconds = Math.max(0, Math.round((Date.now() - lastSaveWallTime.current) / 1000))
-        updateVideoProgress(video.id, pct)
-        logWatchEvent(video.id, pct, seconds)
+        const now = Date.now()
+        const sessionSeconds = Math.max(0, Math.round((now - lastSaveWallTime.current) / 1000))
+        const p = pending.current
+        updateVideoProgress(video.id, p.percent, p.watchedSeconds, p.duration)
+        logWatchEvent(video.id, p.percent, sessionSeconds)
       }
     }
   }, [video.id])
 
   const type = getVideoType(video.url)
-  const initialPercent = initialProgress?.percent_watched ?? 0
 
   return (
     <div>
@@ -292,6 +356,7 @@ export default function VideoPlayer({
         <YouTubePlayer
           videoId={getYouTubeId(video.url) ?? ''}
           initialPercent={initialPercent}
+          initialSeconds={initialSeconds}
           onProgress={saveProgress}
         />
       ) : type === 'vimeo' ? (
@@ -303,6 +368,7 @@ export default function VideoPlayer({
         <NativePlayer
           url={video.url}
           initialPercent={initialPercent}
+          initialSeconds={initialSeconds}
           onProgress={saveProgress}
         />
       )}

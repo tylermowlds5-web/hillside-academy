@@ -193,6 +193,7 @@ export default async function EmployeeDetailPage(props: {
                   <tr className="border-b border-zinc-800">
                     <th className="text-left px-4 py-3 text-zinc-400 font-medium">Video</th>
                     <th className="text-center px-4 py-3 text-zinc-400 font-medium">% Watched</th>
+                    <th className="text-center px-4 py-3 text-zinc-400 font-medium">Watch Time</th>
                     <th className="text-center px-4 py-3 text-zinc-400 font-medium">Status</th>
                     <th className="text-center px-4 py-3 text-zinc-400 font-medium">Quiz</th>
                     <th className="text-left px-4 py-3 text-zinc-400 font-medium">Last Watched</th>
@@ -205,6 +206,8 @@ export default async function EmployeeDetailPage(props: {
                     const quiz = quizByVideo.get(a.video_id)
                     const best = quiz ? bestAttemptByQuiz.get(quiz.id) : null
                     const pct = prog ? Math.round(prog.percent_watched) : 0
+                    const watchedSecs = prog?.actual_seconds_watched ?? 0
+                    const durationSecs = a.videos?.duration ?? null
 
                     return (
                       <tr key={a.video_id} className="hover:bg-zinc-800/30">
@@ -223,6 +226,13 @@ export default async function EmployeeDetailPage(props: {
                               />
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm whitespace-nowrap">
+                          {/* Real watch time vs. video length */}
+                          <span className="text-zinc-300 font-medium">{formatSeconds(watchedSecs)}</span>
+                          {durationSecs != null && (
+                            <span className="text-zinc-600"> / {formatSeconds(durationSecs)}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${

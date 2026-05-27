@@ -10,6 +10,13 @@ ALTER TABLE public.profiles
 ALTER TABLE public.progress
   ADD COLUMN IF NOT EXISTS quiz_passed boolean NOT NULL DEFAULT false;
 
+-- Real playback time the employee has actually watched, in seconds. Distinct
+-- from percent_watched (scrubber position): skipping ahead moves the scrubber
+-- but does NOT increase this. Completion now requires watching ≥85% of the
+-- video's duration in real playback time (see updateVideoProgress).
+ALTER TABLE public.progress
+  ADD COLUMN IF NOT EXISTS actual_seconds_watched integer NOT NULL DEFAULT 0;
+
 -- ── Employee Roles / Groups ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS public.roles (

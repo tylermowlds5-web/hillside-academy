@@ -74,23 +74,50 @@ export async function logSessionEnd() {
 
 // ── Progress ──────────────────────────────────────────────────────────────
 
-export async function updateVideoProgress(videoId: string, percentWatched: number) {
+// Fraction of a video's duration that must be watched (in real playback time,
+// not scrubber position) for it to count as completed.
+const WATCH_COMPLETION_RATIO = 0.85
+
+export async function updateVideoProgress(
+  videoId: string,
+  percentWatched: number,
+  // Real playback seconds watched and the video's total duration. Optional so
+  // legacy/explicit callers (e.g. the path "Next video" button confirming an
+  // already-finished video) can still call with just a percent.
+  actualSecondsWatched?: number,
+  durationSeconds?: number
+) {
   const { supabase, user } = await getUser()
   if (!user) return
 
   const pct = Math.min(100, Math.max(0, percentWatched))
-  const completed = pct >= 100
 
-  const { error } = await supabase.from('progress').upsert(
-    {
-      user_id: user.id,
-      video_id: videoId,
-      percent_watched: pct,
-      completed,
-      last_watched_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id,video_id' }
-  )
+  // Completion is based on REAL watch time, not the scrubber position. Dragging
+  // to the end moves percent_watched to 100 but leaves actual_seconds_watched
+  // low, so the video stays incomplete until the content is actually watched.
+  let completed: boolean
+  if (durationSeconds && durationSeconds > 0 && actualSecondsWatched != null) {
+    completed = actualSecondsWatched >= WATCH_COMPLETION_RATIO * durationSeconds
+  } else {
+    // No timing info → fall back to scrubber position (used only by callers
+    // that explicitly force 100% on an already-completed video).
+    completed = pct >= 100
+  }
+
+  const row: Record<string, unknown> = {
+    user_id: user.id,
+    video_id: videoId,
+    percent_watched: pct,
+    completed,
+    last_watched_at: new Date().toISOString(),
+  }
+  // Only touch actual_seconds_watched when the caller actually measured it, so
+  // percent-only callers don't wipe the stored real watch time.
+  if (actualSecondsWatched != null) {
+    row.actual_seconds_watched = Math.max(0, Math.round(actualSecondsWatched))
+  }
+
+  const { error } = await supabase.from('progress').upsert(row, { onConflict: 'user_id,video_id' })
   if (error) console.error('[updateVideoProgress] upsert error:', error.message, error.code)
 }
 
@@ -604,7 +631,8 @@ export async function submitQuizAttempt(
     }
   } else {
     // Failed → reset video progress so employee must rewatch before retaking.
-    // Also clear quiz_passed so the two tables stay in sync.
+    // Also clear quiz_passed so the two tables stay in sync, and zero out real
+    // watch time so they have to actually sit through the content again.
     await supabase.from('progress').upsert(
       {
         user_id: user.id,
@@ -612,6 +640,7 @@ export async function submitQuizAttempt(
         percent_watched: 0,
         completed: false,
         quiz_passed: false,
+        actual_seconds_watched: 0,
         last_watched_at: new Date().toISOString(),
       },
       { onConflict: 'user_id,video_id' }
