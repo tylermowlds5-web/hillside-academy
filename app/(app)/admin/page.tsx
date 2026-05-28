@@ -1,36 +1,10 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import type { Profile, Video, Progress, QuizAttempt, Quiz } from '@/lib/types'
+import type { Profile, Progress, QuizAttempt } from '@/lib/types'
 import { getEffectiveProgress } from '@/lib/assignment-progress'
+import { fmtDate } from '@/lib/format-date'
 import AutoRefresh from './AutoRefresh'
-
-type ProgressCell = { percent: number; completed: boolean }
-
-function ProgressTd({ cell }: { cell: ProgressCell | null }) {
-  if (!cell) return <td className="px-3 py-3 text-center text-zinc-700">—</td>
-
-  const { percent, completed } = cell
-  const pct = Math.round(percent)
-  const color = completed ? 'bg-emerald-500' : pct > 0 ? 'bg-amber-500' : 'bg-zinc-700'
-  const textColor = completed ? 'text-emerald-400' : pct > 0 ? 'text-amber-400' : 'text-zinc-600'
-
-  return (
-    <td className="px-3 py-3 text-center">
-      <div className="flex flex-col items-center gap-1">
-        <span className={`text-sm font-semibold ${textColor}`}>{pct}%</span>
-        <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-        </div>
-        {completed && (
-          <svg className="w-3 h-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
-        )}
-      </div>
-    </td>
-  )
-}
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -48,73 +22,100 @@ export default async function AdminPage() {
 
   const [
     { data: employees },
-    { data: videos },
     { data: assignments },
     { data: allProgress },
-    { data: quizzes },
     { data: quizAttempts },
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('role', 'employee').order('full_name'),
-    supabase.from('videos').select('*').order('created_at'),
     supabase.from('assignments').select('user_id, video_id, assigned_at'),
     supabase.from('progress').select('*'),
-    supabase.from('quizzes').select('id, video_id, passing_score'),
-    supabase.from('quiz_attempts').select('user_id, quiz_id, score, passed'),
+    supabase.from('quiz_attempts').select('user_id, quiz_id, score, passed, taken_at'),
   ])
 
   const typedEmployees = (employees ?? []) as Profile[]
-  const typedVideos = (videos ?? []) as Video[]
   const typedAssignments = (assignments ?? []) as { user_id: string; video_id: string; assigned_at: string }[]
   const typedProgress = (allProgress ?? []) as Progress[]
-  const typedQuizzes = (quizzes ?? []) as Quiz[]
-  const typedAttempts = (quizAttempts ?? []) as (QuizAttempt & { quiz_id: string })[]
+  const typedAttempts = (quizAttempts ?? []) as Pick<QuizAttempt, 'user_id' | 'quiz_id' | 'score' | 'passed' | 'taken_at'>[]
 
-  // Lookup maps — assignedAt used to compute per-assignment effective progress
-  const assignedAtByPair = new Map<string, string>()
-  for (const a of typedAssignments) {
-    const key = `${a.user_id}:${a.video_id}`
-    // If somehow duplicated, keep the latest assigned_at
-    const existing = assignedAtByPair.get(key)
-    if (!existing || a.assigned_at > existing) assignedAtByPair.set(key, a.assigned_at)
-  }
-  const assignedSet = new Set(assignedAtByPair.keys())
+  // Lookup maps
   const progressMap = new Map<string, Progress>()
   for (const p of typedProgress) progressMap.set(`${p.user_id}:${p.video_id}`, p)
 
-  const quizByVideo = new Map<string, Quiz>()
-  for (const q of typedQuizzes) quizByVideo.set(q.video_id, q)
-
-  // Best quiz attempt per user/quiz
-  const bestAttemptMap = new Map<string, { score: number; passed: boolean }>()
+  // Best attempt per (user, quiz) — what we score the employee on.
+  const bestAttemptMap = new Map<string, { score: number; passed: boolean; taken_at: string }>()
   for (const a of typedAttempts) {
     const key = `${a.user_id}:${a.quiz_id}`
     const existing = bestAttemptMap.get(key)
     if (!existing || a.score > existing.score) bestAttemptMap.set(key, a)
   }
 
-  // Stats — completion is now assignment-relative (watch must post-date
-  // the assignment's assigned_at to count).
+  // Per-employee aggregation. Doing it in a single pass keeps each row's cells
+  // consistent with each other and lets us compute "last active" across both
+  // watch progress and quiz attempts.
+  type EmployeeStats = {
+    assigned: number
+    completed: number
+    overallPercent: number       // 0–100; share of assignments completed
+    quizzesTaken: number          // distinct quizzes with at least one attempt
+    avgQuizScore: number | null   // average best-score across quizzes taken
+    lastActive: string | null     // ISO timestamp, max of last_watched_at + taken_at
+  }
+  const stats = new Map<string, EmployeeStats>()
+
+  for (const emp of typedEmployees) {
+    const empAssignments = typedAssignments.filter((a) => a.user_id === emp.id)
+    let completed = 0
+    let lastActive: string | null = null
+
+    for (const a of empAssignments) {
+      const prog = progressMap.get(`${emp.id}:${a.video_id}`) ?? null
+      const eff = getEffectiveProgress(prog, a.assigned_at)
+      if (eff.completed) completed++
+      if (prog?.last_watched_at && (!lastActive || prog.last_watched_at > lastActive)) {
+        lastActive = prog.last_watched_at
+      }
+    }
+
+    // Quiz aggregation across this employee's best attempts (across all quizzes
+    // they've taken, not gated on assignment — anything they attempted counts).
+    const empBest: { score: number; taken_at: string }[] = []
+    for (const [key, val] of bestAttemptMap) {
+      if (key.startsWith(`${emp.id}:`)) empBest.push(val)
+    }
+    const quizzesTaken = empBest.length
+    const avgQuizScore = quizzesTaken > 0
+      ? Math.round(empBest.reduce((s, x) => s + x.score, 0) / quizzesTaken)
+      : null
+    for (const b of empBest) {
+      if (!lastActive || b.taken_at > lastActive) lastActive = b.taken_at
+    }
+
+    stats.set(emp.id, {
+      assigned: empAssignments.length,
+      completed,
+      overallPercent: empAssignments.length > 0
+        ? Math.round((completed / empAssignments.length) * 100)
+        : 0,
+      quizzesTaken,
+      avgQuizScore,
+      lastActive,
+    })
+  }
+
+  // Top-level stats (across all employees)
   const totalAssigned = typedAssignments.length
-  const assignmentEffectives = typedAssignments.map((a) => {
-    const key = `${a.user_id}:${a.video_id}`
-    return getEffectiveProgress(progressMap.get(key) ?? null, a.assigned_at)
-  })
-  const completedCount = assignmentEffectives.filter((e) => e.completed).length
-  const withProgress = assignmentEffectives.filter((e) => e.percent > 0)
-  const avgPercent =
-    withProgress.length > 0
-      ? Math.round(withProgress.reduce((s, e) => s + e.percent, 0) / withProgress.length)
-      : 0
-  const quizPassCount = [...bestAttemptMap.values()].filter((a) => a.passed).length
+  const totalCompleted = [...stats.values()].reduce((s, x) => s + x.completed, 0)
+  const totalQuizPasses = [...bestAttemptMap.values()].filter((a) => a.passed).length
 
   return (
-    <div className="p-4 sm:p-6 w-full max-w-full">
+    <div className="p-4 sm:p-6 w-full max-w-5xl mx-auto">
       <AutoRefresh intervalMs={30000} />
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-zinc-50">Progress Report</h1>
-          <p className="text-zinc-400 text-sm mt-1">Video completion and quiz results by employee</p>
+          <p className="text-zinc-400 text-sm mt-1">Per-employee training progress at a glance</p>
         </div>
         <a
           href="/api/admin/export"
@@ -128,7 +129,7 @@ export default async function AdminPage() {
         </a>
       </div>
 
-      {/* Stats */}
+      {/* Top stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Employees</p>
@@ -140,164 +141,119 @@ export default async function AdminPage() {
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Completions</p>
-          <p className="text-3xl font-bold text-emerald-400 mt-1">{completedCount}</p>
+          <p className="text-3xl font-bold text-emerald-400 mt-1">{totalCompleted}</p>
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Quiz Passes</p>
-          <p className="text-3xl font-bold text-emerald-400 mt-1">{quizPassCount}</p>
+          <p className="text-3xl font-bold text-emerald-400 mt-1">{totalQuizPasses}</p>
         </div>
       </div>
 
-      {/* Overall avg */}
-      {totalAssigned > 0 && (
-        <div className="mb-8 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-zinc-300">Average watch completion across all assignments</span>
-            <span className="text-sm font-semibold text-emerald-400">{avgPercent}%</span>
-          </div>
-          <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${avgPercent}%` }} />
-          </div>
-        </div>
-      )}
-
-      {/* Grid */}
+      {/* Per-employee list */}
       {typedEmployees.length === 0 ? (
         <div className="text-center py-16 bg-zinc-900 border border-zinc-800 rounded-xl">
           <p className="text-zinc-400">No employees found.</p>
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800">
-                  <th className="text-left px-4 py-3 text-zinc-400 font-medium sticky left-0 bg-zinc-900 min-w-[200px]">
-                    Employee
-                  </th>
-                  <th className="text-center px-3 py-3 text-zinc-400 font-medium">Assigned</th>
-                  <th className="text-center px-3 py-3 text-zinc-400 font-medium">Done</th>
-                  <th className="text-center px-3 py-3 text-zinc-400 font-medium">Avg %</th>
-                  {typedVideos.map((v) => (
-                    <th key={v.id} className="text-center px-3 py-3 text-zinc-400 font-medium min-w-[110px] max-w-[150px]">
-                      <span className="block truncate text-xs" title={v.title}>{v.title}</span>
-                      {quizByVideo.has(v.id) && (
-                        <span className="block text-[10px] text-zinc-600 font-normal">+ quiz</span>
+          {/* Header row */}
+          <div className="hidden md:grid grid-cols-[1.4fr_1fr_repeat(4,_minmax(0,_1fr))] gap-4 px-5 py-3 border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500 font-medium">
+            <div>Employee</div>
+            <div>Completion</div>
+            <div className="text-center">Videos Watched</div>
+            <div className="text-center">Quizzes Taken</div>
+            <div className="text-center">Avg Quiz Score</div>
+            <div className="text-right">Last Active</div>
+          </div>
+
+          <ul className="divide-y divide-zinc-800">
+            {typedEmployees.map((emp) => {
+              const s = stats.get(emp.id)!
+              return (
+                <li key={emp.id}>
+                  <Link
+                    href={`/admin/employees/${emp.id}`}
+                    className="grid grid-cols-2 md:grid-cols-[1.4fr_1fr_repeat(4,_minmax(0,_1fr))] gap-4 px-5 py-4 hover:bg-zinc-800/40 transition-colors items-center"
+                  >
+                    {/* Employee */}
+                    <div className="flex items-center gap-3 col-span-2 md:col-span-1 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-emerald-900 flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-semibold text-emerald-400">
+                          {(emp.full_name ?? emp.email ?? '?').charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-zinc-100 truncate">
+                          {emp.full_name ?? emp.email}
+                        </p>
+                        {emp.full_name && (
+                          <p className="text-xs text-zinc-500 truncate">{emp.email}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Overall completion percentage with bar */}
+                    <div className="flex items-center gap-2 col-span-2 md:col-span-1">
+                      <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden min-w-0">
+                        <div
+                          className={`h-full rounded-full ${s.overallPercent >= 100 ? 'bg-emerald-500' : s.overallPercent > 0 ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                          style={{ width: `${s.overallPercent}%` }}
+                        />
+                      </div>
+                      <span className={`text-sm font-semibold whitespace-nowrap ${
+                        s.overallPercent >= 100 ? 'text-emerald-400' : s.overallPercent > 0 ? 'text-amber-400' : 'text-zinc-500'
+                      }`}>
+                        {s.assigned > 0 ? `${s.overallPercent}%` : '—'}
+                      </span>
+                    </div>
+
+                    {/* Videos watched */}
+                    <div className="md:text-center">
+                      <span className="text-[11px] uppercase tracking-wider text-zinc-500 mr-1.5 md:hidden">Videos</span>
+                      <span className={`text-sm font-semibold ${s.completed > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                        {s.completed}
+                      </span>
+                      <span className="text-xs text-zinc-600"> / {s.assigned}</span>
+                    </div>
+
+                    {/* Quizzes taken */}
+                    <div className="md:text-center">
+                      <span className="text-[11px] uppercase tracking-wider text-zinc-500 mr-1.5 md:hidden">Quizzes</span>
+                      <span className={`text-sm font-semibold ${s.quizzesTaken > 0 ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                        {s.quizzesTaken}
+                      </span>
+                    </div>
+
+                    {/* Avg quiz score */}
+                    <div className="md:text-center">
+                      <span className="text-[11px] uppercase tracking-wider text-zinc-500 mr-1.5 md:hidden">Avg quiz</span>
+                      {s.avgQuizScore != null ? (
+                        <span className={`text-sm font-semibold ${
+                          s.avgQuizScore >= 70 ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
+                          {s.avgQuizScore}%
+                        </span>
+                      ) : (
+                        <span className="text-sm text-zinc-600">—</span>
                       )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {typedEmployees.map((emp) => {
-                  const empAssigned = typedVideos.filter((v) => assignedSet.has(`${emp.id}:${v.id}`))
-                  // Per-employee stats use assignment-relative progress:
-                  // a video only counts as done/in-progress if the watch
-                  // happened after the assignment's assigned_at.
-                  const empEffective = empAssigned.map((v) => {
-                    const key = `${emp.id}:${v.id}`
-                    return getEffectiveProgress(progressMap.get(key) ?? null, assignedAtByPair.get(key) ?? null)
-                  })
-                  const done = empEffective.filter((e) => e.completed).length
-                  const withProg = empEffective.filter((e) => e.percent > 0)
-                  const avg = withProg.length > 0
-                    ? Math.round(withProg.reduce((s, e) => s + e.percent, 0) / withProg.length)
-                    : 0
+                    </div>
 
-                  return (
-                    <tr key={emp.id} className="hover:bg-zinc-800/30 transition-colors">
-                      <td className="px-4 py-3 sticky left-0 bg-zinc-900 hover:bg-zinc-800/30">
-                        <Link
-                          href={`/admin/employees/${emp.id}`}
-                          className="flex items-center gap-2.5 group"
-                        >
-                          <div className="w-7 h-7 rounded-full bg-emerald-900 flex items-center justify-center flex-shrink-0">
-                            <span className="text-xs font-semibold text-emerald-400">
-                              {(emp.full_name ?? emp.email ?? '?').charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-zinc-100 font-medium text-sm group-hover:text-emerald-400 transition-colors truncate">
-                              {emp.full_name ?? emp.email}
-                            </p>
-                            {emp.full_name && (
-                              <p className="text-zinc-500 text-xs truncate">{emp.email}</p>
-                            )}
-                          </div>
-                        </Link>
-                      </td>
-                      <td className="px-3 py-3 text-center text-zinc-300 font-medium">{empAssigned.length}</td>
-                      <td className="px-3 py-3 text-center">
-                        <span className={`font-medium ${done > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>{done}</span>
-                      </td>
-                      <td className="px-3 py-3 text-center text-zinc-300 font-medium">
-                        {empAssigned.length > 0 ? `${avg}%` : '—'}
-                      </td>
+                    {/* Last active */}
+                    <div className="md:text-right">
+                      <span className="text-[11px] uppercase tracking-wider text-zinc-500 mr-1.5 md:hidden">Last active</span>
+                      <span className="text-sm text-zinc-400 whitespace-nowrap">
+                        {s.lastActive ? fmtDate(s.lastActive) : <span className="text-zinc-600">Never</span>}
+                      </span>
+                    </div>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
 
-                      {typedVideos.map((v) => {
-                        if (!assignedSet.has(`${emp.id}:${v.id}`)) {
-                          return <td key={v.id} className="px-3 py-3 text-center text-zinc-700">—</td>
-                        }
-                        const prog = progressMap.get(`${emp.id}:${v.id}`) ?? null
-                        const assignedAt = assignedAtByPair.get(`${emp.id}:${v.id}`) ?? null
-                        // Effective progress: progress older than the
-                        // assignment's assigned_at counts as "not started"
-                        const eff = getEffectiveProgress(prog, assignedAt)
-                        const quiz = quizByVideo.get(v.id) ?? null
-                        const best = quiz ? bestAttemptMap.get(`${emp.id}:${quiz.id}`) ?? null : null
-                        const pct = Math.round(eff.percent)
-                        const isInProgress = !eff.completed && pct > 5
-
-                        return (
-                          <td key={v.id} className="px-3 py-3 text-center">
-                            <div className="flex flex-col items-center gap-0.5">
-                              {/* Video progress */}
-                              <span className={`text-sm font-semibold ${
-                                eff.completed ? 'text-emerald-400' : pct > 5 ? 'text-amber-400' : 'text-zinc-600'
-                              }`}>
-                                {pct}%
-                              </span>
-                              <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full ${eff.completed ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                              {eff.completed ? (
-                                <span className="text-[10px] text-emerald-500 font-medium">Completed</span>
-                              ) : isInProgress ? (
-                                <span className="text-[10px] text-amber-500 font-medium">In Progress</span>
-                              ) : null}
-                              {/* Quiz badge */}
-                              {quiz && (
-                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 ${
-                                  best?.passed
-                                    ? 'bg-emerald-500/20 text-emerald-400'
-                                    : best
-                                    ? 'bg-red-500/15 text-red-400'
-                                    : 'bg-zinc-800 text-zinc-600'
-                                }`}>
-                                  {best ? `Q: ${best.score}%` : 'No quiz'}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Legend */}
-          <div className="px-4 py-3 border-t border-zinc-800 flex items-center gap-6 text-xs text-zinc-500 flex-wrap">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 bg-emerald-500 rounded-full inline-block" />Video completed</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 bg-amber-500 rounded-full inline-block" />In progress</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 bg-zinc-700 rounded-full inline-block" />Not started</span>
-            <span>— Not assigned · Click employee name for full detail</span>
-          </div>
+          <p className="px-5 py-3 border-t border-zinc-800 text-xs text-zinc-500">
+            Click an employee for their full progress breakdown.
+          </p>
         </div>
       )}
     </div>

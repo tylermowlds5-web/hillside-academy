@@ -121,7 +121,8 @@ export default function WatchContent({
         </div>
       )}
 
-      {/* Player card */}
+      {/* Player card — kept slim so the quiz prompt can sit right under the
+          video, before the (potentially long) description below. */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
         <VideoPlayer
           key={playerResetKey}
@@ -129,47 +130,11 @@ export default function WatchContent({
           initialProgress={initialProgress}
           onComplete={handleVideoComplete}
         />
-
-        <div className="p-4 sm:p-6">
-          <h1 className="text-lg sm:text-xl font-semibold text-zinc-50">{video.title}</h1>
-          {video.description && (
-            <FormattedDescription
-              text={video.description}
-              className="text-zinc-400 text-sm mt-2 leading-relaxed"
-            />
-          )}
-
-          {initialProgress && (
-            <div className="mt-4 pt-4 border-t border-zinc-800">
-              <div className="flex items-center gap-4 text-sm flex-wrap">
-                <span className="text-zinc-400">{pct}% watched</span>
-                {videoCompleted && (
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                    Video completed
-                  </span>
-                )}
-                {bestAttempt && (
-                  <span className={`flex items-center gap-1.5 ${bestAttempt.passed ? 'text-emerald-400' : 'text-red-400'}`}>
-                    Quiz best: {bestAttempt.score}% ({bestAttempt.passed ? 'Passed' : 'Failed'})
-                  </span>
-                )}
-                <span className="text-zinc-600">
-                  Last watched {fmtDate(initialProgress.last_watched_at)}
-                </span>
-              </div>
-              <div className="mt-2 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full transition-all"
-                  style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* ── Quiz section — only after video is completed ─── */}
+      {/* ── Quiz prompt — appears directly below the video player so it's the
+          first thing the employee sees after finishing, not buried under a
+          long description. ─── */}
       {quiz && videoCompleted && !showQuiz && !quizPassed && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div>
@@ -192,6 +157,46 @@ export default function WatchContent({
           </button>
         </div>
       )}
+
+      {/* Title + description + progress meta — moved below the quiz prompt so
+          a long description doesn't push the Start Quiz button off-screen. */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6 mb-6">
+        <h1 className="text-lg sm:text-xl font-semibold text-zinc-50">{video.title}</h1>
+        {video.description && (
+          <FormattedDescription
+            text={video.description}
+            className="text-zinc-400 text-sm mt-2 leading-relaxed"
+          />
+        )}
+
+        {initialProgress && (
+          <div className="mt-4 pt-4 border-t border-zinc-800">
+            <div className="flex items-center gap-4 text-sm flex-wrap">
+              <span className="text-zinc-400">{pct}% watched</span>
+              {videoCompleted && (
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                  Video completed
+                </span>
+              )}
+              {bestAttempt && (
+                <span className={`flex items-center gap-1.5 ${bestAttempt.passed ? 'text-emerald-400' : 'text-red-400'}`}>
+                  Quiz best: {bestAttempt.score}% ({bestAttempt.passed ? 'Passed' : 'Failed'})
+                </span>
+              )}
+              <span className="text-zinc-600">
+                Last watched {fmtDate(initialProgress.last_watched_at)}
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full transition-all"
+                style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
 
       {quiz && videoCompleted && showQuiz && (
         <div className="mb-6">
