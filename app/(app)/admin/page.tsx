@@ -27,13 +27,13 @@ export default async function AdminPage() {
     { data: quizAttempts },
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('role', 'employee').order('full_name'),
-    supabase.from('assignments').select('user_id, video_id, assigned_at'),
+    supabase.from('assignments').select('user_id, video_id, assigned_at, due_date'),
     supabase.from('progress').select('*'),
     supabase.from('quiz_attempts').select('user_id, quiz_id, score, passed, taken_at'),
   ])
 
   const typedEmployees = (employees ?? []) as Profile[]
-  const typedAssignments = (assignments ?? []) as { user_id: string; video_id: string; assigned_at: string }[]
+  const typedAssignments = (assignments ?? []) as { user_id: string; video_id: string; assigned_at: string; due_date: string | null }[]
   const typedProgress = (allProgress ?? []) as Progress[]
   const typedAttempts = (quizAttempts ?? []) as Pick<QuizAttempt, 'user_id' | 'quiz_id' | 'score' | 'passed' | 'taken_at'>[]
 
@@ -54,25 +54,56 @@ export default async function AdminPage() {
   // watch progress and quiz attempts.
   type EmployeeStats = {
     assigned: number
-    completed: number
-    overallPercent: number       // 0–100; share of assignments completed
-    quizzesTaken: number          // distinct quizzes with at least one attempt
-    avgQuizScore: number | null   // average best-score across quizzes taken
-    lastActive: string | null     // ISO timestamp, max of last_watched_at + taken_at
+    // Assignment-scoped: how many assigned videos this employee has completed
+    // and the corresponding percentage. Drives the "Completion" bar and the
+    // top-level "Completions" counter.
+    completedAssigned: number
+    overallPercent: number
+    // Activity stats — counted across ALL videos / quizzes, not gated on
+    // assignment, so the report reflects what the employee actually did.
+    videosWatched: number          // all progress rows with completed = true
+    quizzesTaken: number           // distinct quizzes with at least one attempt
+    avgQuizScore: number | null    // average best-score across quizzes taken
+    lastActive: string | null      // max of any last_watched_at or taken_at
+    // On-time completion — assignment-relative because it needs due dates.
+    withDueDate: number            // assignments that actually have a due date
+    onTimePercent: number | null   // null when the employee has 0 due-dated assignments
   }
   const stats = new Map<string, EmployeeStats>()
 
   for (const emp of typedEmployees) {
-    const empAssignments = typedAssignments.filter((a) => a.user_id === emp.id)
-    let completed = 0
-    let lastActive: string | null = null
+    // Every progress row for this user, including unassigned watches. The
+    // activity stats count from here so they include anything the employee
+    // actually watched, not just stuff that was assigned to them.
+    const empProgress = typedProgress.filter((p) => p.user_id === emp.id)
+    const videosWatched = empProgress.filter((p) => p.completed).length
 
+    let lastActive: string | null = null
+    for (const p of empProgress) {
+      if (p.last_watched_at && (!lastActive || p.last_watched_at > lastActive)) {
+        lastActive = p.last_watched_at
+      }
+    }
+
+    // Assignment-scoped pass: drives the Completion bar plus the on-time
+    // calculation (which needs each assignment's due_date).
+    const empAssignments = typedAssignments.filter((a) => a.user_id === emp.id)
+    let completedAssigned = 0
+    let withDueDate = 0
+    let onTime = 0
     for (const a of empAssignments) {
       const prog = progressMap.get(`${emp.id}:${a.video_id}`) ?? null
       const eff = getEffectiveProgress(prog, a.assigned_at)
-      if (eff.completed) completed++
-      if (prog?.last_watched_at && (!lastActive || prog.last_watched_at > lastActive)) {
-        lastActive = prog.last_watched_at
+      if (eff.completed) completedAssigned++
+
+      if (a.due_date) {
+        withDueDate++
+        // We don't store a dedicated completed_at — last_watched_at on the
+        // completed row is the best proxy. Compare as YYYY-MM-DD strings;
+        // both sides are ISO so lexicographic order matches chronological.
+        if (prog?.completed && prog.last_watched_at.slice(0, 10) <= a.due_date.slice(0, 10)) {
+          onTime++
+        }
       }
     }
 
@@ -92,23 +123,26 @@ export default async function AdminPage() {
 
     stats.set(emp.id, {
       assigned: empAssignments.length,
-      completed,
+      completedAssigned,
       overallPercent: empAssignments.length > 0
-        ? Math.round((completed / empAssignments.length) * 100)
+        ? Math.round((completedAssigned / empAssignments.length) * 100)
         : 0,
+      videosWatched,
       quizzesTaken,
       avgQuizScore,
       lastActive,
+      withDueDate,
+      onTimePercent: withDueDate > 0 ? Math.round((onTime / withDueDate) * 100) : null,
     })
   }
 
   // Top-level stats (across all employees)
   const totalAssigned = typedAssignments.length
-  const totalCompleted = [...stats.values()].reduce((s, x) => s + x.completed, 0)
+  const totalCompleted = [...stats.values()].reduce((s, x) => s + x.completedAssigned, 0)
   const totalQuizPasses = [...bestAttemptMap.values()].filter((a) => a.passed).length
 
   return (
-    <div className="p-4 sm:p-6 w-full max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
       <AutoRefresh intervalMs={30000} />
 
       {/* Header */}
@@ -157,12 +191,13 @@ export default async function AdminPage() {
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
           {/* Header row */}
-          <div className="hidden md:grid grid-cols-[1.4fr_1fr_repeat(4,_minmax(0,_1fr))] gap-4 px-5 py-3 border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500 font-medium">
+          <div className="hidden md:grid grid-cols-[1.4fr_1fr_repeat(5,_minmax(0,_1fr))] gap-4 px-5 py-3 border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500 font-medium">
             <div>Employee</div>
             <div>Completion</div>
             <div className="text-center">Videos Watched</div>
             <div className="text-center">Quizzes Taken</div>
             <div className="text-center">Avg Quiz Score</div>
+            <div className="text-center">On Time</div>
             <div className="text-right">Last Active</div>
           </div>
 
@@ -173,7 +208,7 @@ export default async function AdminPage() {
                 <li key={emp.id}>
                   <Link
                     href={`/admin/employees/${emp.id}`}
-                    className="grid grid-cols-2 md:grid-cols-[1.4fr_1fr_repeat(4,_minmax(0,_1fr))] gap-4 px-5 py-4 hover:bg-zinc-800/40 transition-colors items-center"
+                    className="grid grid-cols-2 md:grid-cols-[1.4fr_1fr_repeat(5,_minmax(0,_1fr))] gap-4 px-5 py-4 hover:bg-zinc-800/40 transition-colors items-center"
                   >
                     {/* Employee */}
                     <div className="flex items-center gap-3 col-span-2 md:col-span-1 min-w-0">
@@ -207,13 +242,13 @@ export default async function AdminPage() {
                       </span>
                     </div>
 
-                    {/* Videos watched */}
+                    {/* Videos watched — count across ALL videos with completed=true,
+                        not gated on whether the video was assigned. */}
                     <div className="md:text-center">
                       <span className="text-[11px] uppercase tracking-wider text-zinc-500 mr-1.5 md:hidden">Videos</span>
-                      <span className={`text-sm font-semibold ${s.completed > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                        {s.completed}
+                      <span className={`text-sm font-semibold ${s.videosWatched > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                        {s.videosWatched}
                       </span>
-                      <span className="text-xs text-zinc-600"> / {s.assigned}</span>
                     </div>
 
                     {/* Quizzes taken */}
@@ -235,6 +270,25 @@ export default async function AdminPage() {
                         </span>
                       ) : (
                         <span className="text-sm text-zinc-600">—</span>
+                      )}
+                    </div>
+
+                    {/* On-time completion — % of due-dated assignments completed
+                        on or before the due date. N/A if no due dates are set. */}
+                    <div className="md:text-center">
+                      <span className="text-[11px] uppercase tracking-wider text-zinc-500 mr-1.5 md:hidden">On time</span>
+                      {s.onTimePercent == null ? (
+                        <span className="text-sm text-zinc-600">N/A</span>
+                      ) : (
+                        <span className={`text-sm font-semibold whitespace-nowrap ${
+                          s.onTimePercent >= 80
+                            ? 'text-emerald-400'
+                            : s.onTimePercent >= 50
+                            ? 'text-amber-400'
+                            : 'text-red-400'
+                        }`}>
+                          {s.onTimePercent}% on time
+                        </span>
                       )}
                     </div>
 
