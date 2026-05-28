@@ -5,6 +5,14 @@ import type { Video, Category, SubCategory } from '@/lib/types'
 import { updateVideoMetadata } from '@/app/actions'
 import { useGenerateDescription } from './useGenerateDescription'
 import GenerateDescriptionButton from './GenerateDescriptionButton'
+import ThumbnailScrubber from './ThumbnailScrubber'
+
+// External-embed URLs can't be scrubbed in the preview <video> element, so the
+// scrubber button is only offered for direct video files (R2-hosted or other
+// native MP4/WebM URLs).
+function isScrubbableVideoUrl(url: string): boolean {
+  return !!url && !/youtube\.com|youtu\.be|vimeo\.com/i.test(url)
+}
 
 function uploadThumbnail(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -50,10 +58,13 @@ export default function EditVideoPanel({
   const [thumbnailUrl, setThumbnailUrl] = useState(video.thumbnail_url ?? '')
   const [thumbnailPreview, setThumbnailPreview] = useState(video.thumbnail_url ?? '')
   const [uploadingThumb, setUploadingThumb] = useState(false)
+  const [showScrubber, setShowScrubber] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { genState, genError, generate } = useGenerateDescription(setDescription)
   const thumbInputRef = useRef<HTMLInputElement>(null)
+
+  const canScrubVideo = isScrubbableVideoUrl(video.url)
 
   // Sub-categories filtered to the selected category
   const filteredSubCats = subCategories.filter((sc) => sc.category_id === categoryId)
@@ -137,14 +148,28 @@ export default function EditVideoPanel({
                 )}
               </div>
               <div className="flex-1 space-y-2">
-                <input ref={thumbInputRef} type="file" accept="image/*" onChange={handleThumbnailFile} className="sr-only" id="edit-thumb-input" />
-                <label htmlFor="edit-thumb-input"
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs cursor-pointer hover:bg-zinc-700 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                  </svg>
-                  {uploadingThumb ? 'Uploading…' : 'Upload new thumbnail'}
-                </label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input ref={thumbInputRef} type="file" accept="image/*" onChange={handleThumbnailFile} className="sr-only" id="edit-thumb-input" />
+                  <label htmlFor="edit-thumb-input"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs cursor-pointer hover:bg-zinc-700 transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    {uploadingThumb ? 'Uploading…' : 'Upload new thumbnail'}
+                  </label>
+                  {canScrubVideo && (
+                    <button
+                      type="button"
+                      onClick={() => setShowScrubber((s) => !s)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs hover:bg-zinc-700 transition-colors cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                      </svg>
+                      {showScrubber ? 'Hide video' : 'Set Thumbnail from Video'}
+                    </button>
+                  )}
+                </div>
                 {thumbnailUrl && (
                   <button type="button" onClick={() => { setThumbnailUrl(''); setThumbnailPreview('') }}
                     className="text-xs text-red-500 hover:text-red-400 transition-colors">
@@ -153,6 +178,21 @@ export default function EditVideoPanel({
                 )}
               </div>
             </div>
+
+            {/* Scrub through the saved video to grab a new thumbnail. The capture
+                uploads to R2 and updates the form's thumbnailUrl/preview just
+                like the "Upload new thumbnail" file picker does. */}
+            {showScrubber && canScrubVideo && (
+              <div className="mt-3">
+                <ThumbnailScrubber
+                  fileUrl={video.url}
+                  onThumbnailReady={(dataUrl, r2Url) => {
+                    setThumbnailPreview(dataUrl)
+                    setThumbnailUrl(r2Url)
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Title */}
