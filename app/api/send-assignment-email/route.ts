@@ -63,7 +63,6 @@ export async function POST(request: NextRequest) {
         to: emp.email,
         employeeName: emp.full_name ?? emp.email,
         videoTitle: videoData.title,
-        videoDescription: videoData.description,
         dueDate: dueDate ?? null,
         watchUrl: `${baseUrl}/watch/${videoData.id}`,
       })

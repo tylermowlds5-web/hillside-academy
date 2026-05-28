@@ -400,7 +400,6 @@ export async function createAssignment(formData: FormData) {
             to: emp.email,
             employeeName: emp.full_name ?? emp.email,
             videoTitle: videoData.title,
-            videoDescription: videoData.description,
             dueDate: due_date,
             watchUrl: `${baseUrl}/watch/${videoData.id}`,
           })

@@ -11,13 +11,12 @@ export interface AssignmentEmailParams {
   to: string
   employeeName: string
   videoTitle: string
-  videoDescription: string | null
   dueDate: string | null       // ISO date string or null
   watchUrl: string             // absolute URL
 }
 
 export async function sendAssignmentEmail(params: AssignmentEmailParams) {
-  const { to, employeeName, videoTitle, videoDescription, dueDate, watchUrl } = params
+  const { to, employeeName, videoTitle, dueDate, watchUrl } = params
 
   const subject = `New Training Video Assigned: ${videoTitle}`
   console.log('=== sendAssignmentEmail CALLED ===')
@@ -32,14 +31,6 @@ export async function sendAssignmentEmail(params: AssignmentEmailParams) {
           <span style="display:inline-block;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:5px 12px;font-size:13px;font-weight:600;color:#92400e;">
             Due&nbsp;${fmtDate(dueDate)}
           </span>
-        </td>
-      </tr>`
-    : ''
-
-  const descriptionRow = videoDescription
-    ? `<tr>
-        <td style="padding-top:8px;font-size:14px;color:#52525b;line-height:1.65;">
-          ${videoDescription.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
         </td>
       </tr>`
     : ''
@@ -115,7 +106,6 @@ export async function sendAssignmentEmail(params: AssignmentEmailParams) {
                         ${videoTitle.replace(/</g, '&lt;')}
                       </td>
                     </tr>
-                    ${descriptionRow}
                     ${dueLine}
                   </table>
                 </td>
@@ -162,7 +152,6 @@ export async function sendAssignmentEmail(params: AssignmentEmailParams) {
 </html>`
 
   console.log('  Calling resend.emails.send()...')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: { id?: string } | null = null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: any = null

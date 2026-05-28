@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import type { Profile, Video, Assignment, Progress, JobRole, UserJobRole } from '@/lib/types'
+import type { Profile, Video, Assignment, Progress, JobRole, UserJobRole, QuizAttempt } from '@/lib/types'
 import { fmtDate } from '@/lib/format-date'
 import { deleteAssignment } from '@/app/actions'
 import { getEffectiveProgress } from '@/lib/assignment-progress'
 import AssignForm from './AssignForm'
+import AssignQuizCell from './AssignQuizCell'
 
 function RemoveButton({ assignmentId }: { assignmentId: string }) {
   async function action() {
@@ -95,15 +96,36 @@ export default async function AdminAssignPage() {
   const videoIds = [...new Set(typedAssignments.map((a) => a.video_id))]
 
   const progressMap = new Map<string, Progress>()
+  // video_id → quiz_id (only present if a quiz exists for that video)
+  const quizIdByVideo = new Map<string, string>()
+  // `${user_id}::${quiz_id}` → best (highest score) attempt
+  const bestAttemptMap = new Map<string, QuizAttempt>()
+
   if (userIds.length > 0 && videoIds.length > 0) {
-    const { data: progressRows } = await supabase
-      .from('progress')
-      .select('*')
-      .in('user_id', userIds)
-      .in('video_id', videoIds)
+    const [{ data: progressRows }, { data: quizRows }] = await Promise.all([
+      supabase.from('progress').select('*').in('user_id', userIds).in('video_id', videoIds),
+      supabase.from('quizzes').select('id, video_id').in('video_id', videoIds),
+    ])
 
     for (const p of (progressRows ?? []) as Progress[]) {
       progressMap.set(`${p.user_id}::${p.video_id}`, p)
+    }
+    const typedQuizRows = (quizRows ?? []) as { id: string; video_id: string }[]
+    for (const q of typedQuizRows) quizIdByVideo.set(q.video_id, q.id)
+
+    // Best attempt per (user, quiz) for the quizzes attached to assigned videos.
+    const quizIds = typedQuizRows.map((q) => q.id)
+    if (quizIds.length > 0) {
+      const { data: attemptRows } = await supabase
+        .from('quiz_attempts')
+        .select('*')
+        .in('user_id', userIds)
+        .in('quiz_id', quizIds)
+      for (const a of (attemptRows ?? []) as QuizAttempt[]) {
+        const key = `${a.user_id}::${a.quiz_id}`
+        const existing = bestAttemptMap.get(key)
+        if (!existing || a.score > existing.score) bestAttemptMap.set(key, a)
+      }
     }
   }
 
@@ -132,6 +154,7 @@ export default async function AdminAssignPage() {
                     <th className="text-left px-4 py-3 text-zinc-400 font-medium">Employee</th>
                     <th className="text-left px-4 py-3 text-zinc-400 font-medium">Video</th>
                     <th className="text-left px-4 py-3 text-zinc-400 font-medium">Status</th>
+                    <th className="text-left px-4 py-3 text-zinc-400 font-medium">Quiz</th>
                     <th className="text-left px-4 py-3 text-zinc-400 font-medium">Due</th>
                     <th className="px-4 py-3" />
                   </tr>
@@ -140,6 +163,8 @@ export default async function AdminAssignPage() {
                   {typedAssignments.map((a) => {
                     const progress = progressMap.get(`${a.user_id}::${a.video_id}`) ?? null
                     const eff = getEffectiveProgress(progress, a.assigned_at)
+                    const quizId = quizIdByVideo.get(a.video_id) ?? null
+                    const bestAttempt = quizId ? bestAttemptMap.get(`${a.user_id}::${quizId}`) ?? null : null
                     return (
                       <tr key={a.id} className="hover:bg-zinc-800/40 transition-colors">
                         <td className="px-4 py-3 text-zinc-200 whitespace-nowrap">
@@ -155,6 +180,13 @@ export default async function AdminAssignPage() {
                               {fmtDate(progress.last_watched_at)}
                             </div>
                           )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <AssignQuizCell
+                            hasQuiz={quizId != null}
+                            bestAttempt={bestAttempt}
+                            videoTitle={a.video?.title ?? a.video_id}
+                          />
                         </td>
                         <td className="px-4 py-3 text-zinc-500 text-xs whitespace-nowrap">
                           {fmtDate(a.due_date)}
