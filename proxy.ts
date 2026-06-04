@@ -44,15 +44,30 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!user && !isAuthRoute) {
+    // Preserve the originally-requested URL (path + query) as ?next= so
+    // email/share links like /watch/[id] resolve correctly after sign-in
+    // instead of dumping the user on /dashboard.
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
+    const intended = pathname + (request.nextUrl.search || '')
+    // Avoid pointless ?next=/ or ?next=/login loops.
+    if (intended && intended !== '/' && !intended.startsWith('/login')) {
+      loginUrl.searchParams.set('next', intended)
+    }
     return NextResponse.redirect(loginUrl)
   }
 
   if (user && isAuthRoute) {
-    const dashboardUrl = request.nextUrl.clone()
-    dashboardUrl.pathname = '/dashboard'
-    return NextResponse.redirect(dashboardUrl)
+    // Honor ?next= if it points to a same-app path; otherwise default to dashboard.
+    const next = request.nextUrl.searchParams.get('next')
+    const target = next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard'
+    const targetUrl = request.nextUrl.clone()
+    // Reset search params so ?next= doesn't tag along.
+    targetUrl.search = ''
+    targetUrl.pathname = target.split('?')[0]
+    const q = target.split('?')[1]
+    if (q) targetUrl.search = '?' + q
+    return NextResponse.redirect(targetUrl)
   }
 
   return supabaseResponse

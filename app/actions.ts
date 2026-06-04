@@ -787,10 +787,20 @@ export async function assignStandaloneQuiz(formData: FormData) {
   console.log('[assignStandaloneQuiz] quiz fetch — data:', quizData, '| error:', quizFetchError)
   console.log('[assignStandaloneQuiz] employees fetch — data:', employees, '| error:', empFetchError)
 
+  // Collect failures so we can surface them to the admin. Assignment rows are
+  // already in the DB at this point — we never roll those back on email error,
+  // but the admin deserves to know an email didn't go out.
+  const emailFailures: string[] = []
+
   if (!quizData) {
     console.warn('[assignStandaloneQuiz] no quizData — skipping all emails')
+    emailFailures.push('Quiz row was not found when sending emails (RLS or deletion?)')
   } else if (!employees || employees.length === 0) {
     console.warn('[assignStandaloneQuiz] no employees returned — skipping all emails')
+    emailFailures.push('No matching profile rows for the assigned employees (RLS?)')
+  } else if (!process.env.RESEND_API_KEY) {
+    console.warn('[assignStandaloneQuiz] RESEND_API_KEY missing — skipping all emails')
+    emailFailures.push('RESEND_API_KEY is not set on this deployment')
   } else {
     const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
     console.log('[assignStandaloneQuiz] sending', typedEmployees.length, 'email(s)')
@@ -808,14 +818,20 @@ export async function assignStandaloneQuiz(formData: FormData) {
         console.log('[assignStandaloneQuiz] ✓ email sent OK to:', emp.email)
       } catch (emailErr) {
         console.error('[assignStandaloneQuiz] ✗ email FAILED for', emp.email, ':', emailErr)
-        // Don't throw — a failed email must not roll back a successful assignment
+        emailFailures.push(`${emp.email}: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`)
       }
     }
   }
 
-  console.log('[assignStandaloneQuiz] === DONE ===')
+  console.log('[assignStandaloneQuiz] === DONE ===', emailFailures.length === 0 ? 'all emails OK' : `${emailFailures.length} email failure(s)`)
   revalidatePath('/admin/quizzes')
   revalidatePath('/dashboard')
+
+  // If anything in the email pipeline failed, surface to the admin so silent
+  // "looked like it worked but no email" mode isn't possible.
+  if (emailFailures.length > 0) {
+    throw new Error(`Assignments saved, but email(s) failed: ${emailFailures.join('; ')}`)
+  }
 }
 
 export async function deleteStandaloneQuizAssignment(assignmentId: string) {

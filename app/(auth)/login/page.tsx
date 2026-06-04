@@ -1,12 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const COMPANY_CODE = 'hillside'
 
+// Where to send the user after a successful sign-in. Honors ?next= from the
+// proxy redirect (e.g. /watch/[id] from an email link) so they actually land
+// where they were headed instead of always defaulting to /dashboard. Only
+// same-origin paths are allowed — guards against open-redirect attacks.
+function resolveNext(raw: string | null): string {
+  if (!raw) return '/dashboard'
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/dashboard'
+  return raw
+}
+
 export default function LoginPage() {
   const supabase = createClient()
+  // Read ?next= lazily on the client to avoid the Suspense-boundary
+  // requirement of useSearchParams. The value isn't rendered, just used in
+  // post-submit redirects, so SSR/hydration stays clean.
+  const [next, setNext] = useState('/dashboard')
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('next')
+    setNext(resolveNext(raw))
+  }, [])
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [email, setEmail] = useState('')
@@ -65,7 +83,7 @@ export default function LoginPage() {
           return
         }
 
-        window.location.href = '/dashboard'
+        window.location.href = next
         return
       } else {
         // Email-confirmation links (if Supabase requires them) come back to
@@ -85,9 +103,9 @@ export default function LoginPage() {
         if (error) throw error
 
         // When email confirmation is OFF in Supabase, signUp returns a session
-        // and the user is already logged in. Send them to the dashboard.
+        // and the user is already logged in. Honor ?next= if present.
         if (data.session) {
-          window.location.href = '/dashboard'
+          window.location.href = next
           return
         }
 
