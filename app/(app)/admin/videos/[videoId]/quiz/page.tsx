@@ -2,7 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { Video, Quiz } from '@/lib/types'
-import { deleteQuiz } from '@/app/actions'
+import { deleteQuiz, saveQuiz, type QuizPayload } from '@/app/actions'
 import QuizBuilder from './QuizBuilder'
 
 export default async function QuizManagePage(props: {
@@ -90,7 +90,13 @@ export default async function QuizManagePage(props: {
         )}
       </div>
 
-      <QuizBuilder videoId={videoId} existing={quiz} />
+      <QuizBuilder
+        existing={quiz}
+        onSave={async (payload: QuizPayload) => {
+          'use server'
+          await saveQuiz(videoId, payload)
+        }}
+      />
     </div>
   )
 }

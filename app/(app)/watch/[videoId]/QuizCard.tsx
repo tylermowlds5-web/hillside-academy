@@ -15,7 +15,6 @@ import {
 } from '@dnd-kit/core'
 import type { Quiz, QuizQuestion, QuizSubmittedAnswer } from '@/lib/types'
 import { quizQuestionType } from '@/lib/types'
-import { submitQuizAttempt } from '@/app/actions'
 
 type Result = {
   score: number
@@ -38,14 +37,21 @@ function isAnswered(q: QuizQuestion, answer: QuizSubmittedAnswer | undefined): b
 
 export default function QuizCard({
   quiz,
-  videoId,
   passingScore,
+  onSubmit,
   onComplete,
+  failureMode = 'rewatch',
 }: {
-  quiz: Quiz
-  videoId: string
+  // The quiz to render. Only `id` and `questions` are read.
+  quiz: Pick<Quiz, 'id' | 'questions'>
   passingScore: number
+  // How to submit the answers. Lets the same card drive both video and
+  // standalone quiz flows — the page wires up the right server action.
+  onSubmit: (answers: Record<number, QuizSubmittedAnswer>) => Promise<Result>
   onComplete: (passed: boolean) => void
+  // Controls the failure screen messaging. 'rewatch' = video flow (must rewatch
+  // before retaking); 'retake' = standalone flow (immediate retake allowed).
+  failureMode?: 'rewatch' | 'retake'
 }) {
   const [answers, setAnswers] = useState<Record<number, QuizSubmittedAnswer>>({})
   const [result, setResult] = useState<Result | null>(null)
@@ -67,7 +73,7 @@ export default function QuizCard({
     setError(null)
     setSubmitting(true)
     try {
-      const res = await submitQuizAttempt(quiz.id, videoId, answers)
+      const res = await onSubmit(answers)
       setResult(res)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Submission failed')
@@ -134,7 +140,7 @@ export default function QuizCard({
                 Done
               </button>
             </div>
-          ) : (
+          ) : failureMode === 'rewatch' ? (
             <div className="space-y-3">
               <div className="rounded-xl bg-amber-950/60 border border-amber-800 px-4 py-3 text-sm text-amber-300 flex items-start gap-2.5 text-left max-w-sm mx-auto">
                 <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -147,6 +153,22 @@ export default function QuizCard({
                 className="px-6 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors cursor-pointer"
               >
                 Rewatch Video
+              </button>
+            </div>
+          ) : (
+            // Standalone-quiz failure: no video to rewatch — just let them try
+            // again. The "Try again" button resets the local result state so
+            // they can re-submit.
+            <div className="space-y-3">
+              <p className="text-sm text-zinc-400">You can try this quiz again.</p>
+              <button
+                onClick={() => {
+                  setResult(null)
+                  setAnswers({})
+                }}
+                className="px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-medium transition-colors cursor-pointer"
+              >
+                Try Again
               </button>
             </div>
           )}

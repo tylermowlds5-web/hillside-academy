@@ -10,20 +10,26 @@ export default function QuizResultsTable({
   passingScoreByQuizId,
   videoTitleById,
   quizVideoMap,
+  standaloneTitleByQuizId,
 }: {
   attempts: QuizAttempt[]
   passingScoreByQuizId: Record<string, number>
   videoTitleById: Record<string, string>
   quizVideoMap: Record<string, string>
+  // Optional: map quiz_id → title for standalone quiz attempts (no video_id).
+  // Falls back to "Standalone quiz" if absent.
+  standaloneTitleByQuizId?: Record<string, string>
 }) {
   const [viewingAttempt, setViewingAttempt] = useState<QuizAttempt | null>(null)
 
   if (attempts.length === 0) return null
 
-  function getVideoTitle(attempt: QuizAttempt): string {
-    // Prefer video_id directly on the attempt (newer records)
+  function getSourceTitle(attempt: QuizAttempt): string {
+    // Video-anchored attempt: prefer attempt.video_id, fall back to quiz→video.
     const vidId = attempt.video_id ?? quizVideoMap[attempt.quiz_id]
-    return vidId ? (videoTitleById[vidId] ?? 'Unknown video') : 'Unknown video'
+    if (vidId) return videoTitleById[vidId] ?? 'Unknown video'
+    // Standalone quiz attempt (no video_id) — resolve via the quiz title map.
+    return standaloneTitleByQuizId?.[attempt.quiz_id] ?? 'Standalone quiz'
   }
 
   return (
@@ -38,7 +44,7 @@ export default function QuizResultsTable({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800">
-                  <th className="text-left px-4 py-3 text-zinc-400 font-medium">Video</th>
+                  <th className="text-left px-4 py-3 text-zinc-400 font-medium">Source</th>
                   <th className="text-left px-4 py-3 text-zinc-400 font-medium">Date &amp; Time</th>
                   <th className="text-center px-4 py-3 text-zinc-400 font-medium">Score</th>
                   <th className="text-center px-4 py-3 text-zinc-400 font-medium">Result</th>
@@ -50,8 +56,8 @@ export default function QuizResultsTable({
                 {attempts.map((a) => (
                   <tr key={a.id} className="hover:bg-zinc-800/30">
                     <td className="px-4 py-2.5 text-zinc-300 max-w-[200px]">
-                      <span className="block truncate text-sm" title={getVideoTitle(a)}>
-                        {getVideoTitle(a)}
+                      <span className="block truncate text-sm" title={getSourceTitle(a)}>
+                        {getSourceTitle(a)}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-zinc-400 whitespace-nowrap">
@@ -90,7 +96,7 @@ export default function QuizResultsTable({
       {viewingAttempt && (
         <AnswersModal
           attempt={viewingAttempt}
-          videoTitle={getVideoTitle(viewingAttempt)}
+          videoTitle={getSourceTitle(viewingAttempt)}
           onClose={() => setViewingAttempt(null)}
         />
       )}

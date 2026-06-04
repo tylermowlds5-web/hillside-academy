@@ -181,6 +181,140 @@ export async function sendAssignmentEmail(params: AssignmentEmailParams) {
   console.log('=== sendAssignmentEmail SUCCESS — id:', data?.id, '===')
 }
 
+// ── Standalone quiz assignment email ──────────────────────────────────────
+
+export interface StandaloneQuizAssignmentEmailParams {
+  to: string
+  employeeName: string
+  quizTitle: string
+  dueDate: string | null
+  quizUrl: string              // absolute URL to /quizzes/[quizId]
+}
+
+export async function sendStandaloneQuizAssignmentEmail(params: StandaloneQuizAssignmentEmailParams) {
+  const { to, employeeName, quizTitle, dueDate, quizUrl } = params
+
+  const subject = `New Quiz Assigned: ${quizTitle}`
+  console.log('=== sendStandaloneQuizAssignmentEmail CALLED ===')
+  console.log('  to:     ', to)
+  console.log('  subject:', subject)
+
+  const dueLine = dueDate
+    ? `<tr>
+        <td style="padding-top:16px;">
+          <span style="display:inline-block;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:5px 12px;font-size:13px;font-weight:600;color:#92400e;">
+            Due&nbsp;${fmtDate(dueDate)}
+          </span>
+        </td>
+      </tr>`
+    : ''
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>New Quiz Assigned: ${quizTitle}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f4f5;">
+  <tr>
+    <td align="center" style="padding:40px 20px 48px;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;">
+        <tr>
+          <td style="background:#10b981;border-radius:12px 12px 0 0;padding:24px 36px;">
+            <table cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td style="padding-right:12px;vertical-align:middle;">
+                  <div style="width:36px;height:36px;background:rgba(255,255,255,0.22);border-radius:8px;"></div>
+                </td>
+                <td style="vertical-align:middle;">
+                  <span style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:-0.3px;">Hillside University</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#ffffff;padding:36px;border-radius:0 0 12px 12px;border:1px solid #e4e4e7;border-top:none;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td style="padding-bottom:6px;">
+                  <h1 style="margin:0;font-size:22px;font-weight:700;color:#18181b;letter-spacing:-0.5px;line-height:1.3;">
+                    New Quiz Assigned
+                  </h1>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-bottom:28px;">
+                  <p style="margin:0;font-size:15px;color:#71717a;line-height:1.5;">
+                    Hi&nbsp;${employeeName.replace(/</g, '&lt;')}, a new quiz has been assigned to you.
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background:#fafafa;border:1px solid #e4e4e7;border-radius:10px;padding:20px 22px 22px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                    <tr>
+                      <td style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#a1a1aa;padding-bottom:6px;">
+                        Quiz
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="font-size:18px;font-weight:700;color:#18181b;line-height:1.3;">
+                        ${quizTitle.replace(/</g, '&lt;')}
+                      </td>
+                    </tr>
+                    ${dueLine}
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:36px 0 28px;">
+                  <a href="${quizUrl}"
+                     style="display:inline-block;background:#10b981;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:15px 44px;border-radius:10px;letter-spacing:-0.2px;">
+                    Take Quiz &rarr;
+                  </a>
+                </td>
+              </tr>
+              <tr>
+                <td align="center">
+                  <p style="margin:0;font-size:12px;color:#a1a1aa;">
+                    Or copy this link into your browser:<br>
+                    <a href="${quizUrl}" style="color:#10b981;word-break:break-all;">${quizUrl}</a>
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding-top:24px;">
+            <p style="margin:0;font-size:12px;color:#a1a1aa;">
+              Hillside University &middot; Employee Training Platform
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`
+
+  try {
+    const { data, error } = await resend.emails.send({ from: FROM, to, subject, html })
+    if (error) {
+      console.error('=== sendStandaloneQuizAssignmentEmail FAILED ===', JSON.stringify(error))
+      throw new Error(error.message ?? 'Resend returned an error')
+    }
+    console.log('=== sendStandaloneQuizAssignmentEmail SUCCESS — id:', data?.id, '===')
+  } catch (thrown) {
+    console.error('=== sendStandaloneQuizAssignmentEmail THREW ===', thrown)
+    throw thrown
+  }
+}
+
 // ── Learning path assignment email ────────────────────────────────────────
 
 export interface PathAssignmentEmailParams {

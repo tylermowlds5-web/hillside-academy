@@ -226,6 +226,41 @@ export type QuizAttempt = {
   answers?: StoredAnswer[] | null
 }
 
+// ── Standalone quizzes ────────────────────────────────────────────────────
+// Quizzes that aren't attached to any video. Their own assignments/attempts
+// tables (no progress sync, no rewatch gating).
+
+export type StandaloneQuiz = {
+  id: string
+  title: string
+  description: string | null
+  category_id: string | null
+  questions: QuizQuestion[]
+  passing_score: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type StandaloneQuizAssignment = {
+  id: string
+  quiz_id: string
+  user_id: string
+  assigned_by: string | null
+  due_date: string | null
+  assigned_at: string
+}
+
+export type StandaloneQuizAttempt = {
+  id: string
+  quiz_id: string
+  user_id: string
+  score: number
+  passed: boolean
+  answers?: StoredAnswer[] | null
+  taken_at: string
+}
+
 // ── Learning paths ────────────────────────────────────────────────────────
 
 export type LearningPath = {

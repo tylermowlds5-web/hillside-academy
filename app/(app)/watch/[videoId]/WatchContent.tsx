@@ -7,7 +7,7 @@ import type { Video, Progress, Quiz, QuizAttempt } from '@/lib/types'
 import VideoPlayer from './VideoPlayer'
 import QuizCard from './QuizCard'
 import FormattedDescription from './FormattedDescription'
-import { markPathCompleted, getNextVideoInPath, updateVideoProgress } from '@/app/actions'
+import { markPathCompleted, getNextVideoInPath, updateVideoProgress, submitQuizAttempt } from '@/app/actions'
 import { fmtDate } from '@/lib/format-date'
 
 export type PathContext = {
@@ -214,8 +214,8 @@ export default function WatchContent({
           </div>
           <QuizCard
             quiz={quiz}
-            videoId={video.id}
             passingScore={quiz.passing_score}
+            onSubmit={(answers) => submitQuizAttempt(quiz.id, video.id, answers)}
             onComplete={handleQuizComplete}
           />
         </div>

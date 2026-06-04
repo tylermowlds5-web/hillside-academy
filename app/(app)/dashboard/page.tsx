@@ -9,9 +9,14 @@ import type {
   LearningPathAssignment,
   Quiz,
   QuizAttempt,
+  StandaloneQuiz,
+  StandaloneQuizAssignment,
+  StandaloneQuizAttempt,
+  Category,
 } from '@/lib/types'
 import { getEffectiveProgress } from '@/lib/assignment-progress'
 import CategoryView, { type AssignedPathCard } from './CategoryView'
+import QuizzesSection, { type AssignedQuizCard } from './QuizzesSection'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -43,6 +48,24 @@ export default async function DashboardPage() {
     supabase.from('learning_path_items').select('*').order('sort_order'),
     supabase.from('quizzes').select('id, video_id'),
     supabase.from('quiz_attempts').select('quiz_id').eq('user_id', user.id).eq('passed', true),
+  ])
+
+  // ── Standalone quiz assignments + best attempts for this user ─────────────
+  const [
+    { data: standaloneAssignRows },
+    { data: standaloneAttemptRows },
+    { data: categoryRows },
+  ] = await Promise.all([
+    supabase
+      .from('standalone_quiz_assignments')
+      .select('id, quiz_id, due_date, assigned_at, quiz:standalone_quizzes(id, title, description, category_id)')
+      .eq('user_id', user.id)
+      .order('assigned_at', { ascending: false }),
+    supabase
+      .from('standalone_quiz_attempts')
+      .select('quiz_id, score, passed')
+      .eq('user_id', user.id),
+    supabase.from('categories').select('id, name'),
   ])
 
   if (assignErr) console.error('[dashboard] assignments query error:', assignErr.message)
@@ -131,6 +154,42 @@ export default async function DashboardPage() {
     return !p || (p.percent_watched ?? 0) === 0
   })
 
+  // ── Build assigned standalone quiz cards (best attempt per quiz) ──────────
+  type StandaloneAssignRow = Pick<StandaloneQuizAssignment, 'id' | 'quiz_id' | 'due_date' | 'assigned_at'> & {
+    quiz: Pick<StandaloneQuiz, 'id' | 'title' | 'description' | 'category_id'> | null
+  }
+  const typedStandaloneAssigns = (standaloneAssignRows ?? []) as unknown as StandaloneAssignRow[]
+  const typedStandaloneAttempts = (standaloneAttemptRows ?? []) as Pick<StandaloneQuizAttempt, 'quiz_id' | 'score' | 'passed'>[]
+  const typedCategoryRows = (categoryRows ?? []) as Pick<Category, 'id' | 'name'>[]
+  const categoryNameById = new Map(typedCategoryRows.map((c) => [c.id, c.name]))
+
+  // Best (highest-score) attempt per quiz, plus total attempt count.
+  const standaloneBest = new Map<string, { score: number; passed: boolean }>()
+  const standaloneAttemptCount = new Map<string, number>()
+  for (const a of typedStandaloneAttempts) {
+    standaloneAttemptCount.set(a.quiz_id, (standaloneAttemptCount.get(a.quiz_id) ?? 0) + 1)
+    const existing = standaloneBest.get(a.quiz_id)
+    if (!existing || a.score > existing.score) {
+      standaloneBest.set(a.quiz_id, { score: a.score, passed: a.passed })
+    }
+  }
+
+  const assignedQuizzes: AssignedQuizCard[] = typedStandaloneAssigns
+    .filter((a) => a.quiz !== null)
+    .map((a) => {
+      const best = standaloneBest.get(a.quiz_id)
+      return {
+        id: a.quiz!.id,
+        title: a.quiz!.title,
+        description: a.quiz!.description,
+        categoryName: a.quiz!.category_id ? categoryNameById.get(a.quiz!.category_id) ?? null : null,
+        dueDate: a.due_date,
+        bestScore: best?.score ?? null,
+        bestPassed: best?.passed ?? false,
+        attemptCount: standaloneAttemptCount.get(a.quiz_id) ?? 0,
+      }
+    })
+
   return (
     <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
       <div className="mb-6 sm:mb-8">
@@ -147,6 +206,8 @@ export default async function DashboardPage() {
         unwatchedVideos={unwatchedVideos}
         assignedPaths={assignedPaths}
       />
+
+      <QuizzesSection quizzes={assignedQuizzes} />
     </div>
   )
 }

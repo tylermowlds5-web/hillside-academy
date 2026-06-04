@@ -46,6 +46,8 @@ export default async function EmployeeDetailPage(props: {
     { data: quizzes },
     { data: allVideos },
     { data: documentViews },
+    { data: standaloneAttemptRows },
+    { data: standaloneQuizRows },
   ] = await Promise.all([
     supabase
       .from('assignments')
@@ -76,6 +78,12 @@ export default async function EmployeeDetailPage(props: {
       .select('*, documents(title, file_type)')
       .eq('user_id', id)
       .order('viewed_at', { ascending: false }),
+    supabase
+      .from('standalone_quiz_attempts')
+      .select('*')
+      .eq('user_id', id)
+      .order('taken_at', { ascending: false }),
+    supabase.from('standalone_quizzes').select('id, title, passing_score'),
   ])
 
   type AssignRow = { video_id: string; due_date: string | null; videos: { id: string; title: string; duration: number | null } | null }
@@ -83,7 +91,32 @@ export default async function EmployeeDetailPage(props: {
   const typedProgress = (allProgress ?? []) as Progress[]
   const typedEvents = (watchEvents ?? []) as (VideoWatchEvent & { videos: { title: string } | null })[]
   const typedSessions = (sessions ?? []) as Session[]
-  const typedAttempts = (quizAttempts ?? []) as QuizAttempt[]
+  const videoAttempts = (quizAttempts ?? []) as QuizAttempt[]
+  // Standalone attempts get folded into the same QuizAttempt-shaped list with
+  // video_id=null so the existing review table renders them too. The Source
+  // column resolves the title via standaloneTitleByQuizId for these rows.
+  type StandaloneAttemptRow = {
+    id: string; quiz_id: string; user_id: string; score: number; passed: boolean;
+    answers: import('@/lib/types').StoredAnswer[] | null; taken_at: string;
+  }
+  const typedStandaloneAttempts = (standaloneAttemptRows ?? []) as StandaloneAttemptRow[]
+  const standaloneAsQuizAttempts: QuizAttempt[] = typedStandaloneAttempts.map((a) => ({
+    id: a.id,
+    user_id: a.user_id,
+    quiz_id: a.quiz_id,
+    video_id: null,
+    score: a.score,
+    passed: a.passed,
+    taken_at: a.taken_at,
+    answers: a.answers,
+  }))
+  const typedAttempts: QuizAttempt[] = [...videoAttempts, ...standaloneAsQuizAttempts]
+    .sort((a, b) => b.taken_at.localeCompare(a.taken_at))
+
+  type StandaloneQuizRow = { id: string; title: string; passing_score: number }
+  const typedStandaloneQuizzes = (standaloneQuizRows ?? []) as StandaloneQuizRow[]
+  const standaloneTitleByQuizId: Record<string, string> = {}
+  for (const q of typedStandaloneQuizzes) standaloneTitleByQuizId[q.id] = q.title
   type QuizRow = { id: string; video_id: string; passing_score: number }
   const typedQuizzes = (quizzes ?? []) as unknown as QuizRow[]
   type VideoRow = { id: string; title: string }
@@ -91,9 +124,11 @@ export default async function EmployeeDetailPage(props: {
   type DocView = { id: string; user_id: string; document_id: string; viewed_at: string; documents: { title: string; file_type: string | null } | null }
   const typedDocViews = (documentViews ?? []) as unknown as DocView[]
 
-  // Map quiz_id → passing_score
+  // Map quiz_id → passing_score (both video and standalone quizzes — uuids
+  // don't collide across tables).
   const passingScoreByQuizId: Record<string, number> = {}
   for (const q of typedQuizzes) passingScoreByQuizId[q.id] = q.passing_score
+  for (const q of typedStandaloneQuizzes) passingScoreByQuizId[q.id] = q.passing_score
 
   // Map video_id → title (for quiz attempts)
   const videoTitleById: Record<string, string> = {}
@@ -322,6 +357,7 @@ export default async function EmployeeDetailPage(props: {
           passingScoreByQuizId={passingScoreByQuizId}
           videoTitleById={videoTitleById}
           quizVideoMap={quizVideoMap}
+          standaloneTitleByQuizId={standaloneTitleByQuizId}
         />
 
         {/* ── Documents opened ────────────────────────────── */}

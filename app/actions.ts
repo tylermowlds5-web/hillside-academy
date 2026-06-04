@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { deleteR2Files } from '@/lib/r2'
-import { sendAssignmentEmail, sendPathAssignmentEmail } from '@/lib/send-email'
+import { sendAssignmentEmail, sendPathAssignmentEmail, sendStandaloneQuizAssignmentEmail } from '@/lib/send-email'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
@@ -465,34 +465,20 @@ export async function deleteQuiz(quizId: string, videoId: string) {
 
 // ── Quiz attempts (employee) — JSONB ─────────────────────────────────────
 
-export async function submitQuizAttempt(
-  quizId: string,
-  videoId: string,
+// Shared scoring helper used by both video and standalone quiz attempts.
+// Returns the score (0–100), the fully-correct question count, and the
+// per-question stored breakdown used by the review screen.
+function scoreQuiz(
+  questions: QuizQuestion[],
   answers: Record<number, QuizSubmittedAnswer>
-) {
-  const { supabase, user } = await getUser()
-  if (!user) throw new Error('Unauthorized')
-
-  const { data: quiz } = await supabase
-    .from('quizzes')
-    .select('questions, passing_score')
-    .eq('id', quizId)
-    .single<{ questions: QuizQuestion[]; passing_score: number }>()
-
-  if (!quiz || !quiz.questions.length) throw new Error('Quiz not found')
-
-  // `correct` counts FULLY-correct questions (used for the "X of Y" display).
-  // `creditSum` accumulates fractional credit so sequence questions with
-  // partial credit can contribute less than a full point to the score.
+): { score: number; correct: number; storedAnswers: StoredAnswer[] } {
   let correct = 0
   let creditSum = 0
-  const storedAnswers: StoredAnswer[] = quiz.questions.map((q, qi) => {
+  const storedAnswers: StoredAnswer[] = questions.map((q, qi) => {
     const answer = answers[qi]
     const type = quizQuestionType(q)
     const options = q.options ?? []
 
-    // ── Single-choice types (multiple_choice, true_false) ─────────────────
-    // Legacy 'image_question' is normalized to 'multiple_choice' upstream.
     if (type === 'multiple_choice' || type === 'true_false') {
       const selectedIndex = typeof answer === 'number' ? answer : -1
       const chosenOpt = options[selectedIndex]
@@ -507,16 +493,12 @@ export async function submitQuizAttempt(
       }
     }
 
-    // ── Multiple-select: all and only correct options must be chosen ──────
     if (type === 'multiple_select') {
       const picked = Array.isArray(answer) ? (answer as number[]) : []
       const pickedSet = new Set(picked)
-      // Correct iff each option's selected-state matches its is_correct flag
       const isCorrect = options.length > 0 && options.every((o, i) => pickedSet.has(i) === !!o.is_correct)
       if (isCorrect) { correct++; creditSum++ }
-      const chosenTexts = picked
-        .map((i) => options[i]?.option_text)
-        .filter((t): t is string => !!t)
+      const chosenTexts = picked.map((i) => options[i]?.option_text).filter((t): t is string => !!t)
       const correctTexts = options.filter((o) => o.is_correct).map((o) => o.option_text)
       return {
         question_text: q.question_text,
@@ -526,8 +508,6 @@ export async function submitQuizAttempt(
       }
     }
 
-    // ── Short answer: case-insensitive, whitespace-collapsed compare against
-    //    ANY of the accepted answers ───────────────────────────────────────
     if (type === 'short_answer') {
       const given = typeof answer === 'string' ? answer : ''
       const accepted = quizAcceptedAnswers(q)
@@ -538,15 +518,11 @@ export async function submitQuizAttempt(
       return {
         question_text: q.question_text,
         chosen: given || '(no answer)',
-        // Show all accepted answers, joined, so the admin can see what was acceptable
         correct: accepted.length > 0 ? accepted.join(' / ') : '?',
         is_correct: isCorrect,
       }
     }
 
-    // ── Sequence: items are stored in the correct order, so slot p is correct
-    //    iff the placed item's original index === p. Full credit only when all
-    //    slots match; partial credit (if enabled) gives correctSlots / n. ─────
     if (type === 'sequence') {
       const items = q.sequence_items ?? []
       const n = items.length
@@ -581,18 +557,30 @@ export async function submitQuizAttempt(
       }
     }
 
-    // Unknown type — treat as incorrect
-    return {
-      question_text: q.question_text,
-      chosen: '(no answer)',
-      correct: '?',
-      is_correct: false,
-    }
+    return { question_text: q.question_text, chosen: '(no answer)', correct: '?', is_correct: false }
   })
 
-  // Score uses fractional credit (sequence partial credit); for quizzes with no
-  // sequence questions this is identical to correct / total.
-  const score = Math.round((creditSum / quiz.questions.length) * 100)
+  const score = questions.length > 0 ? Math.round((creditSum / questions.length) * 100) : 0
+  return { score, correct, storedAnswers }
+}
+
+export async function submitQuizAttempt(
+  quizId: string,
+  videoId: string,
+  answers: Record<number, QuizSubmittedAnswer>
+) {
+  const { supabase, user } = await getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data: quiz } = await supabase
+    .from('quizzes')
+    .select('questions, passing_score')
+    .eq('id', quizId)
+    .single<{ questions: QuizQuestion[]; passing_score: number }>()
+
+  if (!quiz || !quiz.questions.length) throw new Error('Quiz not found')
+
+  const { score, correct, storedAnswers } = scoreQuiz(quiz.questions, answers)
   const passed = score >= quiz.passing_score
 
   const { error: insertError } = await supabase.from('quiz_attempts').insert({
@@ -646,6 +634,174 @@ export async function submitQuizAttempt(
     )
   }
 
+  return { score, passed, total: quiz.questions.length, correct }
+}
+
+// ── Standalone quizzes (admin) ────────────────────────────────────────────
+// Quizzes that aren't attached to a video. Their own CRUD, assignment, and
+// attempt flow — no progress sync, no rewatch gating.
+
+export type StandaloneQuizPayload = {
+  id?: string | null              // undefined/null = create; present = update
+  title: string
+  description: string | null
+  category_id: string | null
+  passing_score: number
+  questions: QuizQuestion[]
+}
+
+export async function saveStandaloneQuiz(payload: StandaloneQuizPayload): Promise<{ id: string }> {
+  const { supabase, user } = await requireAdmin()
+
+  const row = {
+    title: payload.title,
+    description: payload.description,
+    category_id: payload.category_id,
+    passing_score: payload.passing_score,
+    questions: payload.questions,
+    updated_at: new Date().toISOString(),
+  }
+
+  if (payload.id) {
+    const { data, error } = await supabase
+      .from('standalone_quizzes')
+      .update(row)
+      .eq('id', payload.id)
+      .select('id')
+      .single<{ id: string }>()
+    if (error || !data) throw new Error(error?.message ?? 'Failed to update quiz')
+    revalidatePath('/admin/quizzes')
+    revalidatePath('/dashboard')
+    return { id: data.id }
+  }
+
+  const { data, error } = await supabase
+    .from('standalone_quizzes')
+    .insert({ ...row, created_by: user.id })
+    .select('id')
+    .single<{ id: string }>()
+  if (error || !data) throw new Error(error?.message ?? 'Failed to create quiz')
+  revalidatePath('/admin/quizzes')
+  return { id: data.id }
+}
+
+export async function deleteStandaloneQuiz(quizId: string) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase.from('standalone_quizzes').delete().eq('id', quizId)
+  if (error) throw new Error(error.message)
+  revalidatePath('/admin/quizzes')
+  revalidatePath('/dashboard')
+}
+
+export async function assignStandaloneQuiz(formData: FormData) {
+  const { supabase, user } = await requireAdmin()
+
+  const quiz_id = formData.get('quiz_id') as string
+  const user_ids = formData.getAll('user_ids') as string[]
+  const due_date = (formData.get('due_date') as string) || null
+
+  if (!quiz_id || user_ids.length === 0) {
+    throw new Error('Quiz and at least one employee required')
+  }
+
+  // Find which user_ids are already assigned so we only insert new rows + only
+  // email the people who actually got newly assigned.
+  const { data: existing } = await supabase
+    .from('standalone_quiz_assignments')
+    .select('user_id')
+    .eq('quiz_id', quiz_id)
+    .in('user_id', user_ids)
+
+  const alreadyAssigned = new Set((existing ?? []).map((r: { user_id: string }) => r.user_id))
+  const newUserIds = user_ids.filter((id) => !alreadyAssigned.has(id))
+
+  if (newUserIds.length === 0) {
+    revalidatePath('/admin/quizzes')
+    return
+  }
+
+  const rows = newUserIds.map((uid) => ({
+    quiz_id,
+    user_id: uid,
+    assigned_by: user.id,
+    assigned_at: new Date().toISOString(),
+    due_date,
+  }))
+
+  const { error: insertError } = await supabase
+    .from('standalone_quiz_assignments')
+    .insert(rows)
+  if (insertError) throw new Error(`Failed to save assignments: ${insertError.message}`)
+
+  // Send notification emails (best-effort — never roll back a successful
+  // assignment on email failure).
+  const hdrs = await headers()
+  const host = hdrs.get('host') ?? 'localhost:3000'
+  const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? `${proto}://${host}`
+
+  const [{ data: quizData }, { data: employees }] = await Promise.all([
+    supabase.from('standalone_quizzes').select('id,title').eq('id', quiz_id).single<{ id: string; title: string }>(),
+    supabase.from('profiles').select('id,email,full_name').in('id', newUserIds),
+  ])
+
+  if (quizData && employees && employees.length > 0) {
+    const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
+    for (const emp of typedEmployees) {
+      try {
+        await sendStandaloneQuizAssignmentEmail({
+          to: emp.email,
+          employeeName: emp.full_name ?? emp.email,
+          quizTitle: quizData.title,
+          dueDate: due_date,
+          quizUrl: `${baseUrl}/quizzes/${quizData.id}`,
+        })
+      } catch (emailErr) {
+        console.error('[assignStandaloneQuiz] email FAILED for', emp.email, ':', emailErr)
+      }
+    }
+  }
+
+  revalidatePath('/admin/quizzes')
+  revalidatePath('/dashboard')
+}
+
+export async function deleteStandaloneQuizAssignment(assignmentId: string) {
+  const { supabase } = await requireAdmin()
+  await supabase.from('standalone_quiz_assignments').delete().eq('id', assignmentId)
+  revalidatePath('/admin/quizzes')
+  revalidatePath('/dashboard')
+}
+
+export async function submitStandaloneQuizAttempt(
+  quizId: string,
+  answers: Record<number, QuizSubmittedAnswer>
+) {
+  const { supabase, user } = await getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data: quiz } = await supabase
+    .from('standalone_quizzes')
+    .select('questions, passing_score')
+    .eq('id', quizId)
+    .single<{ questions: QuizQuestion[]; passing_score: number }>()
+
+  if (!quiz || !quiz.questions.length) throw new Error('Quiz not found')
+
+  const { score, correct, storedAnswers } = scoreQuiz(quiz.questions, answers)
+  const passed = score >= quiz.passing_score
+
+  const { error: insertError } = await supabase.from('standalone_quiz_attempts').insert({
+    user_id: user.id,
+    quiz_id: quizId,
+    score,
+    passed,
+    answers: storedAnswers,
+    taken_at: new Date().toISOString(),
+  })
+  if (insertError) throw new Error(`Failed to save attempt: ${insertError.message}`)
+
+  revalidatePath('/dashboard')
   return { score, passed, total: quiz.questions.length, correct }
 }
 

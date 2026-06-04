@@ -19,7 +19,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { saveQuiz, type QuizPayload } from '@/app/actions'
+import type { QuizPayload } from '@/app/actions'
 import type { Quiz, QuizQuestionType } from '@/lib/types'
 import { quizQuestionType, quizAcceptedAnswers } from '@/lib/types'
 
@@ -567,11 +567,19 @@ function QuestionEditor({
 // ── Main builder ─────────────────────────────────────────────────────────
 
 export default function QuizBuilder({
-  videoId,
   existing,
+  onSave,
+  saveLabel = 'Save Quiz',
+  updateLabel = 'Update Quiz',
 }: {
-  videoId: string
-  existing: Quiz | null
+  // Initial values; null = new quiz.
+  existing: Pick<Quiz, 'passing_score' | 'questions'> | null
+  // Server-action or async callback that persists the payload. Lets the same
+  // builder drive both video quizzes and standalone quizzes — the caller wires
+  // up the storage (saveQuiz for videos, saveStandaloneQuiz for standalone).
+  onSave: (payload: QuizPayload) => Promise<void>
+  saveLabel?: string
+  updateLabel?: string
 }) {
   const [passingScore, setPassingScore] = useState(existing?.passing_score ?? 70)
   const [questions, setQuestions] = useState<QuestionDraft[]>(() => {
@@ -677,7 +685,7 @@ export default function QuizBuilder({
           }
         }),
       }
-      await saveQuiz(videoId, payload)
+      await onSave(payload)
       setSaved(true)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -743,7 +751,7 @@ export default function QuizBuilder({
         disabled={saving}
         className="w-full py-3 min-h-[48px] rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-medium text-sm transition-colors cursor-pointer"
       >
-        {saving ? 'Saving…' : existing ? 'Update Quiz' : 'Save Quiz'}
+        {saving ? 'Saving…' : existing ? updateLabel : saveLabel}
       </button>
     </div>
   )

@@ -249,3 +249,39 @@ BEGIN
     );
   END LOOP;
 END $$;
+
+-- ── Standalone quizzes ────────────────────────────────────────────────
+-- Quizzes that are NOT attached to any video. Assigned and taken on their own,
+-- with their own attempts table (no video_id, no progress sync).
+
+CREATE TABLE IF NOT EXISTS public.standalone_quizzes (
+  id uuid default gen_random_uuid() primary key,
+  title text not null,
+  description text,
+  category_id uuid references public.categories(id) on delete set null,
+  questions jsonb not null default '[]',
+  passing_score integer default 80,
+  created_by uuid references auth.users(id),
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+CREATE TABLE IF NOT EXISTS public.standalone_quiz_assignments (
+  id uuid default gen_random_uuid() primary key,
+  quiz_id uuid references public.standalone_quizzes(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  assigned_by uuid references auth.users(id),
+  due_date date,
+  assigned_at timestamp with time zone default now(),
+  UNIQUE(quiz_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.standalone_quiz_attempts (
+  id uuid default gen_random_uuid() primary key,
+  quiz_id uuid references public.standalone_quizzes(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  score integer not null,
+  passed boolean not null,
+  answers jsonb default '[]',
+  taken_at timestamp with time zone default now()
+);
