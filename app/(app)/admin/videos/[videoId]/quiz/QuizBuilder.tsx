@@ -227,15 +227,13 @@ function SequenceEditor({
         </SortableContext>
       </DndContext>
 
-      {steps.length < 8 && (
-        <button
-          type="button"
-          onClick={() => sync([...steps, { id: newStepId(), text: '' }])}
-          className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer"
-        >
-          + Add step
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => sync([...steps, { id: newStepId(), text: '' }])}
+        className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer"
+      >
+        + Add step
+      </button>
 
       {/* Partial credit toggle */}
       <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
