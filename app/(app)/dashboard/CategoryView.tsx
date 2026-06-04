@@ -201,6 +201,12 @@ export default function CategoryView({
   const router = useRouter()
   const [activeAssignment, setActiveAssignment] = useState<AssignmentWithDetails | null>(null)
   const [showCompleted, setShowCompleted] = useState(true)
+  const [showAllUnwatched, setShowAllUnwatched] = useState(false)
+
+  const UNWATCHED_PREVIEW_COUNT = 5
+  const visibleUnwatched = showAllUnwatched
+    ? unwatchedVideos
+    : unwatchedVideos.slice(0, UNWATCHED_PREVIEW_COUNT)
 
   const handleCloseModal = useCallback(() => {
     setActiveAssignment(null)
@@ -221,24 +227,36 @@ export default function CategoryView({
 
   return (
     <>
-      {/* Stats */}
+      {/* Stats — each card links to a filtered view of the videos it counts. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
+        <Link
+          href="/videos"
+          className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4 hover:bg-plum/50 hover:border-emerald-500/40 transition-colors cursor-pointer"
+        >
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Total Videos</p>
           <p className="text-3xl font-bold text-zinc-50 mt-1">{totalVideos}</p>
-        </div>
-        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
+        </Link>
+        <Link
+          href="/dashboard/watched"
+          className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4 hover:bg-plum/50 hover:border-emerald-500/40 transition-colors cursor-pointer"
+        >
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Watched</p>
           <p className="text-3xl font-bold text-emerald-400 mt-1">{videosWatched}</p>
-        </div>
-        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
+        </Link>
+        <Link
+          href="/dashboard/in-progress"
+          className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4 hover:bg-plum/50 hover:border-emerald-500/40 transition-colors cursor-pointer"
+        >
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">In Progress</p>
           <p className="text-3xl font-bold text-yellow-400 mt-1">{inProgressCount}</p>
-        </div>
-        <div className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4">
+        </Link>
+        <Link
+          href="/dashboard/assigned"
+          className="bg-plum/30 border border-white/10 border-t-2 border-t-emerald-500 rounded-xl p-4 hover:bg-plum/50 hover:border-emerald-500/40 transition-colors cursor-pointer"
+        >
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Assigned</p>
           <p className="text-3xl font-bold text-zinc-50 mt-1">{assignedNotStarted}</p>
-        </div>
+        </Link>
       </div>
 
       {/* Overall progress bar for assigned videos */}
@@ -374,7 +392,8 @@ export default function CategoryView({
         </div>
       )}
 
-      {/* ── Unwatched Videos section ── */}
+      {/* ── Unwatched Videos section — preview the first few; expand on demand
+          so a large library doesn't push the rest of the page off-screen. ── */}
       {unwatchedVideos.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
@@ -384,10 +403,29 @@ export default function CategoryView({
             <span className="text-zinc-600 text-sm font-normal normal-case">({unwatchedVideos.length})</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {unwatchedVideos.map((video) => (
+            {visibleUnwatched.map((video) => (
               <LibraryVideoCard key={video.id} video={video} />
             ))}
           </div>
+          {unwatchedVideos.length > UNWATCHED_PREVIEW_COUNT && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAllUnwatched((v) => !v)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-sm text-zinc-300 transition-colors cursor-pointer"
+              >
+                {showAllUnwatched
+                  ? `Show fewer`
+                  : `View all ${unwatchedVideos.length} unwatched videos`}
+                <svg
+                  className={`w-4 h-4 transition-transform ${showAllUnwatched ? 'rotate-180' : ''}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

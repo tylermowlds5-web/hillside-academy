@@ -371,7 +371,12 @@ export async function createAssignment(formData: FormData) {
     // ── Step 3: send emails for newly inserted employees ──
     const baseUrl = getAppBaseUrl()
 
-    console.log('[createAssignment] baseUrl:', baseUrl)
+    console.log('[createAssignment] === EMAIL URL DEBUG ===')
+    console.log('[createAssignment] resolved baseUrl:', JSON.stringify(baseUrl))
+    console.log('[createAssignment] direct process.env.NEXT_PUBLIC_APP_URL:', JSON.stringify(process.env.NEXT_PUBLIC_APP_URL))
+    console.log('[createAssignment] direct process.env.APP_URL:', JSON.stringify(process.env.APP_URL))
+    console.log('[createAssignment] NODE_ENV:', process.env.NODE_ENV)
+    console.log('[createAssignment] VERCEL_URL:', process.env.VERCEL_URL)
 
     const [{ data: videoData, error: videoError }, { data: employees, error: empError }] = await Promise.all([
       supabase
@@ -391,14 +396,15 @@ export async function createAssignment(formData: FormData) {
     if (videoData && employees && employees.length > 0) {
       const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
       for (const emp of typedEmployees) {
-        console.log('[createAssignment] sending email to:', emp.email)
+        const watchUrl = `${baseUrl}/watch/${videoData.id}`
+        console.log('[createAssignment] sending email to:', emp.email, '| watchUrl:', watchUrl)
         try {
           await sendAssignmentEmail({
             to: emp.email,
             employeeName: emp.full_name ?? emp.email,
             videoTitle: videoData.title,
             dueDate: due_date,
-            watchUrl: `${baseUrl}/watch/${videoData.id}`,
+            watchUrl,
           })
           console.log('[createAssignment] email sent OK to:', emp.email)
         } catch (emailErr) {
@@ -707,28 +713,38 @@ export async function deleteStandaloneQuiz(quizId: string) {
 }
 
 export async function assignStandaloneQuiz(formData: FormData) {
+  console.log('[assignStandaloneQuiz] === ACTION CALLED ===')
   const { supabase, user } = await requireAdmin()
+  console.log('[assignStandaloneQuiz] requireAdmin OK — admin user:', user.id)
 
   const quiz_id = formData.get('quiz_id') as string
   const user_ids = formData.getAll('user_ids') as string[]
   const due_date = (formData.get('due_date') as string) || null
 
+  console.log('[assignStandaloneQuiz] inputs — quiz_id:', quiz_id, '| user_ids:', user_ids, '| due_date:', due_date)
+
   if (!quiz_id || user_ids.length === 0) {
+    console.error('[assignStandaloneQuiz] missing quiz_id or user_ids — aborting')
     throw new Error('Quiz and at least one employee required')
   }
 
   // Find which user_ids are already assigned so we only insert new rows + only
   // email the people who actually got newly assigned.
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('standalone_quiz_assignments')
     .select('user_id')
     .eq('quiz_id', quiz_id)
     .in('user_id', user_ids)
 
+  console.log('[assignStandaloneQuiz] existing check — data:', existing, '| error:', existingError)
+
   const alreadyAssigned = new Set((existing ?? []).map((r: { user_id: string }) => r.user_id))
   const newUserIds = user_ids.filter((id) => !alreadyAssigned.has(id))
 
+  console.log('[assignStandaloneQuiz] alreadyAssigned:', [...alreadyAssigned], '| newUserIds:', newUserIds)
+
   if (newUserIds.length === 0) {
+    console.log('[assignStandaloneQuiz] all employees were already assigned — nothing inserted, no email')
     revalidatePath('/admin/quizzes')
     return
   }
@@ -741,37 +757,63 @@ export async function assignStandaloneQuiz(formData: FormData) {
     due_date,
   }))
 
-  const { error: insertError } = await supabase
+  console.log('[assignStandaloneQuiz] inserting rows:', JSON.stringify(rows))
+
+  const { data: insertedRows, error: insertError } = await supabase
     .from('standalone_quiz_assignments')
     .insert(rows)
-  if (insertError) throw new Error(`Failed to save assignments: ${insertError.message}`)
+    .select('id, user_id')
 
-  // Send notification emails (best-effort — never roll back a successful
-  // assignment on email failure).
+  console.log('[assignStandaloneQuiz] insert result — data:', insertedRows, '| error:', insertError)
+
+  if (insertError) {
+    console.error('[assignStandaloneQuiz] INSERT FAILED:', insertError.message, insertError.code, insertError.details)
+    throw new Error(`Failed to save assignments: ${insertError.message}`)
+  }
+
+  // ── Send notification emails (best-effort) ──
   const baseUrl = getAppBaseUrl()
+  console.log('[assignStandaloneQuiz] === EMAIL URL DEBUG ===')
+  console.log('[assignStandaloneQuiz] resolved baseUrl:', JSON.stringify(baseUrl))
+  console.log('[assignStandaloneQuiz] direct process.env.NEXT_PUBLIC_APP_URL:', JSON.stringify(process.env.NEXT_PUBLIC_APP_URL))
+  console.log('[assignStandaloneQuiz] direct process.env.APP_URL:', JSON.stringify(process.env.APP_URL))
+  console.log('[assignStandaloneQuiz] RESEND_API_KEY present?:', process.env.RESEND_API_KEY ? 'yes (' + process.env.RESEND_API_KEY.slice(0, 10) + '…)' : 'NO')
 
-  const [{ data: quizData }, { data: employees }] = await Promise.all([
+  const [{ data: quizData, error: quizFetchError }, { data: employees, error: empFetchError }] = await Promise.all([
     supabase.from('standalone_quizzes').select('id,title').eq('id', quiz_id).single<{ id: string; title: string }>(),
     supabase.from('profiles').select('id,email,full_name').in('id', newUserIds),
   ])
 
-  if (quizData && employees && employees.length > 0) {
+  console.log('[assignStandaloneQuiz] quiz fetch — data:', quizData, '| error:', quizFetchError)
+  console.log('[assignStandaloneQuiz] employees fetch — data:', employees, '| error:', empFetchError)
+
+  if (!quizData) {
+    console.warn('[assignStandaloneQuiz] no quizData — skipping all emails')
+  } else if (!employees || employees.length === 0) {
+    console.warn('[assignStandaloneQuiz] no employees returned — skipping all emails')
+  } else {
     const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
+    console.log('[assignStandaloneQuiz] sending', typedEmployees.length, 'email(s)')
     for (const emp of typedEmployees) {
+      const quizUrl = `${baseUrl}/quizzes/${quizData.id}`
+      console.log('[assignStandaloneQuiz] → sending email to:', emp.email, '| quizUrl:', quizUrl)
       try {
         await sendStandaloneQuizAssignmentEmail({
           to: emp.email,
           employeeName: emp.full_name ?? emp.email,
           quizTitle: quizData.title,
           dueDate: due_date,
-          quizUrl: `${baseUrl}/quizzes/${quizData.id}`,
+          quizUrl,
         })
+        console.log('[assignStandaloneQuiz] ✓ email sent OK to:', emp.email)
       } catch (emailErr) {
-        console.error('[assignStandaloneQuiz] email FAILED for', emp.email, ':', emailErr)
+        console.error('[assignStandaloneQuiz] ✗ email FAILED for', emp.email, ':', emailErr)
+        // Don't throw — a failed email must not roll back a successful assignment
       }
     }
   }
 
+  console.log('[assignStandaloneQuiz] === DONE ===')
   revalidatePath('/admin/quizzes')
   revalidatePath('/dashboard')
 }
