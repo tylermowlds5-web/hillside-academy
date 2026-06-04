@@ -149,6 +149,12 @@ export type QuizQuestion = {
   // When true, each correctly-placed step earns partial credit (e.g. 3/4 = 75%).
   // When false/absent, the whole question is all-or-nothing.
   partial_credit?: boolean
+  // Interchangeable-step groups. Each inner array is item indices (into
+  // sequence_items) that may appear in any order within the position range
+  // they collectively occupy — e.g. [2, 3, 4] = positions 3-5 are valid for
+  // any of those three items. Groups must be contiguous in the canonical
+  // order and an index can belong to at most one group.
+  sequence_groups?: number[][]
 }
 
 // Helper so the rest of the codebase doesn't have to handle the optional

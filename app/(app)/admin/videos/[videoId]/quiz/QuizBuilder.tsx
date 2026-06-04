@@ -34,12 +34,15 @@ type QuestionDraft = {
   // sequence ("order the steps") — items in the correct order
   sequence_items: string[]
   partial_credit: boolean
+  // Item-index groups (each contiguous in canonical order, no overlap). Items
+  // in the same group may be placed in any order across the group's positions.
+  sequence_groups: number[][]
 }
 
 const emptyOption = (): OptionDraft => ({ option_text: '', is_correct: false })
 
 function defaultQuestion(type: QuizQuestionType = 'multiple_choice'): QuestionDraft {
-  const base = { question_text: '', options: [], image_url: null, correct_answers: [], sequence_items: [], partial_credit: false }
+  const base = { question_text: '', options: [], image_url: null, correct_answers: [], sequence_items: [], partial_credit: false, sequence_groups: [] }
   switch (type) {
     case 'true_false':
       return {
@@ -112,24 +115,48 @@ function SortableStep({
   step,
   position,
   canRemove,
+  selected,
+  groupRole,
+  onToggleSelect,
   onChange,
   onRemove,
 }: {
   step: StepDraft
   position: number
   canRemove: boolean
+  selected: boolean
+  // Where this step sits inside its group, if any. Drives the visual bracket:
+  // 'single' (lone row group — shouldn't happen in practice), 'first', 'middle',
+  // 'last', or null (not grouped).
+  groupRole: 'first' | 'middle' | 'last' | 'single' | null
+  onToggleSelect: () => void
   onChange: (text: string) => void
   onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
 
+  // Left bracket styling: violet bar attached to the row, with rounded corners
+  // on the first/last rows so contiguous group members read as a single block.
+  const inGroup = groupRole !== null
+  const bracketRounding =
+    groupRole === 'first' ? 'rounded-t-md' :
+    groupRole === 'last' ? 'rounded-b-md' :
+    groupRole === 'single' ? 'rounded-md' : ''
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 ${isDragging ? 'opacity-60 z-10 relative' : ''}`}
+      className={`relative flex items-center gap-2 ${inGroup ? 'pl-3' : ''} ${isDragging ? 'opacity-60 z-10' : ''}`}
     >
+      {/* Group bracket — only rendered for grouped rows. */}
+      {inGroup && (
+        <span
+          aria-hidden
+          className={`absolute left-0 top-0 bottom-0 w-1 bg-violet-500/70 ${bracketRounding}`}
+        />
+      )}
       {/* Drag handle */}
       <button
         type="button"
@@ -143,9 +170,20 @@ function SortableStep({
           <path d="M7 4a1 1 0 11-2 0 1 1 0 012 0zM7 10a1 1 0 11-2 0 1 1 0 012 0zM7 16a1 1 0 11-2 0 1 1 0 012 0zM15 4a1 1 0 11-2 0 1 1 0 012 0zM15 10a1 1 0 11-2 0 1 1 0 012 0zM15 16a1 1 0 11-2 0 1 1 0 012 0z" />
         </svg>
       </button>
-      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-semibold flex items-center justify-center">
+      {/* Step number doubles as the selection toggle for grouping. */}
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        title={selected ? 'Click to deselect' : 'Click to select for grouping'}
+        aria-pressed={selected}
+        className={`flex-shrink-0 w-6 h-6 rounded-full text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer ${
+          selected
+            ? 'bg-violet-500 text-white ring-2 ring-violet-400/50'
+            : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+        }`}
+      >
         {position + 1}
-      </span>
+      </button>
       <input
         type="text"
         value={step.text}
@@ -177,10 +215,21 @@ function SequenceEditor({
   q: QuestionDraft
   onChange: (q: QuestionDraft) => void
 }) {
-  // Keep stable ids alongside the plain string[] stored on the draft.
-  const [steps, setSteps] = useState<StepDraft[]>(() =>
-    (q.sequence_items.length > 0 ? q.sequence_items : ['', '', '']).map((text) => ({ id: newStepId(), text }))
-  )
+  // Internally, the editor tracks groups by step ID so they survive reorders
+  // and re-numbering. The draft on the parent stores index-based groups; we
+  // convert at the sync boundary.
+  const initial = useState(() => {
+    const stepsInit: StepDraft[] = (q.sequence_items.length > 0 ? q.sequence_items : ['', '', '']).map(
+      (text) => ({ id: newStepId(), text })
+    )
+    const groupsInit: string[][] = (q.sequence_groups ?? [])
+      .map((g) => g.map((i) => stepsInit[i]?.id).filter((id): id is string => !!id))
+      .filter((g) => g.length >= 2)
+    return { stepsInit, groupsInit }
+  })[0]
+  const [steps, setSteps] = useState<StepDraft[]>(initial.stepsInit)
+  const [groups, setGroups] = useState<string[][]>(initial.groupsInit)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -188,10 +237,51 @@ function SequenceEditor({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Push the ordered text array up to the parent draft.
-  function sync(next: StepDraft[]) {
-    setSteps(next)
-    onChange({ ...q, sequence_items: next.map((s) => s.text) })
+  // ── Derived lookups ──────────────────────────────────────────────────
+  const stepIndexById = new Map<string, number>()
+  steps.forEach((s, i) => stepIndexById.set(s.id, i))
+  // step id → group index (so we know which group each row belongs to)
+  const groupOfStep = new Map<string, number>()
+  groups.forEach((g, gi) => g.forEach((id) => groupOfStep.set(id, gi)))
+
+  // For each group, the sorted positions its members currently occupy. If
+  // not contiguous, the group is invalid and gets dissolved by sync().
+  function groupPositions(groupIdx: number): number[] {
+    return groups[groupIdx]
+      .map((id) => stepIndexById.get(id))
+      .filter((p): p is number => p !== undefined)
+      .sort((a, b) => a - b)
+  }
+  function isContiguous(positions: number[]): boolean {
+    for (let i = 1; i < positions.length; i++) {
+      if (positions[i] !== positions[i - 1] + 1) return false
+    }
+    return positions.length > 0
+  }
+
+  // ── Sync: push step order + index-based groups to the parent draft ───
+  function sync(nextSteps: StepDraft[], nextGroups: string[][]) {
+    // Drop any group that's lost contiguity or fallen below 2 members in the
+    // new layout — keeps the storage invariant clean even after reorder/remove.
+    const nextIndex = new Map<string, number>()
+    nextSteps.forEach((s, i) => nextIndex.set(s.id, i))
+    const cleanedGroups = nextGroups
+      .map((g) => g.filter((id) => nextIndex.has(id)))
+      .filter((g) => g.length >= 2)
+      .filter((g) => {
+        const positions = g.map((id) => nextIndex.get(id)!).sort((a, b) => a - b)
+        return isContiguous(positions)
+      })
+
+    setSteps(nextSteps)
+    setGroups(cleanedGroups)
+    onChange({
+      ...q,
+      sequence_items: nextSteps.map((s) => s.text),
+      sequence_groups: cleanedGroups.map((g) =>
+        g.map((id) => nextIndex.get(id)!).sort((a, b) => a - b)
+      ),
+    })
   }
 
   function handleDragEnd(e: DragEndEvent) {
@@ -200,36 +290,158 @@ function SequenceEditor({
     const oldIndex = steps.findIndex((s) => s.id === active.id)
     const newIndex = steps.findIndex((s) => s.id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
-    sync(arrayMove(steps, oldIndex, newIndex))
+    sync(arrayMove(steps, oldIndex, newIndex), groups)
+  }
+
+  // ── Selection & grouping ─────────────────────────────────────────────
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Selection is groupable iff size ≥ 2, none of the selected steps are
+  // already in a group, and the selected positions are contiguous.
+  const selectedPositions = [...selected]
+    .map((id) => stepIndexById.get(id))
+    .filter((p): p is number => p !== undefined)
+    .sort((a, b) => a - b)
+  const selectionContiguous = isContiguous(selectedPositions)
+  const selectionAlreadyGrouped = [...selected].some((id) => groupOfStep.has(id))
+  const canGroup = selected.size >= 2 && selectionContiguous && !selectionAlreadyGrouped
+
+  function handleGroup() {
+    if (!canGroup) return
+    const newGroup = [...selected]
+    sync(steps, [...groups, newGroup])
+    setSelected(new Set())
+  }
+  function handleUngroup(groupIdx: number) {
+    sync(steps, groups.filter((_, i) => i !== groupIdx))
+  }
+
+  function handleRemove(i: number) {
+    const removedId = steps[i].id
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.delete(removedId)
+      return next
+    })
+    sync(steps.filter((_, idx) => idx !== i), groups)
   }
 
   return (
     <div className="space-y-3 pl-6">
       <p className="text-xs text-zinc-500">
         List the steps in the <span className="text-zinc-300">correct order</span>. Drag the handle to
-        rearrange. Employees see them shuffled and drag them back into order.
+        rearrange. Click a step&apos;s number to select multiple, then group them so any order within the
+        group counts as correct.
       </p>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {steps.map((step, i) => (
-              <SortableStep
-                key={step.id}
-                step={step}
-                position={i}
-                canRemove={steps.length > 2}
-                onChange={(text) => sync(steps.map((s, idx) => (idx === i ? { ...s, text } : s)))}
-                onRemove={() => sync(steps.filter((_, idx) => idx !== i))}
-              />
-            ))}
+            {steps.map((step, i) => {
+              const groupIdx = groupOfStep.get(step.id)
+              let role: 'first' | 'middle' | 'last' | 'single' | null = null
+              if (groupIdx !== undefined) {
+                const positions = groupPositions(groupIdx)
+                const first = positions[0]
+                const last = positions[positions.length - 1]
+                role = positions.length === 1 ? 'single'
+                  : i === first ? 'first'
+                  : i === last ? 'last'
+                  : 'middle'
+              }
+              return (
+                <SortableStep
+                  key={step.id}
+                  step={step}
+                  position={i}
+                  canRemove={steps.length > 2}
+                  selected={selected.has(step.id)}
+                  groupRole={role}
+                  onToggleSelect={() => toggleSelect(step.id)}
+                  onChange={(text) =>
+                    sync(steps.map((s, idx) => (idx === i ? { ...s, text } : s)), groups)
+                  }
+                  onRemove={() => handleRemove(i)}
+                />
+              )
+            })}
           </div>
         </SortableContext>
       </DndContext>
 
+      {/* Grouping toolbar: only shown once at least one step is selected. */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-zinc-500">
+            {selected.size} step{selected.size !== 1 ? 's' : ''} selected
+          </span>
+          <button
+            type="button"
+            onClick={handleGroup}
+            disabled={!canGroup}
+            title={
+              selected.size < 2 ? 'Select at least two steps to group'
+              : selectionAlreadyGrouped ? 'One or more of these steps is already in a group'
+              : !selectionContiguous ? 'Selected steps must be next to each other'
+              : 'Group these steps'
+            }
+            className="px-3 py-1.5 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            Group these steps
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+          >
+            Clear selection
+          </button>
+          {selected.size >= 2 && !selectionContiguous && (
+            <span className="text-amber-400">Selected steps must be next to each other.</span>
+          )}
+          {selectionAlreadyGrouped && (
+            <span className="text-amber-400">Ungroup first to re-group.</span>
+          )}
+        </div>
+      )}
+
+      {/* Existing groups — one row each with the member step numbers + ungroup. */}
+      {groups.length > 0 && (
+        <ul className="space-y-1">
+          {groups.map((g, gi) => {
+            const positions = g
+              .map((id) => stepIndexById.get(id))
+              .filter((p): p is number => p !== undefined)
+              .sort((a, b) => a - b)
+            return (
+              <li key={gi} className="flex items-center gap-2 text-xs text-zinc-400">
+                <span className="w-1 h-3 rounded-sm bg-violet-500/70 inline-block" />
+                <span>
+                  Steps {positions.map((p) => p + 1).join(', ')} — any order counts as correct
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleUngroup(gi)}
+                  className="text-violet-300 hover:text-violet-200 transition-colors cursor-pointer"
+                >
+                  Ungroup
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
       <button
         type="button"
-        onClick={() => sync([...steps, { id: newStepId(), text: '' }])}
+        onClick={() => sync([...steps, { id: newStepId(), text: '' }], groups)}
         className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer"
       >
         + Add step
@@ -599,6 +811,7 @@ export default function QuizBuilder({
             : accepted,
           sequence_items: q.sequence_items ?? base.sequence_items,
           partial_credit: q.partial_credit ?? base.partial_credit,
+          sequence_groups: q.sequence_groups ?? base.sequence_groups,
         }
       })
     }
@@ -664,11 +877,26 @@ export default function QuizBuilder({
             }
           }
           if (q.type === 'sequence') {
+            // Filter empty items out and remap group indices so they reference
+            // the trimmed item list (drop any group that's lost members below 2).
+            const trimmedItems: string[] = []
+            const oldToNewIndex = new Map<number, number>()
+            q.sequence_items.forEach((raw, oldIdx) => {
+              const trimmed = raw.trim()
+              if (trimmed.length > 0) {
+                oldToNewIndex.set(oldIdx, trimmedItems.length)
+                trimmedItems.push(trimmed)
+              }
+            })
+            const remappedGroups = q.sequence_groups
+              .map((g) => g.map((i) => oldToNewIndex.get(i)).filter((i): i is number => i !== undefined))
+              .filter((g) => g.length >= 2)
             return {
               type: 'sequence',
               question_text: q.question_text.trim(),
-              sequence_items: q.sequence_items.map((s) => s.trim()).filter((s) => s.length > 0),
+              sequence_items: trimmedItems,
               partial_credit: q.partial_credit,
+              ...(remappedGroups.length > 0 ? { sequence_groups: remappedGroups } : {}),
               ...imageField,
             }
           }

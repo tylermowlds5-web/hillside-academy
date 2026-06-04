@@ -527,10 +527,26 @@ function scoreQuiz(
       const items = q.sequence_items ?? []
       const n = items.length
       const order = Array.isArray(answer) ? (answer as number[]) : []
+
+      // Groups make a position p "correct" if the placed item is any member of
+      // the group whose position range contains p. Build a position → allowed
+      // member set; positions outside any group fall back to exact-match
+      // (slot p must hold the item whose canonical index is p).
+      const groups = q.sequence_groups ?? []
+      const groupMembersByPosition: Map<number, Set<number>> = new Map()
+      for (const g of groups) {
+        const members = new Set(g)
+        for (const p of g) groupMembersByPosition.set(p, members)
+      }
+
       const slotCorrect: boolean[] = []
       let correctSlots = 0
       for (let p = 0; p < n; p++) {
-        const ok = order[p] === p
+        const placed = order[p]
+        const groupMembers = groupMembersByPosition.get(p)
+        const ok = groupMembers
+          ? typeof placed === 'number' && placed >= 0 && groupMembers.has(placed)
+          : placed === p
         slotCorrect.push(ok)
         if (ok) correctSlots++
       }
