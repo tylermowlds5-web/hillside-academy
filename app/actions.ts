@@ -3,9 +3,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { deleteR2Files } from '@/lib/r2'
 import { sendAssignmentEmail, sendPathAssignmentEmail, sendStandaloneQuizAssignmentEmail } from '@/lib/send-email'
+import { getAppBaseUrl } from '@/lib/app-url'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 import type { QuizQuestion, StoredAnswer, Category, SubCategory, QuizSubmittedAnswer } from '@/lib/types'
 import { quizQuestionType, quizAcceptedAnswers } from '@/lib/types'
 
@@ -369,10 +369,7 @@ export async function createAssignment(formData: FormData) {
     }
 
     // ── Step 3: send emails for newly inserted employees ──
-    const hdrs = await headers()
-    const host = hdrs.get('host') ?? 'localhost:3000'
-    const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? `${proto}://${host}`
+    const baseUrl = getAppBaseUrl()
 
     console.log('[createAssignment] baseUrl:', baseUrl)
 
@@ -751,10 +748,7 @@ export async function assignStandaloneQuiz(formData: FormData) {
 
   // Send notification emails (best-effort — never roll back a successful
   // assignment on email failure).
-  const hdrs = await headers()
-  const host = hdrs.get('host') ?? 'localhost:3000'
-  const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? `${proto}://${host}`
+  const baseUrl = getAppBaseUrl()
 
   const [{ data: quizData }, { data: employees }] = await Promise.all([
     supabase.from('standalone_quizzes').select('id,title').eq('id', quiz_id).single<{ id: string; title: string }>(),
@@ -1451,11 +1445,7 @@ export async function savePathWithDetails(data: {
       .in('id', newAssigneeIds)
 
     if (empRows && empRows.length > 0) {
-      const hdrs = await headers()
-      const host = hdrs.get('host') ?? 'localhost:3000'
-      const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? `${proto}://${host}`
-      const pathsUrl = `${baseUrl}/paths`
+      const pathsUrl = `${getAppBaseUrl()}/paths`
 
       for (const emp of empRows as { id: string; email: string; full_name: string | null }[]) {
         try {

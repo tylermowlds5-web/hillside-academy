@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { sendAssignmentEmail } from '@/lib/send-email'
+import { getAppBaseUrl } from '@/lib/app-url'
 import { NextRequest } from 'next/server'
 import type { Profile, Video } from '@/lib/types'
 
@@ -50,8 +51,7 @@ export async function POST(request: NextRequest) {
 
   if (!videoData) return Response.json({ error: 'Video not found' }, { status: 404 })
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ??
-    `${request.nextUrl.protocol}//${request.nextUrl.host}`
+  const baseUrl = getAppBaseUrl()
   console.log('[POST /api/send-assignment-email] baseUrl:', baseUrl)
 
   const typedEmployees = (employees ?? []) as Pick<Profile, 'id' | 'email' | 'full_name'>[]

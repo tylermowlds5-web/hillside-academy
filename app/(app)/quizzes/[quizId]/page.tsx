@@ -18,13 +18,6 @@ export default async function TakeQuizPage(props: {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single<{ role: string }>()
-  const isAdmin = profile?.role === 'admin'
-
   const { data: quizData } = await supabase
     .from('standalone_quizzes')
     .select('*')
@@ -32,16 +25,9 @@ export default async function TakeQuizPage(props: {
     .single<StandaloneQuiz>()
   if (!quizData) notFound()
 
-  // Non-admins must have an assignment row to take the quiz.
-  if (!isAdmin) {
-    const { data: assignment } = await supabase
-      .from('standalone_quiz_assignments')
-      .select('id')
-      .eq('quiz_id', quizId)
-      .eq('user_id', user.id)
-      .maybeSingle<{ id: string }>()
-    if (!assignment) redirect('/dashboard')
-  }
+  // Any logged-in user (employee or admin) can take any standalone quiz.
+  // Assignment is now just an inbox/due-date signal, not a gate — the employee
+  // Quizzes tab also lists unassigned quizzes as "available".
 
   // Prior attempts (for "best so far" display).
   const { data: attemptRows } = await supabase

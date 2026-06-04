@@ -68,12 +68,13 @@ export default function LoginPage() {
         window.location.href = '/dashboard'
         return
       } else {
-        // Prefer the configured production app URL so email confirmation
-        // links don't point at localhost / preview deploys. Fall back to the
-        // current origin for dev.
+        // Email-confirmation links (if Supabase requires them) come back to
+        // /auth/callback on the configured production URL — never the preview
+        // host. With confirmation disabled, signUp returns a session right
+        // away and we skip straight to the dashboard.
         const envAppUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
         const baseUrl = envAppUrl || window.location.origin
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -82,6 +83,15 @@ export default function LoginPage() {
           },
         })
         if (error) throw error
+
+        // When email confirmation is OFF in Supabase, signUp returns a session
+        // and the user is already logged in. Send them to the dashboard.
+        if (data.session) {
+          window.location.href = '/dashboard'
+          return
+        }
+
+        // Email confirmation IS on — show the verify message as a fallback.
         setMessage('Check your email to confirm your account.')
       }
     } catch (err: unknown) {
