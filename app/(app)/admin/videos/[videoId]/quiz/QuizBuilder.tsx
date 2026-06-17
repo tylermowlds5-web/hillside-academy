@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   DndContext,
   MouseSensor,
@@ -774,6 +774,39 @@ function QuestionEditor({
   )
 }
 
+// ── Dirty tracking ───────────────────────────────────────────────────────
+// Used to drive the parent modals' "unsaved changes" close confirmation.
+
+// True if the admin has entered any actual quiz content. A brand-new quiz
+// starts with a single blank question, which does NOT count as content — so an
+// untouched builder closes without a warning.
+function draftHasContent(questions: QuestionDraft[]): boolean {
+  return questions.some(
+    (q) =>
+      q.question_text.trim() !== '' ||
+      q.options.some((o) => o.option_text.trim() !== '') ||
+      q.correct_answers.some((a) => a.trim() !== '') ||
+      q.sequence_items.some((s) => s.trim() !== '')
+  )
+}
+
+// Stable serialization of the meaningful draft state, so we can tell whether
+// anything changed since the quiz was loaded or last saved.
+function serializeDraft(questions: QuestionDraft[], passingScore: number): string {
+  return JSON.stringify({
+    passingScore,
+    questions: questions.map((q) => ({
+      type: q.type,
+      question_text: q.question_text.trim(),
+      options: q.options.map((o) => ({ t: o.option_text.trim(), c: o.is_correct })),
+      correct_answers: q.correct_answers.map((a) => a.trim()),
+      sequence_items: q.sequence_items.map((s) => s.trim()),
+      partial_credit: q.partial_credit,
+      sequence_groups: q.sequence_groups,
+    })),
+  })
+}
+
 // ── Main builder ─────────────────────────────────────────────────────────
 
 export default function QuizBuilder({
@@ -781,6 +814,7 @@ export default function QuizBuilder({
   onSave,
   saveLabel = 'Save Quiz',
   updateLabel = 'Update Quiz',
+  onDirtyChange,
 }: {
   // Initial values; null = new quiz.
   existing: Pick<Quiz, 'passing_score' | 'questions'> | null
@@ -790,6 +824,10 @@ export default function QuizBuilder({
   onSave: (payload: QuizPayload) => Promise<void>
   saveLabel?: string
   updateLabel?: string
+  // Reports whether there are unsaved changes worth warning about on close.
+  // Fires true once real content exists AND it differs from the loaded/saved
+  // baseline; resets to false after a successful save.
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const [passingScore, setPassingScore] = useState(existing?.passing_score ?? 70)
   const [questions, setQuestions] = useState<QuestionDraft[]>(() => {
@@ -820,6 +858,18 @@ export default function QuizBuilder({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+
+  // Baseline the current draft is compared against to detect unsaved changes.
+  // Seeded on first render from the initial draft, then re-baselined on save.
+  const baselineRef = useRef<string | null>(null)
+  if (baselineRef.current === null) baselineRef.current = serializeDraft(questions, passingScore)
+
+  useEffect(() => {
+    if (!onDirtyChange) return
+    const dirty =
+      draftHasContent(questions) && serializeDraft(questions, passingScore) !== baselineRef.current
+    onDirtyChange(dirty)
+  }, [questions, passingScore, onDirtyChange])
 
   function updateQuestion(i: number, q: QuestionDraft) {
     setQuestions((prev) => prev.map((old, idx) => (idx === i ? q : old)))
@@ -912,6 +962,9 @@ export default function QuizBuilder({
         }),
       }
       await onSave(payload)
+      // Re-baseline so the just-saved state is no longer considered unsaved.
+      baselineRef.current = serializeDraft(questions, passingScore)
+      onDirtyChange?.(false)
       setSaved(true)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')

@@ -1,9 +1,8 @@
 import { redirect, notFound } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { Video, Quiz } from '@/lib/types'
 import { deleteQuiz, saveQuiz, type QuizPayload } from '@/app/actions'
-import QuizBuilder from './QuizBuilder'
+import QuizManageClient from './QuizManageClient'
 
 export default async function QuizManagePage(props: {
   params: Promise<{ videoId: string }>
@@ -48,17 +47,14 @@ export default async function QuizManagePage(props: {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <Link
-        href="/admin/videos"
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-6 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-        </svg>
-        Videos
-      </Link>
-
+    <QuizManageClient
+      backHref="/admin/videos"
+      existing={quiz}
+      onSave={async (payload: QuizPayload) => {
+        'use server'
+        await saveQuiz(videoId, payload)
+      }}
+    >
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-zinc-50">
           {quiz ? 'Edit Quiz' : 'Create Quiz'}
@@ -89,14 +85,6 @@ export default async function QuizManagePage(props: {
           </div>
         )}
       </div>
-
-      <QuizBuilder
-        existing={quiz}
-        onSave={async (payload: QuizPayload) => {
-          'use server'
-          await saveQuiz(videoId, payload)
-        }}
-      />
-    </div>
+    </QuizManageClient>
   )
 }

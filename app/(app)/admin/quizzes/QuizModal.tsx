@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { Category, StandaloneQuiz } from '@/lib/types'
 import { saveStandaloneQuiz, type QuizPayload } from '@/app/actions'
 import QuizBuilder from '../videos/[videoId]/quiz/QuizBuilder'
+import ConfirmCloseDialog from '../ConfirmCloseDialog'
 
 // Create / edit modal for a standalone quiz. Holds the metadata (title,
 // description, category) in local state and forwards the question payload
@@ -23,6 +24,15 @@ export default function QuizModal({
   const [title, setTitle] = useState(existing?.title ?? '')
   const [description, setDescription] = useState(existing?.description ?? '')
   const [categoryId, setCategoryId] = useState(existing?.category_id ?? '')
+  const [dirty, setDirty] = useState(false)
+  const [confirmingClose, setConfirmingClose] = useState(false)
+
+  // Gate closing (X button / backdrop) on the unsaved-changes confirmation.
+  // With no unsaved questions, close immediately without warning.
+  function requestClose() {
+    if (dirty) setConfirmingClose(true)
+    else onClose()
+  }
 
   async function handleSave(payload: QuizPayload) {
     if (!title.trim()) throw new Error('Title is required')
@@ -40,13 +50,13 @@ export default function QuizModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={requestClose} />
       <div className="relative w-full max-w-3xl max-h-[90vh] bg-zinc-950 border border-zinc-800 rounded-2xl flex flex-col shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
           <h2 className="text-base font-semibold text-zinc-50">
             {existing ? 'Edit Quiz' : 'Add Quiz'}
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors">
+          <button onClick={requestClose} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -106,10 +116,18 @@ export default function QuizModal({
               onSave={handleSave}
               saveLabel="Create Quiz"
               updateLabel="Save Changes"
+              onDirtyChange={setDirty}
             />
           </div>
         </div>
       </div>
+
+      {confirmingClose && (
+        <ConfirmCloseDialog
+          onCancel={() => setConfirmingClose(false)}
+          onConfirm={onClose}
+        />
+      )}
     </div>
   )
 }
