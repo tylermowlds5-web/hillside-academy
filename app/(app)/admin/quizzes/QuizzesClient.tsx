@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Profile, Category, StandaloneQuiz, JobRole, UserJobRole } from '@/lib/types'
 import { deleteStandaloneQuiz } from '@/app/actions'
@@ -109,6 +110,12 @@ export default function QuizzesClient({
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <Link
+                      href={`/admin/quizzes/${q.id}/results`}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors cursor-pointer"
+                    >
+                      View Results
+                    </Link>
                     <button
                       type="button"
                       onClick={() => setAssigning(q)}

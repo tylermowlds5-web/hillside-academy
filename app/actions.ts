@@ -74,9 +74,13 @@ export async function logSessionEnd() {
 
 // ── Progress ──────────────────────────────────────────────────────────────
 
-// Fraction of a video's duration that must be watched (in real playback time,
-// not scrubber position) for it to count as completed.
-const WATCH_COMPLETION_RATIO = 0.85
+// Fraction of a video's duration that must be watched for it to count as
+// completed. Because the player now disables forward-seeking, the scrubber
+// position (percent_watched) can no longer be inflated by skipping ahead, so
+// it is a faithful "furthest actually watched" marker — completion is granted
+// when EITHER real-playback seconds OR the furthest-watched percent crosses
+// this ratio.
+const WATCH_COMPLETION_RATIO = 0.95
 
 export async function updateVideoProgress(
   videoId: string,
@@ -92,17 +96,30 @@ export async function updateVideoProgress(
 
   const pct = Math.min(100, Math.max(0, percentWatched))
 
-  // Completion is based on REAL watch time, not the scrubber position. Dragging
-  // to the end moves percent_watched to 100 but leaves actual_seconds_watched
-  // low, so the video stays incomplete until the content is actually watched.
-  let completed: boolean
-  if (durationSeconds && durationSeconds > 0 && actualSecondsWatched != null) {
-    completed = actualSecondsWatched >= WATCH_COMPLETION_RATIO * durationSeconds
-  } else {
-    // No timing info → fall back to scrubber position (used only by callers
-    // that explicitly force 100% on an already-completed video).
-    completed = pct >= 100
-  }
+  // Never let an already-completed video regress to incomplete on a later save.
+  const { data: existing } = await supabase
+    .from('progress')
+    .select('completed')
+    .eq('user_id', user.id)
+    .eq('video_id', videoId)
+    .maybeSingle()
+  const wasCompleted = existing?.completed ?? false
+
+  // Completion can be reached two ways, whichever happens first:
+  //  1. Real playback time watched ≥ ratio × duration (resilient when timing is
+  //     reported), and
+  //  2. Furthest-watched scrubber position ≥ ratio. Forward-seeking is disabled
+  //     in the player, so percent_watched only advances by actually watching —
+  //     this is the fix for genuine near-full watches that previously fell just
+  //     short on accumulated real seconds (which slightly undercount due to
+  //     dropped seek/re-anchor deltas) and so never flipped to completed.
+  const reachedBySeconds =
+    durationSeconds != null &&
+    durationSeconds > 0 &&
+    actualSecondsWatched != null &&
+    actualSecondsWatched >= WATCH_COMPLETION_RATIO * durationSeconds
+  const reachedByPercent = pct >= WATCH_COMPLETION_RATIO * 100
+  const completed = wasCompleted || reachedBySeconds || reachedByPercent
 
   const row: Record<string, unknown> = {
     user_id: user.id,
@@ -124,18 +141,54 @@ export async function updateVideoProgress(
 export async function logWatchEvent(
   videoId: string,
   percentWatched: number,
+  // Real playback seconds actually watched (cumulative), mirrored from the
+  // progress table's actual_seconds_watched — NOT wall-clock time on the page —
+  // so admin reports show the true time spent watching.
   secondsWatched: number
 ) {
   const { supabase, user } = await getUser()
   if (!user) return
 
-  await supabase.from('video_watch_events').insert({
-    user_id: user.id,
-    video_id: videoId,
-    watched_at: new Date().toISOString(),
-    percent_watched: Math.round(Math.min(100, Math.max(0, percentWatched))),
-    seconds_watched: Math.max(0, secondsWatched),
-  })
+  const pct = Math.round(Math.min(100, Math.max(0, percentWatched)))
+  const secs = Math.max(0, Math.round(secondsWatched))
+  const now = new Date()
+  // Start of today (UTC). We keep ONE row per user per video per calendar day
+  // and update it as the session progresses, rather than inserting a fresh row
+  // on every flush.
+  const startOfDay = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  ).toISOString()
+
+  const { data: existing } = await supabase
+    .from('video_watch_events')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('video_id', videoId)
+    .gte('watched_at', startOfDay)
+    .order('watched_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) {
+    const { error } = await supabase
+      .from('video_watch_events')
+      .update({
+        watched_at: now.toISOString(),
+        percent_watched: pct,
+        seconds_watched: secs,
+      })
+      .eq('id', existing.id)
+    if (error) console.error('[logWatchEvent] update error:', error.message, error.code)
+  } else {
+    const { error } = await supabase.from('video_watch_events').insert({
+      user_id: user.id,
+      video_id: videoId,
+      watched_at: now.toISOString(),
+      percent_watched: pct,
+      seconds_watched: secs,
+    })
+    if (error) console.error('[logWatchEvent] insert error:', error.message, error.code)
+  }
 }
 
 // ── Videos (admin) ────────────────────────────────────────────────────────

@@ -4,9 +4,11 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import type { Video, Progress } from '@/lib/types'
 import { updateVideoProgress, logWatchEvent } from '@/app/actions'
 
-// Fraction of the video's duration that must be watched, in REAL playback time,
-// for it to count as completed. Must match the server (updateVideoProgress).
-const WATCH_COMPLETION_RATIO = 0.85
+// Fraction of the video's duration that must be watched for it to count as
+// completed. Reached via real playback time OR furthest-watched percent
+// (forward-seeking is disabled, so percent can't be inflated by skipping).
+// Must match the server (updateVideoProgress).
+const WATCH_COMPLETION_RATIO = 0.95
 
 // A single playback-time step larger than this (in seconds) is treated as a
 // seek/scrub and is NOT counted toward real watch time. Normal playback advances
@@ -47,16 +49,22 @@ function getVimeoId(url: string): string | null {
 
 // ── Native HTML5 player ────────────────────────────────────────────────────
 
+// A seek that lands more than this many seconds beyond the furthest point the
+// user has already reached is treated as "seeking forward" and snapped back.
+const SEEK_FORWARD_TOLERANCE = 1.0
+
 function NativePlayer({
   url,
   initialPercent,
   initialSeconds,
   onProgress,
+  onResume,
 }: {
   url: string
   initialPercent: number
   initialSeconds: number
   onProgress: (u: ProgressUpdate) => void
+  onResume?: (seconds: number) => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   // Cumulative real watch time, seeded with what was already watched in prior
@@ -66,6 +74,9 @@ function NativePlayer({
   const lastTimeRef = useRef<number | null>(null)
   const lastReportedPct = useRef(0)
   const seekedToStart = useRef(false)
+  // Furthest playback position the user has legitimately reached. Seeking
+  // forward past this is blocked; seeking backward (to rewatch) is allowed.
+  const highWaterRef = useRef(0)
 
   useEffect(() => {
     const el = videoRef.current
@@ -74,11 +85,26 @@ function NativePlayer({
     function handleLoaded() {
       if (!el) return
       if (!seekedToStart.current && el.duration > 0 && initialPercent > 0) {
-        el.currentTime = (initialPercent / 100) * el.duration
+        const resumeTime = (initialPercent / 100) * el.duration
+        el.currentTime = resumeTime
         // Anchor the delta baseline at the resumed position so the jump from 0
         // to the resume point isn't counted as watched time.
-        lastTimeRef.current = el.currentTime
+        lastTimeRef.current = resumeTime
+        // The resume point is already "reached" — don't let the seek-guard snap
+        // it back, and allow backward seeking from here.
+        highWaterRef.current = resumeTime
         seekedToStart.current = true
+        onResume?.(resumeTime)
+      }
+    }
+
+    // Block seeking forward past the furthest point already watched. Fires as
+    // the user drags the scrubber; we snap currentTime back to the high-water
+    // mark before the frame is shown.
+    function handleSeeking() {
+      if (!el) return
+      if (el.currentTime > highWaterRef.current + SEEK_FORWARD_TOLERANCE) {
+        el.currentTime = highWaterRef.current
       }
     }
 
@@ -94,6 +120,12 @@ function NativePlayer({
         if (delta > 0 && delta <= MAX_NATIVE_STEP) watchedRef.current += delta
       }
       lastTimeRef.current = cur
+
+      // Advance the high-water mark only on natural playback (small steps), so
+      // a forward seek that briefly slips through can't ratchet it up.
+      if (cur > highWaterRef.current && cur - highWaterRef.current <= MAX_NATIVE_STEP) {
+        highWaterRef.current = cur
+      }
 
       const pct = (cur / dur) * 100
       if (pct - lastReportedPct.current >= 2) {
@@ -111,14 +143,16 @@ function NativePlayer({
     }
 
     el.addEventListener('loadedmetadata', handleLoaded)
+    el.addEventListener('seeking', handleSeeking)
     el.addEventListener('timeupdate', handleTimeUpdate)
     el.addEventListener('ended', handleEnded)
     return () => {
       el.removeEventListener('loadedmetadata', handleLoaded)
+      el.removeEventListener('seeking', handleSeeking)
       el.removeEventListener('timeupdate', handleTimeUpdate)
       el.removeEventListener('ended', handleEnded)
     }
-  }, [initialPercent, onProgress])
+  }, [initialPercent, onProgress, onResume])
 
   return (
     <video
@@ -165,11 +199,13 @@ function YouTubePlayer({
   initialPercent,
   initialSeconds,
   onProgress,
+  onResume,
 }: {
   videoId: string
   initialPercent: number
   initialSeconds: number
   onProgress: (u: ProgressUpdate) => void
+  onResume?: (seconds: number) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<YTPlayer | null>(null)
@@ -179,6 +215,8 @@ function YouTubePlayer({
   const lastReportedPct = useRef(0)
   const onProgressRef = useRef(onProgress)
   onProgressRef.current = onProgress
+  const onResumeRef = useRef(onResume)
+  onResumeRef.current = onResume
 
   useEffect(() => {
     function initPlayer() {
@@ -193,7 +231,11 @@ function YouTubePlayer({
           onReady(e) {
             if (initialPercent > 0) {
               const dur = e.target.getDuration()
-              if (dur > 0) e.target.seekTo((initialPercent / 100) * dur, true)
+              if (dur > 0) {
+                const resumeTime = (initialPercent / 100) * dur
+                e.target.seekTo(resumeTime, true)
+                onResumeRef.current?.(resumeTime)
+              }
             }
           },
           onStateChange(e) {
@@ -297,38 +339,54 @@ export default function VideoPlayer({
   initialProgress: Progress | null
   onComplete?: () => void
 }) {
-  const initialPercent = initialProgress?.percent_watched ?? 0
-  const initialSeconds = initialProgress?.actual_seconds_watched ?? 0
+  const alreadyCompleted = initialProgress?.completed ?? false
+  // If the video was already completed, start from the beginning instead of
+  // resuming near the end. Otherwise resume from the last watched position.
+  const initialPercent = alreadyCompleted ? 0 : initialProgress?.percent_watched ?? 0
+  const initialSeconds = alreadyCompleted ? 0 : initialProgress?.actual_seconds_watched ?? 0
 
   const [currentPercent, setCurrentPercent] = useState(initialPercent)
+  // Brief "Resuming from X:XX" indicator shown when playback starts mid-video.
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null)
+  const resumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pending = useRef<ProgressUpdate>({ percent: initialPercent, watchedSeconds: initialSeconds, duration: 0 })
-  const lastSaveWallTime = useRef(Date.now())
   // Prevent onComplete from firing multiple times per session.
   // The parent remounts this component (via a key prop) when progress resets,
   // so this ref is naturally re-initialized from the latest initialProgress.
-  const completedFired = useRef(initialProgress?.completed ?? false)
+  const completedFired = useRef(alreadyCompleted)
+
+  const handleResume = useCallback((seconds: number) => {
+    if (seconds < 1) return
+    const m = Math.floor(seconds / 60)
+    const s = Math.floor(seconds % 60)
+    setResumeNotice(`Resuming from ${m}:${s.toString().padStart(2, '0')}`)
+    if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current)
+    resumeTimeoutRef.current = setTimeout(() => setResumeNotice(null), 4000)
+  }, [])
 
   const saveProgress = useCallback(
     (u: ProgressUpdate) => {
       pending.current = u
       setCurrentPercent(u.percent)
 
-      // Completion is gated on REAL watch time, not scrubber position.
-      const isComplete = u.duration > 0 && u.watchedSeconds >= WATCH_COMPLETION_RATIO * u.duration
-      if (isComplete && !completedFired.current) {
+      // Completion is reached by real watch time OR furthest-watched percent
+      // (forward-seeking is disabled, so percent can't be inflated). Mirrors
+      // the server logic in updateVideoProgress.
+      const completeBySeconds = u.duration > 0 && u.watchedSeconds >= WATCH_COMPLETION_RATIO * u.duration
+      const completeByPercent = u.percent >= WATCH_COMPLETION_RATIO * 100
+      if ((completeBySeconds || completeByPercent) && !completedFired.current) {
         completedFired.current = true
         onComplete?.()
       }
 
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(() => {
-        const now = Date.now()
-        const sessionSeconds = Math.max(0, Math.round((now - lastSaveWallTime.current) / 1000))
-        lastSaveWallTime.current = now
         const p = pending.current
         updateVideoProgress(video.id, p.percent, p.watchedSeconds, p.duration)
-        logWatchEvent(video.id, p.percent, sessionSeconds)
+        // Watch-event seconds mirror real playback time (actual_seconds_watched),
+        // not wall-clock time on the page.
+        logWatchEvent(video.id, p.percent, p.watchedSeconds)
       }, 4000)
     },
     [video.id, onComplete]
@@ -337,13 +395,12 @@ export default function VideoPlayer({
   // Flush on unmount
   useEffect(() => {
     return () => {
+      if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current)
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
-        const now = Date.now()
-        const sessionSeconds = Math.max(0, Math.round((now - lastSaveWallTime.current) / 1000))
         const p = pending.current
         updateVideoProgress(video.id, p.percent, p.watchedSeconds, p.duration)
-        logWatchEvent(video.id, p.percent, sessionSeconds)
+        logWatchEvent(video.id, p.percent, p.watchedSeconds)
       }
     }
   }, [video.id])
@@ -352,26 +409,40 @@ export default function VideoPlayer({
 
   return (
     <div>
-      {type === 'youtube' ? (
-        <YouTubePlayer
-          videoId={getYouTubeId(video.url) ?? ''}
-          initialPercent={initialPercent}
-          initialSeconds={initialSeconds}
-          onProgress={saveProgress}
-        />
-      ) : type === 'vimeo' ? (
-        <VimeoPlayer
-          vimeoId={getVimeoId(video.url) ?? ''}
-          initialPercent={initialPercent}
-        />
-      ) : (
-        <NativePlayer
-          url={video.url}
-          initialPercent={initialPercent}
-          initialSeconds={initialSeconds}
-          onProgress={saveProgress}
-        />
-      )}
+      <div className="relative">
+        {type === 'youtube' ? (
+          <YouTubePlayer
+            videoId={getYouTubeId(video.url) ?? ''}
+            initialPercent={initialPercent}
+            initialSeconds={initialSeconds}
+            onProgress={saveProgress}
+            onResume={handleResume}
+          />
+        ) : type === 'vimeo' ? (
+          <VimeoPlayer
+            vimeoId={getVimeoId(video.url) ?? ''}
+            initialPercent={initialPercent}
+          />
+        ) : (
+          <NativePlayer
+            url={video.url}
+            initialPercent={initialPercent}
+            initialSeconds={initialSeconds}
+            onProgress={saveProgress}
+            onResume={handleResume}
+          />
+        )}
+
+        {/* Resume indicator — fades out after a few seconds */}
+        {resumeNotice && (
+          <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-lg bg-black/80 px-3 py-1.5 text-sm font-medium text-white shadow-lg pointer-events-none">
+            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
+            </svg>
+            {resumeNotice}
+          </div>
+        )}
+      </div>
 
       {/* Live progress bar */}
       <div className="h-1 bg-zinc-800">

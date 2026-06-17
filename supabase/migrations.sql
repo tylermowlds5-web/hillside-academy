@@ -285,3 +285,27 @@ CREATE TABLE IF NOT EXISTS public.standalone_quiz_attempts (
   answers jsonb default '[]',
   taken_at timestamp with time zone default now()
 );
+
+-- ── Watch-event de-duplication ────────────────────────────────────────────
+-- Historically a new video_watch_events row was inserted every ~30s, leaving
+-- many duplicate rows per user/video/day. The app now keeps ONE row per user
+-- per video per calendar day (see logWatchEvent). This one-time cleanup
+-- collapses existing duplicates: for each (user_id, video_id, day) it keeps the
+-- row with the highest percent_watched (then most seconds, then most recent)
+-- and deletes the rest. Idempotent — re-running is a no-op once de-duped.
+DO $$
+BEGIN
+  IF to_regclass('public.video_watch_events') IS NOT NULL THEN
+    DELETE FROM public.video_watch_events e
+    USING (
+      SELECT
+        id,
+        row_number() OVER (
+          PARTITION BY user_id, video_id, ((watched_at AT TIME ZONE 'UTC')::date)
+          ORDER BY percent_watched DESC, seconds_watched DESC, watched_at DESC
+        ) AS rn
+      FROM public.video_watch_events
+    ) d
+    WHERE e.id = d.id AND d.rn > 1;
+  END IF;
+END $$;
