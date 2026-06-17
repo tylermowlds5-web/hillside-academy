@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { recordLogin } from '@/app/actions'
 
 const COMPANY_CODE = 'hillside'
 
@@ -83,6 +84,10 @@ export default function LoginPage() {
           return
         }
 
+        // Stamp last_login now that the session cookie is set. Awaited so the
+        // write fires before we navigate away from this page.
+        await recordLogin().catch(() => {})
+
         window.location.href = next
         return
       } else {
@@ -105,6 +110,7 @@ export default function LoginPage() {
         // When email confirmation is OFF in Supabase, signUp returns a session
         // and the user is already logged in. Honor ?next= if present.
         if (data.session) {
+          await recordLogin().catch(() => {})
           window.location.href = next
           return
         }

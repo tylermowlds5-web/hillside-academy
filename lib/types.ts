@@ -25,6 +25,9 @@ export type Profile = {
   avatar_url: string | null
   is_active: boolean
   created_at: string
+  // Most recent successful sign-in. Null until the user logs in after this
+  // column was added (or until backfilled from activity).
+  last_login: string | null
 }
 
 export type Category = {

@@ -5,6 +5,13 @@
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 
+-- Timestamp of the user's most recent successful sign-in. Updated by the login
+-- flow (recordLogin server action). The Progress Report's "Last Active" column
+-- falls back to watch/quiz activity when this is null. Backfilled at the bottom
+-- of this file for existing users.
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS last_login timestamp with time zone;
+
 -- Track whether the employee has passed the quiz for each video.
 -- Kept in sync with quiz_attempts by submitQuizAttempt.
 ALTER TABLE public.progress
@@ -308,4 +315,45 @@ BEGIN
     ) d
     WHERE e.id = d.id AND d.rn > 1;
   END IF;
+END $$;
+
+-- ── Backfill profiles.last_login from activity ────────────────────────────
+-- Existing users never had last_login recorded, so the Progress Report showed
+-- "Never" even when they'd watched videos or taken quizzes. For every user
+-- whose last_login is null, set it to their most recent activity timestamp
+-- across watch events and (video + standalone) quiz attempts. Idempotent — once
+-- set, last_login is no longer null so a re-run skips it. Each source table is
+-- guarded so this runs even if a table is absent.
+DO $$
+DECLARE
+  parts text[] := ARRAY[]::text[];
+  union_sql text;
+BEGIN
+  IF to_regclass('public.video_watch_events') IS NOT NULL THEN
+    parts := array_append(parts, 'SELECT user_id, watched_at AS ts FROM public.video_watch_events');
+  END IF;
+  IF to_regclass('public.quiz_attempts') IS NOT NULL THEN
+    parts := array_append(parts, 'SELECT user_id, taken_at AS ts FROM public.quiz_attempts');
+  END IF;
+  IF to_regclass('public.standalone_quiz_attempts') IS NOT NULL THEN
+    parts := array_append(parts, 'SELECT user_id, taken_at AS ts FROM public.standalone_quiz_attempts');
+  END IF;
+
+  IF array_length(parts, 1) IS NULL THEN
+    RETURN; -- no activity tables present
+  END IF;
+
+  union_sql := array_to_string(parts, ' UNION ALL ');
+
+  EXECUTE format($f$
+    UPDATE public.profiles p
+    SET last_login = activity.last_active
+    FROM (
+      SELECT user_id, max(ts) AS last_active
+      FROM ( %s ) a
+      WHERE ts IS NOT NULL
+      GROUP BY user_id
+    ) activity
+    WHERE p.id = activity.user_id AND p.last_login IS NULL
+  $f$, union_sql);
 END $$;

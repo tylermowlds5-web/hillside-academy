@@ -25,17 +25,49 @@ export default async function AdminPage() {
     { data: assignments },
     { data: allProgress },
     { data: quizAttempts },
+    { data: watchEvents },
+    { data: standaloneAttempts },
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('role', 'employee').order('full_name'),
     supabase.from('assignments').select('user_id, video_id, assigned_at, due_date'),
     supabase.from('progress').select('*'),
     supabase.from('quiz_attempts').select('user_id, quiz_id, score, passed, taken_at'),
+    supabase.from('video_watch_events').select('user_id, watched_at'),
+    supabase.from('standalone_quiz_attempts').select('user_id, taken_at'),
   ])
 
   const typedEmployees = (employees ?? []) as Profile[]
   const typedAssignments = (assignments ?? []) as { user_id: string; video_id: string; assigned_at: string; due_date: string | null }[]
   const typedProgress = (allProgress ?? []) as Progress[]
   const typedAttempts = (quizAttempts ?? []) as Pick<QuizAttempt, 'user_id' | 'quiz_id' | 'score' | 'passed' | 'taken_at'>[]
+  const typedWatchEvents = (watchEvents ?? []) as { user_id: string; watched_at: string }[]
+  const typedStandaloneAttempts = (standaloneAttempts ?? []) as { user_id: string; taken_at: string }[]
+
+  // Most recent activity timestamp per user from each source, so "Last Active"
+  // reflects real activity even when last_login was never set.
+  const latestWatchEventByUser = new Map<string, string>()
+  for (const e of typedWatchEvents) {
+    const cur = latestWatchEventByUser.get(e.user_id)
+    if (e.watched_at && (!cur || e.watched_at > cur)) latestWatchEventByUser.set(e.user_id, e.watched_at)
+  }
+  const latestQuizAttemptByUser = new Map<string, string>()
+  for (const a of typedAttempts) {
+    const cur = latestQuizAttemptByUser.get(a.user_id)
+    if (a.taken_at && (!cur || a.taken_at > cur)) latestQuizAttemptByUser.set(a.user_id, a.taken_at)
+  }
+  const latestStandaloneAttemptByUser = new Map<string, string>()
+  for (const a of typedStandaloneAttempts) {
+    const cur = latestStandaloneAttemptByUser.get(a.user_id)
+    if (a.taken_at && (!cur || a.taken_at > cur)) latestStandaloneAttemptByUser.set(a.user_id, a.taken_at)
+  }
+
+  // Returns the most recent (max) of a set of ISO timestamps, ignoring nulls.
+  // ISO strings sort lexicographically in chronological order.
+  const mostRecent = (...candidates: (string | null | undefined)[]): string | null => {
+    let max: string | null = null
+    for (const c of candidates) if (c && (!max || c > max)) max = c
+    return max
+  }
 
   // Lookup maps
   const progressMap = new Map<string, Progress>()
@@ -117,9 +149,18 @@ export default async function AdminPage() {
     const avgQuizScore = quizzesTaken > 0
       ? Math.round(empBest.reduce((s, x) => s + x.score, 0) / quizzesTaken)
       : null
-    for (const b of empBest) {
-      if (!lastActive || b.taken_at > lastActive) lastActive = b.taken_at
-    }
+
+    // Last Active = most recent of: last login, latest watch event, latest
+    // video-quiz attempt, latest standalone-quiz attempt (and the progress
+    // last_watched_at folded in above). Always reflects real activity even
+    // when last_login was never recorded.
+    lastActive = mostRecent(
+      lastActive,
+      emp.last_login,
+      latestWatchEventByUser.get(emp.id),
+      latestQuizAttemptByUser.get(emp.id),
+      latestStandaloneAttemptByUser.get(emp.id),
+    )
 
     stats.set(emp.id, {
       assigned: empAssignments.length,

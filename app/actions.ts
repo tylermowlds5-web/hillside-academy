@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { deleteR2Files } from '@/lib/r2'
 import { sendAssignmentEmail, sendPathAssignmentEmail, sendStandaloneQuizAssignmentEmail } from '@/lib/send-email'
 import { getAppBaseUrl } from '@/lib/app-url'
@@ -34,6 +35,21 @@ async function requireAdmin() {
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────
+
+// Stamp profiles.last_login = now() for the currently signed-in user. Called
+// by the login flow right after a successful sign-in. The user id is taken
+// from the authenticated session (never trusted from the client), and the
+// write uses the service-role client so it isn't blocked by profile-update RLS.
+export async function recordLogin() {
+  const { user } = await getUser()
+  if (!user) return
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('profiles')
+    .update({ last_login: new Date().toISOString() })
+    .eq('id', user.id)
+  if (error) console.error('[recordLogin] update error:', error.message, error.code)
+}
 
 export async function logSessionStart() {
   const { supabase, user } = await getUser()
