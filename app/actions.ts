@@ -28,12 +28,26 @@ async function sendEmailsInBatches<T>(
   items: T[],
   send: (item: T, index: number) => Promise<void>
 ): Promise<void> {
+  console.log('[sendEmailsInBatches] START — total items:', items.length, '| batch size:', EMAIL_BATCH_SIZE)
+  if (items.length === 0) {
+    console.warn('[sendEmailsInBatches] items array is EMPTY — loop will not run, no emails will send')
+    return
+  }
   for (let start = 0; start < items.length; start += EMAIL_BATCH_SIZE) {
     // Pause between batches (skip before the first) to stay under the rate limit.
     if (start > 0) await sleep(EMAIL_BATCH_PAUSE_MS)
     const batch = items.slice(start, start + EMAIL_BATCH_SIZE)
-    await Promise.all(batch.map((item, i) => send(item, start + i)))
+    const batchNum = Math.floor(start / EMAIL_BATCH_SIZE) + 1
+    console.log(`[sendEmailsInBatches] executing batch #${batchNum} — items ${start} to ${start + batch.length - 1} (${batch.length} email(s))`)
+    try {
+      await Promise.all(batch.map((item, i) => send(item, start + i)))
+      console.log(`[sendEmailsInBatches] batch #${batchNum} settled`)
+    } catch (batchErr) {
+      console.error(`[sendEmailsInBatches] batch #${batchNum} THREW (a send rejected, not caught inside send):`, batchErr)
+      throw batchErr
+    }
   }
+  console.log('[sendEmailsInBatches] DONE — all batches processed')
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────
@@ -937,10 +951,12 @@ export async function assignStandaloneQuiz(formData: FormData): Promise<AssignSt
       // ── Step 4: send the emails ──
       const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
       console.log('[assignStandaloneQuiz] STEP: sending', typedEmployees.length, 'email(s)')
+      console.log('[assignStandaloneQuiz] recipient list before batching:', JSON.stringify(typedEmployees.map((e) => e.email)))
       await sendEmailsInBatches(typedEmployees, async (emp) => {
         const quizUrl = `${baseUrl}/quizzes/${quizData.id}`
-        console.log('[assignStandaloneQuiz] → sending email to:', emp.email, '| quizUrl:', quizUrl)
+        console.log('[assignStandaloneQuiz] → batch send reached for:', emp.email, '| quizUrl:', quizUrl)
         try {
+          console.log('[assignStandaloneQuiz] → calling Resend (sendStandaloneQuizAssignmentEmail) for:', emp.email)
           await sendStandaloneQuizAssignmentEmail({
             to: emp.email,
             employeeName: emp.full_name ?? emp.email,
