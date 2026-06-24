@@ -224,6 +224,21 @@ export type StoredAnswer = {
   }
 }
 
+// Employee-facing per-question review returned immediately after submitting a
+// quiz. Deliberately omits the correct answer (StoredAnswer.correct and
+// sequence.correct_order) — employees see what they chose and whether it was
+// right, but never the answer key.
+export type QuizReviewItem = {
+  question_text: string
+  chosen: string
+  is_correct: boolean
+  type?: QuizQuestionType
+  sequence?: {
+    chosen_order: string[]    // employee's item text per slot ('' = left empty)
+    slot_correct: boolean[]   // whether each slot was placed correctly
+  }
+}
+
 export type QuizAttempt = {
   id: string
   user_id: string

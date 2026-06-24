@@ -7,7 +7,7 @@ import { sendAssignmentEmail, sendPathAssignmentEmail, sendStandaloneQuizAssignm
 import { getAppBaseUrl } from '@/lib/app-url'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import type { QuizQuestion, StoredAnswer, Category, SubCategory, QuizSubmittedAnswer } from '@/lib/types'
+import type { QuizQuestion, StoredAnswer, QuizReviewItem, Category, SubCategory, QuizSubmittedAnswer } from '@/lib/types'
 import { quizQuestionType, quizAcceptedAnswers } from '@/lib/types'
 
 // ── Auth helpers ──────────────────────────────────────────────────────────
@@ -652,6 +652,21 @@ function scoreQuiz(
   return { score, correct, storedAnswers }
 }
 
+// Strip the answer key from the graded answers so the employee result screen
+// can show what they chose and whether it was right — without ever exposing the
+// correct answer (StoredAnswer.correct / sequence.correct_order are dropped).
+function toReview(storedAnswers: StoredAnswer[]): QuizReviewItem[] {
+  return storedAnswers.map((a) => ({
+    question_text: a.question_text,
+    chosen: a.chosen,
+    is_correct: a.is_correct,
+    type: a.type,
+    sequence: a.sequence
+      ? { chosen_order: a.sequence.chosen_order, slot_correct: a.sequence.slot_correct }
+      : undefined,
+  }))
+}
+
 export async function submitQuizAttempt(
   quizId: string,
   videoId: string,
@@ -722,7 +737,7 @@ export async function submitQuizAttempt(
     )
   }
 
-  return { score, passed, total: quiz.questions.length, correct }
+  return { score, passed, total: quiz.questions.length, correct, review: toReview(storedAnswers) }
 }
 
 // ── Standalone quizzes (admin) ────────────────────────────────────────────
@@ -939,7 +954,7 @@ export async function submitStandaloneQuizAttempt(
   if (insertError) throw new Error(`Failed to save attempt: ${insertError.message}`)
 
   revalidatePath('/dashboard')
-  return { score, passed, total: quiz.questions.length, correct }
+  return { score, passed, total: quiz.questions.length, correct, review: toReview(storedAnswers) }
 }
 
 // ── Category management (admin) ───────────────────────────────────────────

@@ -13,7 +13,7 @@ import {
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import type { Quiz, QuizQuestion, QuizSubmittedAnswer } from '@/lib/types'
+import type { Quiz, QuizQuestion, QuizSubmittedAnswer, QuizReviewItem } from '@/lib/types'
 import { quizQuestionType } from '@/lib/types'
 
 type Result = {
@@ -21,6 +21,9 @@ type Result = {
   passed: boolean
   total: number
   correct: number
+  // Per-question breakdown — what the employee chose and whether it was right.
+  // The correct answer is intentionally absent (see QuizReviewItem).
+  review?: QuizReviewItem[]
 }
 
 function isAnswered(q: QuizQuestion, answer: QuizSubmittedAnswer | undefined): boolean {
@@ -130,6 +133,10 @@ export default function QuizCard({
 
           <p className="text-sm text-zinc-500 mb-6">Passing score: {passingScore}%</p>
 
+          {result.review && result.review.length > 0 && (
+            <AnswerReview review={result.review} />
+          )}
+
           {result.passed ? (
             <div className="space-y-3">
               <p className="text-sm text-emerald-300 font-medium">Quiz complete!</p>
@@ -218,6 +225,76 @@ export default function QuizCard({
           {submitting ? 'Submitting…' : 'Submit Quiz'}
         </button>
       </form>
+    </div>
+  )
+}
+
+// ── Post-submit review ───────────────────────────────────────────────────
+// Shows each question marked green (correct) or red (wrong) with the answer the
+// employee gave. The correct answer is never shown — wrong answers just read
+// "Incorrect" so employees can see where they went wrong without an answer key.
+
+function CheckIcon() {
+  return (
+    <svg className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+    </svg>
+  )
+}
+
+function CrossIcon() {
+  return (
+    <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
+function AnswerReview({ review }: { review: QuizReviewItem[] }) {
+  return (
+    <div className="text-left space-y-3 mb-6">
+      <h4 className="text-sm font-semibold text-zinc-300 text-center">Your answers</h4>
+      {review.map((a, i) => (
+        <div
+          key={i}
+          className={`rounded-xl border p-4 ${
+            a.is_correct ? 'border-emerald-800/70 bg-emerald-950/30' : 'border-red-900/70 bg-red-950/20'
+          }`}
+        >
+          <div className="flex items-start gap-2 mb-3">
+            <span className="text-xs text-zinc-500 flex-shrink-0 font-medium mt-0.5">Q{i + 1}</span>
+            <p className="text-sm font-medium text-zinc-200 leading-snug break-words min-w-0">{a.question_text}</p>
+          </div>
+
+          {a.sequence ? (
+            /* Sequence: per-slot green check / red X for the order they chose */
+            <div className="space-y-1.5 pl-5">
+              {a.sequence.chosen_order.map((theirs, p) => (
+                <div key={p} className="flex items-start gap-2">
+                  {a.sequence!.slot_correct[p] ? <CheckIcon /> : <CrossIcon />}
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs text-zinc-500 mr-1">Step {p + 1}:</span>
+                    <span className={`text-xs font-medium ${a.sequence!.slot_correct[p] ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {theirs || '(empty)'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-start gap-2 pl-5">
+              {a.is_correct ? <CheckIcon /> : <CrossIcon />}
+              <div className="min-w-0">
+                <span className="text-xs text-zinc-500">Your answer: </span>
+                <span className={`text-xs font-medium break-words ${a.is_correct ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {a.chosen}
+                </span>
+                {!a.is_correct && <span className="text-xs text-red-400 font-medium"> — Incorrect</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
