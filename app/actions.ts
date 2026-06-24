@@ -796,125 +796,157 @@ export async function deleteStandaloneQuiz(quizId: string) {
   revalidatePath('/dashboard')
 }
 
-export async function assignStandaloneQuiz(formData: FormData) {
+// Result returned to the client. We return a structured result rather than
+// throwing because thrown errors in a server action are masked into a generic
+// "An error occurred in the Server Components render" message in production —
+// the admin would never see why the assignment failed. Returning { ok, error }
+// surfaces the real reason. `saved` lets the client know rows were persisted
+// even when a later step (email) failed.
+export type AssignStandaloneQuizResult = {
+  ok: boolean
+  error?: string
+  saved?: boolean
+}
+
+export async function assignStandaloneQuiz(formData: FormData): Promise<AssignStandaloneQuizResult> {
   console.log('[assignStandaloneQuiz] === ACTION CALLED ===')
-  const { supabase, user } = await requireAdmin()
-  console.log('[assignStandaloneQuiz] requireAdmin OK — admin user:', user.id)
+  try {
+    const { supabase, user } = await requireAdmin()
+    console.log('[assignStandaloneQuiz] requireAdmin OK — admin user:', user.id)
 
-  const quiz_id = formData.get('quiz_id') as string
-  const user_ids = formData.getAll('user_ids') as string[]
-  const due_date = (formData.get('due_date') as string) || null
+    const quiz_id = formData.get('quiz_id') as string
+    const user_ids = formData.getAll('user_ids') as string[]
+    const due_date = (formData.get('due_date') as string) || null
 
-  console.log('[assignStandaloneQuiz] inputs — quiz_id:', quiz_id, '| user_ids:', user_ids, '| due_date:', due_date)
+    console.log('[assignStandaloneQuiz] inputs — quiz_id:', quiz_id, '| user_ids:', user_ids, '| due_date:', due_date)
 
-  if (!quiz_id || user_ids.length === 0) {
-    console.error('[assignStandaloneQuiz] missing quiz_id or user_ids — aborting')
-    throw new Error('Quiz and at least one employee required')
-  }
+    if (!quiz_id || user_ids.length === 0) {
+      console.error('[assignStandaloneQuiz] missing quiz_id or user_ids — aborting')
+      return { ok: false, error: 'Quiz and at least one employee required' }
+    }
 
-  // Find which user_ids are already assigned so we only insert new rows + only
-  // email the people who actually got newly assigned.
-  const { data: existing, error: existingError } = await supabase
-    .from('standalone_quiz_assignments')
-    .select('user_id')
-    .eq('quiz_id', quiz_id)
-    .in('user_id', user_ids)
+    // ── Step 1: fetch existing assignments ──
+    // Find which user_ids are already assigned so we only insert new rows + only
+    // email the people who actually got newly assigned.
+    console.log('[assignStandaloneQuiz] STEP: fetching existing assignments')
+    const { data: existing, error: existingError } = await supabase
+      .from('standalone_quiz_assignments')
+      .select('user_id')
+      .eq('quiz_id', quiz_id)
+      .in('user_id', user_ids)
 
-  console.log('[assignStandaloneQuiz] existing check — data:', existing, '| error:', existingError)
+    console.log('[assignStandaloneQuiz] existing check — data:', existing, '| error:', existingError)
 
-  const alreadyAssigned = new Set((existing ?? []).map((r: { user_id: string }) => r.user_id))
-  const newUserIds = user_ids.filter((id) => !alreadyAssigned.has(id))
+    if (existingError) {
+      console.error('[assignStandaloneQuiz] EXISTING-FETCH FAILED:', existingError.message, existingError.code, existingError.details)
+      return { ok: false, error: `Failed to check existing assignments: ${existingError.message}` }
+    }
 
-  console.log('[assignStandaloneQuiz] alreadyAssigned:', [...alreadyAssigned], '| newUserIds:', newUserIds)
+    const alreadyAssigned = new Set((existing ?? []).map((r: { user_id: string }) => r.user_id))
+    const newUserIds = user_ids.filter((id) => !alreadyAssigned.has(id))
 
-  if (newUserIds.length === 0) {
-    console.log('[assignStandaloneQuiz] all employees were already assigned — nothing inserted, no email')
-    revalidatePath('/admin/quizzes')
-    return
-  }
+    console.log('[assignStandaloneQuiz] alreadyAssigned:', [...alreadyAssigned], '| newUserIds:', newUserIds)
 
-  const rows = newUserIds.map((uid) => ({
-    quiz_id,
-    user_id: uid,
-    assigned_by: user.id,
-    assigned_at: new Date().toISOString(),
-    due_date,
-  }))
+    if (newUserIds.length === 0) {
+      console.log('[assignStandaloneQuiz] all employees were already assigned — nothing inserted, no email')
+      revalidatePath('/admin/quizzes')
+      return { ok: true, saved: false }
+    }
 
-  console.log('[assignStandaloneQuiz] inserting rows:', JSON.stringify(rows))
+    const rows = newUserIds.map((uid) => ({
+      quiz_id,
+      user_id: uid,
+      assigned_by: user.id,
+      assigned_at: new Date().toISOString(),
+      due_date,
+    }))
 
-  const { data: insertedRows, error: insertError } = await supabase
-    .from('standalone_quiz_assignments')
-    .insert(rows)
-    .select('id, user_id')
+    // ── Step 2: insert assignment rows ──
+    console.log('[assignStandaloneQuiz] STEP: inserting rows:', JSON.stringify(rows))
 
-  console.log('[assignStandaloneQuiz] insert result — data:', insertedRows, '| error:', insertError)
+    const { data: insertedRows, error: insertError } = await supabase
+      .from('standalone_quiz_assignments')
+      .insert(rows)
+      .select('id, user_id')
 
-  if (insertError) {
-    console.error('[assignStandaloneQuiz] INSERT FAILED:', insertError.message, insertError.code, insertError.details)
-    throw new Error(`Failed to save assignments: ${insertError.message}`)
-  }
+    console.log('[assignStandaloneQuiz] insert result — data:', insertedRows, '| error:', insertError)
 
-  // ── Send notification emails (best-effort) ──
-  const baseUrl = getAppBaseUrl()
-  console.log('[assignStandaloneQuiz] === EMAIL URL DEBUG ===')
-  console.log('[assignStandaloneQuiz] resolved baseUrl:', JSON.stringify(baseUrl))
-  console.log('[assignStandaloneQuiz] direct process.env.NEXT_PUBLIC_APP_URL:', JSON.stringify(process.env.NEXT_PUBLIC_APP_URL))
-  console.log('[assignStandaloneQuiz] direct process.env.APP_URL:', JSON.stringify(process.env.APP_URL))
-  console.log('[assignStandaloneQuiz] RESEND_API_KEY present?:', process.env.RESEND_API_KEY ? 'yes (' + process.env.RESEND_API_KEY.slice(0, 10) + '…)' : 'NO')
+    if (insertError) {
+      console.error('[assignStandaloneQuiz] INSERT FAILED:', insertError.message, insertError.code, insertError.details)
+      return { ok: false, error: `Failed to save assignments: ${insertError.message}` }
+    }
 
-  const [{ data: quizData, error: quizFetchError }, { data: employees, error: empFetchError }] = await Promise.all([
-    supabase.from('standalone_quizzes').select('id,title').eq('id', quiz_id).single<{ id: string; title: string }>(),
-    supabase.from('profiles').select('id,email,full_name').in('id', newUserIds),
-  ])
+    // ── Step 3: fetch quiz + employees for the notification emails (best-effort) ──
+    const baseUrl = getAppBaseUrl()
+    console.log('[assignStandaloneQuiz] === EMAIL URL DEBUG ===')
+    console.log('[assignStandaloneQuiz] resolved baseUrl:', JSON.stringify(baseUrl))
+    console.log('[assignStandaloneQuiz] direct process.env.NEXT_PUBLIC_APP_URL:', JSON.stringify(process.env.NEXT_PUBLIC_APP_URL))
+    console.log('[assignStandaloneQuiz] direct process.env.APP_URL:', JSON.stringify(process.env.APP_URL))
+    console.log('[assignStandaloneQuiz] RESEND_API_KEY present?:', process.env.RESEND_API_KEY ? 'yes (' + process.env.RESEND_API_KEY.slice(0, 10) + '…)' : 'NO')
 
-  console.log('[assignStandaloneQuiz] quiz fetch — data:', quizData, '| error:', quizFetchError)
-  console.log('[assignStandaloneQuiz] employees fetch — data:', employees, '| error:', empFetchError)
+    console.log('[assignStandaloneQuiz] STEP: fetching quiz + employee profiles for emails')
+    const [{ data: quizData, error: quizFetchError }, { data: employees, error: empFetchError }] = await Promise.all([
+      supabase.from('standalone_quizzes').select('id,title').eq('id', quiz_id).single<{ id: string; title: string }>(),
+      supabase.from('profiles').select('id,email,full_name').in('id', newUserIds),
+    ])
 
-  // Collect failures so we can surface them to the admin. Assignment rows are
-  // already in the DB at this point — we never roll those back on email error,
-  // but the admin deserves to know an email didn't go out.
-  const emailFailures: string[] = []
+    console.log('[assignStandaloneQuiz] quiz fetch — data:', quizData, '| error:', quizFetchError)
+    console.log('[assignStandaloneQuiz] employees fetch — data:', employees, '| error:', empFetchError)
 
-  if (!quizData) {
-    console.warn('[assignStandaloneQuiz] no quizData — skipping all emails')
-    emailFailures.push('Quiz row was not found when sending emails (RLS or deletion?)')
-  } else if (!employees || employees.length === 0) {
-    console.warn('[assignStandaloneQuiz] no employees returned — skipping all emails')
-    emailFailures.push('No matching profile rows for the assigned employees (RLS?)')
-  } else if (!process.env.RESEND_API_KEY) {
-    console.warn('[assignStandaloneQuiz] RESEND_API_KEY missing — skipping all emails')
-    emailFailures.push('RESEND_API_KEY is not set on this deployment')
-  } else {
-    const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
-    console.log('[assignStandaloneQuiz] sending', typedEmployees.length, 'email(s)')
-    for (const emp of typedEmployees) {
-      const quizUrl = `${baseUrl}/quizzes/${quizData.id}`
-      console.log('[assignStandaloneQuiz] → sending email to:', emp.email, '| quizUrl:', quizUrl)
-      try {
-        await sendStandaloneQuizAssignmentEmail({
-          to: emp.email,
-          employeeName: emp.full_name ?? emp.email,
-          quizTitle: quizData.title,
-          dueDate: due_date,
-          quizUrl,
-        })
-        console.log('[assignStandaloneQuiz] ✓ email sent OK to:', emp.email)
-      } catch (emailErr) {
-        console.error('[assignStandaloneQuiz] ✗ email FAILED for', emp.email, ':', emailErr)
-        emailFailures.push(`${emp.email}: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`)
+    // Collect failures so we can surface them to the admin. Assignment rows are
+    // already in the DB at this point — we never roll those back on email error,
+    // but the admin deserves to know an email didn't go out.
+    const emailFailures: string[] = []
+
+    if (!quizData) {
+      console.warn('[assignStandaloneQuiz] no quizData — skipping all emails')
+      emailFailures.push('Quiz row was not found when sending emails (RLS or deletion?)')
+    } else if (!employees || employees.length === 0) {
+      console.warn('[assignStandaloneQuiz] no employees returned — skipping all emails')
+      emailFailures.push('No matching profile rows for the assigned employees (RLS?)')
+    } else if (!process.env.RESEND_API_KEY) {
+      console.warn('[assignStandaloneQuiz] RESEND_API_KEY missing — skipping all emails')
+      emailFailures.push('RESEND_API_KEY is not set on this deployment')
+    } else {
+      // ── Step 4: send the emails ──
+      const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
+      console.log('[assignStandaloneQuiz] STEP: sending', typedEmployees.length, 'email(s)')
+      for (const emp of typedEmployees) {
+        const quizUrl = `${baseUrl}/quizzes/${quizData.id}`
+        console.log('[assignStandaloneQuiz] → sending email to:', emp.email, '| quizUrl:', quizUrl)
+        try {
+          await sendStandaloneQuizAssignmentEmail({
+            to: emp.email,
+            employeeName: emp.full_name ?? emp.email,
+            quizTitle: quizData.title,
+            dueDate: due_date,
+            quizUrl,
+          })
+          console.log('[assignStandaloneQuiz] ✓ email sent OK to:', emp.email)
+        } catch (emailErr) {
+          console.error('[assignStandaloneQuiz] ✗ email FAILED for', emp.email, ':', emailErr)
+          emailFailures.push(`${emp.email}: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`)
+        }
       }
     }
-  }
 
-  console.log('[assignStandaloneQuiz] === DONE ===', emailFailures.length === 0 ? 'all emails OK' : `${emailFailures.length} email failure(s)`)
-  revalidatePath('/admin/quizzes')
-  revalidatePath('/dashboard')
+    console.log('[assignStandaloneQuiz] === DONE ===', emailFailures.length === 0 ? 'all emails OK' : `${emailFailures.length} email failure(s)`)
+    revalidatePath('/admin/quizzes')
+    revalidatePath('/dashboard')
 
-  // If anything in the email pipeline failed, surface to the admin so silent
-  // "looked like it worked but no email" mode isn't possible.
-  if (emailFailures.length > 0) {
-    throw new Error(`Assignments saved, but email(s) failed: ${emailFailures.join('; ')}`)
+    // If anything in the email pipeline failed, surface to the admin so silent
+    // "looked like it worked but no email" mode isn't possible. Rows are saved,
+    // so flag saved:true — the admin shouldn't retry the whole assignment.
+    if (emailFailures.length > 0) {
+      return { ok: false, saved: true, error: `Assignments saved, but email(s) failed: ${emailFailures.join('; ')}` }
+    }
+
+    return { ok: true, saved: true }
+  } catch (err) {
+    // Catch-all for anything unexpected (requireAdmin throwing, network errors,
+    // etc.) so the action returns a real message instead of a masked prod crash.
+    console.error('[assignStandaloneQuiz] UNEXPECTED ERROR — action aborted:', err)
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 

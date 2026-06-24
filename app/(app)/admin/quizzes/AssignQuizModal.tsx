@@ -37,10 +37,19 @@ export default function AssignQuizModal({
     for (const id of selected) data.append('user_ids', id)
 
     try {
-      await assignStandaloneQuiz(data)
+      const res = await assignStandaloneQuiz(data)
+      if (!res.ok) {
+        setError(res.error ?? 'Failed to assign')
+        // Rows may have been saved (e.g. emails failed) — refresh so the list
+        // reflects reality, but keep the modal open so the admin sees the error.
+        if (res.saved) router.refresh()
+        return
+      }
       router.refresh()
       onClose()
     } catch (err) {
+      // Fallback: the action returns errors rather than throwing, but guard
+      // against an unexpected throw (e.g. network failure reaching the action).
       setError(err instanceof Error ? err.message : 'Failed to assign')
     } finally {
       setPending(false)
