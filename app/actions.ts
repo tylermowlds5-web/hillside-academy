@@ -10,6 +10,12 @@ import { redirect } from 'next/navigation'
 import type { QuizQuestion, StoredAnswer, QuizReviewItem, Category, SubCategory, QuizSubmittedAnswer } from '@/lib/types'
 import { quizQuestionType, quizAcceptedAnswers } from '@/lib/types'
 
+// ── Email rate limiting ─────────────────────────────────────────────────────
+// Resend caps us at 5 requests/second. We send bulk assignment emails
+// sequentially with this delay between each (4/sec) to stay safely under it.
+const EMAIL_SEND_DELAY_MS = 250
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 // ── Auth helpers ──────────────────────────────────────────────────────────
 
 async function getUser() {
@@ -464,7 +470,9 @@ export async function createAssignment(formData: FormData) {
 
     if (videoData && employees && employees.length > 0) {
       const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
-      for (const emp of typedEmployees) {
+      for (const [i, emp] of typedEmployees.entries()) {
+        // Throttle to stay under Resend's 5 req/sec limit (skip before the first).
+        if (i > 0) await sleep(EMAIL_SEND_DELAY_MS)
         const watchUrl = `${baseUrl}/watch/${videoData.id}`
         console.log('[createAssignment] sending email to:', emp.email, '| watchUrl:', watchUrl)
         try {
@@ -911,7 +919,9 @@ export async function assignStandaloneQuiz(formData: FormData): Promise<AssignSt
       // ── Step 4: send the emails ──
       const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
       console.log('[assignStandaloneQuiz] STEP: sending', typedEmployees.length, 'email(s)')
-      for (const emp of typedEmployees) {
+      for (const [i, emp] of typedEmployees.entries()) {
+        // Throttle to stay under Resend's 5 req/sec limit (skip before the first).
+        if (i > 0) await sleep(EMAIL_SEND_DELAY_MS)
         const quizUrl = `${baseUrl}/quizzes/${quizData.id}`
         console.log('[assignStandaloneQuiz] → sending email to:', emp.email, '| quizUrl:', quizUrl)
         try {
@@ -1621,7 +1631,10 @@ export async function savePathWithDetails(data: {
     if (empRows && empRows.length > 0) {
       const pathsUrl = `${getAppBaseUrl()}/paths`
 
-      for (const emp of empRows as { id: string; email: string; full_name: string | null }[]) {
+      const typedEmpRows = empRows as { id: string; email: string; full_name: string | null }[]
+      for (const [i, emp] of typedEmpRows.entries()) {
+        // Throttle to stay under Resend's 5 req/sec limit (skip before the first).
+        if (i > 0) await sleep(EMAIL_SEND_DELAY_MS)
         try {
           await sendPathAssignmentEmail({
             to: emp.email,
