@@ -11,10 +11,30 @@ import type { QuizQuestion, StoredAnswer, QuizReviewItem, Category, SubCategory,
 import { quizQuestionType, quizAcceptedAnswers } from '@/lib/types'
 
 // ── Email rate limiting ─────────────────────────────────────────────────────
-// Resend caps us at 5 requests/second. We send bulk assignment emails
-// sequentially with this delay between each (4/sec) to stay safely under it.
-const EMAIL_SEND_DELAY_MS = 250
+// Resend caps us at 5 requests/second. Sending bulk assignment emails one at a
+// time (with a per-email delay) is too slow for a serverless function and can
+// time out on Vercel. Instead we send in parallel batches of 4 with a 1-second
+// pause between batches: 4 emails go out simultaneously, then we wait a second,
+// then the next 4. That stays under the 5/sec limit while finishing far faster.
+const EMAIL_BATCH_SIZE = 4
+const EMAIL_BATCH_PAUSE_MS = 1000
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+// Runs `send` for every item in parallel batches of EMAIL_BATCH_SIZE, pausing
+// EMAIL_BATCH_PAUSE_MS between batches. Each send is awaited within its batch;
+// per-item error handling is the caller's responsibility (do it inside `send`),
+// otherwise one rejection will reject the whole batch.
+async function sendEmailsInBatches<T>(
+  items: T[],
+  send: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  for (let start = 0; start < items.length; start += EMAIL_BATCH_SIZE) {
+    // Pause between batches (skip before the first) to stay under the rate limit.
+    if (start > 0) await sleep(EMAIL_BATCH_PAUSE_MS)
+    const batch = items.slice(start, start + EMAIL_BATCH_SIZE)
+    await Promise.all(batch.map((item, i) => send(item, start + i)))
+  }
+}
 
 // ── Auth helpers ──────────────────────────────────────────────────────────
 
@@ -470,9 +490,7 @@ export async function createAssignment(formData: FormData) {
 
     if (videoData && employees && employees.length > 0) {
       const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
-      for (const [i, emp] of typedEmployees.entries()) {
-        // Throttle to stay under Resend's 5 req/sec limit (skip before the first).
-        if (i > 0) await sleep(EMAIL_SEND_DELAY_MS)
+      await sendEmailsInBatches(typedEmployees, async (emp) => {
         const watchUrl = `${baseUrl}/watch/${videoData.id}`
         console.log('[createAssignment] sending email to:', emp.email, '| watchUrl:', watchUrl)
         try {
@@ -488,7 +506,7 @@ export async function createAssignment(formData: FormData) {
           console.error('[createAssignment] email FAILED for', emp.email, ':', emailErr)
           // Don't throw — a failed email must not roll back a successful assignment
         }
-      }
+      })
     } else {
       console.warn('[createAssignment] skipping emails — video or employees not found')
     }
@@ -919,9 +937,7 @@ export async function assignStandaloneQuiz(formData: FormData): Promise<AssignSt
       // ── Step 4: send the emails ──
       const typedEmployees = employees as { id: string; email: string; full_name: string | null }[]
       console.log('[assignStandaloneQuiz] STEP: sending', typedEmployees.length, 'email(s)')
-      for (const [i, emp] of typedEmployees.entries()) {
-        // Throttle to stay under Resend's 5 req/sec limit (skip before the first).
-        if (i > 0) await sleep(EMAIL_SEND_DELAY_MS)
+      await sendEmailsInBatches(typedEmployees, async (emp) => {
         const quizUrl = `${baseUrl}/quizzes/${quizData.id}`
         console.log('[assignStandaloneQuiz] → sending email to:', emp.email, '| quizUrl:', quizUrl)
         try {
@@ -937,7 +953,7 @@ export async function assignStandaloneQuiz(formData: FormData): Promise<AssignSt
           console.error('[assignStandaloneQuiz] ✗ email FAILED for', emp.email, ':', emailErr)
           emailFailures.push(`${emp.email}: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`)
         }
-      }
+      })
     }
 
     console.log('[assignStandaloneQuiz] === DONE ===', emailFailures.length === 0 ? 'all emails OK' : `${emailFailures.length} email failure(s)`)
@@ -1632,9 +1648,7 @@ export async function savePathWithDetails(data: {
       const pathsUrl = `${getAppBaseUrl()}/paths`
 
       const typedEmpRows = empRows as { id: string; email: string; full_name: string | null }[]
-      for (const [i, emp] of typedEmpRows.entries()) {
-        // Throttle to stay under Resend's 5 req/sec limit (skip before the first).
-        if (i > 0) await sleep(EMAIL_SEND_DELAY_MS)
+      await sendEmailsInBatches(typedEmpRows, async (emp) => {
         try {
           await sendPathAssignmentEmail({
             to: emp.email,
@@ -1647,7 +1661,7 @@ export async function savePathWithDetails(data: {
         } catch (e) {
           console.error('[savePathWithDetails] email failed for', emp.email, ':', e)
         }
-      }
+      })
     }
   }
 
