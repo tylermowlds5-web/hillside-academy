@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { fmtDate } from '@/lib/format-date'
+import { fmtDateTime } from '@/lib/format-date'
 
 export type InsightQuiz = {
   id: string
@@ -17,12 +17,23 @@ export type InsightAttempt = {
   answers: { question_text: string; is_correct: boolean; chosen: string; correct: string }[]
 }
 
-// One employee's response to a question, from their first attempt in range.
+// A single in-range attempt at a question (context for the drill-down).
+type AttemptDetail = {
+  isCorrect: boolean
+  chosen: string
+  takenAt: string
+}
+
+// One employee's result for a question. The counted fields (isCorrect / chosen
+// / takenAt) come from their FIRST attempt in range — the only attempt that
+// counts toward the tally. `history` lists ALL their in-range attempts at this
+// question (including the counted one), oldest first, for context only.
 type ResponseDetail = {
   userName: string
   isCorrect: boolean
   chosen: string
   takenAt: string
+  history: AttemptDetail[]
 }
 
 type ReportRow = {
@@ -98,9 +109,25 @@ export default function InsightsClient({
       if (!existing || a.takenAt < existing.takenAt) firstAttempt.set(key, a)
     }
 
-    // 3. Tally correct/incorrect per (quiz, question), and keep each employee's
-    //    individual response for the drill-down. correctAnswer is captured from
-    //    the first response that carries one (it's identical across attempts).
+    // 2b. Full in-range attempt history per (quiz, question, employee) — every
+    //     attempt, not just the first. Context only; never feeds the tally.
+    const historyMap = new Map<string, AttemptDetail[]>()
+    for (const a of inScope) {
+      for (const ans of a.answers) {
+        const hKey = `${a.quizId}${SEP}${ans.question_text}${SEP}${a.userId}`
+        let list = historyMap.get(hKey)
+        if (!list) {
+          list = []
+          historyMap.set(hKey, list)
+        }
+        list.push({ isCorrect: ans.is_correct, chosen: ans.chosen, takenAt: a.takenAt })
+      }
+    }
+
+    // 3. Tally correct/incorrect per (quiz, question) from FIRST attempts only —
+    //    counting is unchanged. We also attach each employee's counted response
+    //    plus their full history (context). correctAnswer is captured from the
+    //    first response that carries one (it's identical across attempts).
     type Agg = {
       quizId: string
       questionText: string
@@ -121,11 +148,16 @@ export default function InsightsClient({
         if (!entry.correctAnswer && ans.correct) entry.correctAnswer = ans.correct
         if (ans.is_correct) entry.correct++
         else entry.incorrect++
+        const hKey = `${a.quizId}${SEP}${ans.question_text}${SEP}${a.userId}`
+        const history = (historyMap.get(hKey) ?? [])
+          .slice()
+          .sort((x, y) => x.takenAt.localeCompare(y.takenAt))
         entry.responses.push({
           userName: a.userName,
           isCorrect: ans.is_correct,
           chosen: ans.chosen,
           takenAt: a.takenAt,
+          history,
         })
       }
     }
@@ -502,28 +534,7 @@ export default function InsightsClient({
                 </thead>
                 <tbody>
                   {detail.responses.map((resp, i) => (
-                    <tr key={`${resp.userName}-${i}`} className="border-b border-zinc-800/60 last:border-0">
-                      <td className="px-5 py-3 align-top">
-                        <div className="flex items-center gap-2">
-                          {resp.isCorrect ? (
-                            <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                            </svg>
-                          ) : (
-                            <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          )}
-                          <span className="text-zinc-200">{resp.userName}</span>
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3 align-top ${resp.isCorrect ? 'text-zinc-400' : 'text-red-300'}`}>
-                        {resp.chosen?.trim() ? resp.chosen : <span className="text-zinc-600 italic">No answer</span>}
-                      </td>
-                      <td className="px-5 py-3 align-top text-right text-zinc-500 whitespace-nowrap">
-                        {fmtDate(resp.takenAt)}
-                      </td>
-                    </tr>
+                    <PersonRow key={`${resp.userName}-${i}`} resp={resp} />
                   ))}
                 </tbody>
               </table>
@@ -532,5 +543,93 @@ export default function InsightsClient({
         </div>
       )}
     </div>
+  )
+}
+
+// Green check / red X. `muted` dims it for the context (non-counted) rows.
+function Mark({ ok, muted }: { ok: boolean; muted?: boolean }) {
+  return ok ? (
+    <svg
+      className={`w-4 h-4 flex-shrink-0 ${muted ? 'text-emerald-500/60' : 'text-emerald-400'}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.5}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+    </svg>
+  ) : (
+    <svg
+      className={`w-4 h-4 flex-shrink-0 ${muted ? 'text-red-500/60' : 'text-red-400'}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.5}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
+// One employee in the drill-down. The top row is their COUNTED attempt (first
+// in range — the only one that counts toward the tally), shown bold. If they
+// retried within the range, a toggle reveals the rest of their attempts as
+// muted, indented context rows underneath. `history` is oldest-first, so its
+// first entry is the counted attempt and the extras are later retries.
+function PersonRow({ resp }: { resp: ResponseDetail }) {
+  const [open, setOpen] = useState(false)
+  const extras = resp.history.slice(1)
+  const total = resp.history.length
+
+  return (
+    <>
+      {/* Counted attempt */}
+      <tr className="border-b border-zinc-800/60 last:border-0">
+        <td className="px-5 py-3 align-top">
+          <div className="flex items-center gap-2">
+            <Mark ok={resp.isCorrect} />
+            <span className="text-zinc-100 font-medium">{resp.userName}</span>
+          </div>
+          <div className="mt-1 pl-6 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300/80">
+              Counted attempt
+            </span>
+            {extras.length > 0 && (
+              <button
+                onClick={() => setOpen((o) => !o)}
+                className="text-xs text-zinc-400 hover:text-zinc-200 underline decoration-dotted underline-offset-2"
+              >
+                {open ? 'Hide attempts' : `View all ${total} attempts`}
+              </button>
+            )}
+          </div>
+        </td>
+        <td className={`px-4 py-3 align-top font-medium ${resp.isCorrect ? 'text-zinc-300' : 'text-red-300'}`}>
+          {resp.chosen?.trim() ? resp.chosen : <span className="text-zinc-600 italic">No answer</span>}
+        </td>
+        <td className="px-5 py-3 align-top text-right text-zinc-400 whitespace-nowrap">
+          {fmtDateTime(resp.takenAt)}
+        </td>
+      </tr>
+
+      {/* Context attempts (retries) — muted + indented, only when expanded */}
+      {open &&
+        extras.map((att, i) => (
+          <tr key={i} className="border-b border-zinc-800/40 last:border-0 bg-zinc-950/40">
+            <td className="px-5 py-2 align-top">
+              <div className="flex items-center gap-2 pl-6 text-zinc-500">
+                <Mark ok={att.isCorrect} muted />
+                <span className="text-xs">Attempt {i + 2} of {total}</span>
+              </div>
+            </td>
+            <td className={`px-4 py-2 align-top text-sm ${att.isCorrect ? 'text-zinc-500' : 'text-red-300/70'}`}>
+              {att.chosen?.trim() ? att.chosen : <span className="text-zinc-600 italic">No answer</span>}
+            </td>
+            <td className="px-5 py-2 align-top text-right text-zinc-500 whitespace-nowrap text-xs">
+              {fmtDateTime(att.takenAt)}
+            </td>
+          </tr>
+        ))}
+    </>
   )
 }
