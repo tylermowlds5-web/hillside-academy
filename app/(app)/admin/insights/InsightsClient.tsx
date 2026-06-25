@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { fmtDate } from '@/lib/format-date'
 
 export type InsightQuiz = {
   id: string
@@ -11,8 +12,17 @@ export type InsightQuiz = {
 export type InsightAttempt = {
   quizId: string
   userId: string
+  userName: string
   takenAt: string // ISO timestamp
-  answers: { question_text: string; is_correct: boolean }[]
+  answers: { question_text: string; is_correct: boolean; chosen: string; correct: string }[]
+}
+
+// One employee's response to a question, from their first attempt in range.
+type ResponseDetail = {
+  userName: string
+  isCorrect: boolean
+  chosen: string
+  takenAt: string
 }
 
 type ReportRow = {
@@ -20,10 +30,12 @@ type ReportRow = {
   quizTitle: string
   kind: 'video' | 'standalone'
   questionText: string
+  correctAnswer: string
   correct: number
   incorrect: number
   total: number
   pctIncorrect: number // 0-100, rounded
+  responses: ResponseDetail[]
 }
 
 // Composite-key separator for the aggregation maps. Quiz ids are UUIDs (hex +
@@ -53,6 +65,11 @@ export default function InsightsClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(quizzes.map((q) => q.id))
   )
+  // Key of the question whose drill-down modal is open (null = closed). We key
+  // by quiz+question and resolve the live row below, so the modal stays in sync
+  // with the active filters (and closes automatically if the question drops out
+  // of range).
+  const [detailKey, setDetailKey] = useState<string | null>(null)
 
   const quizById = useMemo(() => {
     const m = new Map<string, InsightQuiz>()
@@ -81,18 +98,35 @@ export default function InsightsClient({
       if (!existing || a.takenAt < existing.takenAt) firstAttempt.set(key, a)
     }
 
-    // 3. Tally correct/incorrect per (quiz, question).
-    const agg = new Map<string, { quizId: string; questionText: string; correct: number; incorrect: number }>()
+    // 3. Tally correct/incorrect per (quiz, question), and keep each employee's
+    //    individual response for the drill-down. correctAnswer is captured from
+    //    the first response that carries one (it's identical across attempts).
+    type Agg = {
+      quizId: string
+      questionText: string
+      correctAnswer: string
+      correct: number
+      incorrect: number
+      responses: ResponseDetail[]
+    }
+    const agg = new Map<string, Agg>()
     for (const a of firstAttempt.values()) {
       for (const ans of a.answers) {
         const key = `${a.quizId}${SEP}${ans.question_text}`
         let entry = agg.get(key)
         if (!entry) {
-          entry = { quizId: a.quizId, questionText: ans.question_text, correct: 0, incorrect: 0 }
+          entry = { quizId: a.quizId, questionText: ans.question_text, correctAnswer: '', correct: 0, incorrect: 0, responses: [] }
           agg.set(key, entry)
         }
+        if (!entry.correctAnswer && ans.correct) entry.correctAnswer = ans.correct
         if (ans.is_correct) entry.correct++
         else entry.incorrect++
+        entry.responses.push({
+          userName: a.userName,
+          isCorrect: ans.is_correct,
+          chosen: ans.chosen,
+          takenAt: a.takenAt,
+        })
       }
     }
 
@@ -101,15 +135,25 @@ export default function InsightsClient({
     for (const e of agg.values()) {
       const quiz = quizById.get(e.quizId)
       const total = e.correct + e.incorrect
+      // Within a question, surface the people who got it wrong first, then by
+      // most-recent attempt so the newest activity is on top.
+      e.responses.sort(
+        (a, b) =>
+          Number(a.isCorrect) - Number(b.isCorrect) ||
+          b.takenAt.localeCompare(a.takenAt) ||
+          a.userName.localeCompare(b.userName)
+      )
       out.push({
         quizId: e.quizId,
         quizTitle: quiz?.title ?? 'Unknown quiz',
         kind: quiz?.kind ?? 'standalone',
         questionText: e.questionText,
+        correctAnswer: e.correctAnswer,
         correct: e.correct,
         incorrect: e.incorrect,
         total,
         pctIncorrect: total > 0 ? Math.round((e.incorrect / total) * 100) : 0,
+        responses: e.responses,
       })
     }
     out.sort(
@@ -120,6 +164,22 @@ export default function InsightsClient({
     )
     return out
   }, [attempts, selectedIds, startDate, endDate, quizById])
+
+  // Resolve the open drill-down from the live rows so it tracks the filters.
+  const detail = useMemo(
+    () => (detailKey ? rows.find((r) => `${r.quizId}${SEP}${r.questionText}` === detailKey) ?? null : null),
+    [detailKey, rows]
+  )
+
+  // Close the drill-down on Escape.
+  useEffect(() => {
+    if (!detailKey) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDetailKey(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [detailKey])
 
   function toggleQuiz(id: string) {
     setSelectedIds((prev) => {
@@ -318,8 +378,22 @@ export default function InsightsClient({
                       : r.pctIncorrect >= 25
                         ? 'bg-amber-500'
                         : 'bg-emerald-500'
+                  const key = `${r.quizId}${SEP}${r.questionText}`
                   return (
-                    <tr key={`${r.quizId}${SEP}${r.questionText}${i}`} className="border-b border-zinc-800/60 last:border-0">
+                    <tr
+                      key={`${key}${i}`}
+                      onClick={() => setDetailKey(key)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setDetailKey(key)
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`View who answered: ${r.questionText}`}
+                      className="border-b border-zinc-800/60 last:border-0 cursor-pointer hover:bg-zinc-800/40 focus:bg-zinc-800/40 focus:outline-none"
+                    >
                       <td className="px-4 sm:px-5 py-3 align-top">
                         <div className="text-zinc-300 max-w-[14rem]">{r.quizTitle}</div>
                         <span
@@ -340,6 +414,9 @@ export default function InsightsClient({
                             <div className={`h-full ${bar}`} style={{ width: `${r.pctIncorrect}%` }} />
                           </div>
                           <span className={`font-semibold tabular-nums ${color}`}>{r.pctIncorrect}%</span>
+                          <svg className="w-4 h-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
                         </div>
                       </td>
                     </tr>
@@ -350,6 +427,110 @@ export default function InsightsClient({
           </div>
         )}
       </div>
+
+      {/* Per-question drill-down */}
+      {detail && (
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto"
+          onClick={() => setDetailKey(null)}
+        >
+          <div
+            className="w-full max-w-2xl my-8 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-zinc-800">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs text-zinc-400 truncate">{detail.quizTitle}</span>
+                  <span
+                    className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 ${
+                      detail.kind === 'video' ? 'bg-sky-500/15 text-sky-400' : 'bg-violet-500/15 text-violet-400'
+                    }`}
+                  >
+                    {detail.kind === 'video' ? 'Video' : 'Standalone'}
+                  </span>
+                </div>
+                <h2 className="text-base font-semibold text-zinc-50 leading-snug">{detail.questionText}</h2>
+              </div>
+              <button
+                onClick={() => setDetailKey(null)}
+                className="p-1.5 -mr-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 flex-shrink-0"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Correct answer + summary */}
+            <div className="px-5 py-4 border-b border-zinc-800 space-y-2">
+              {detail.correctAnswer ? (
+                <div className="text-sm">
+                  <span className="text-zinc-500">Correct answer: </span>
+                  <span className="text-emerald-400 font-medium">{detail.correctAnswer}</span>
+                </div>
+              ) : (
+                <div className="text-sm text-zinc-500">Correct answer not recorded for this question.</div>
+              )}
+              <div className="text-xs text-zinc-400">
+                {detail.incorrect} incorrect · {detail.correct} correct · {detail.total} total ·{' '}
+                <span
+                  className={
+                    detail.pctIncorrect > 50
+                      ? 'text-red-400'
+                      : detail.pctIncorrect >= 25
+                        ? 'text-amber-400'
+                        : 'text-emerald-400'
+                  }
+                >
+                  {detail.pctIncorrect}% incorrect
+                </span>
+              </div>
+            </div>
+
+            {/* Per-person responses (incorrect first) */}
+            <div className="max-h-[55vh] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-zinc-900">
+                  <tr className="text-left text-xs text-zinc-500 border-b border-zinc-800">
+                    <th className="font-medium px-5 py-2.5">Employee</th>
+                    <th className="font-medium px-4 py-2.5">Their answer</th>
+                    <th className="font-medium px-5 py-2.5 text-right whitespace-nowrap">Attempt date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.responses.map((resp, i) => (
+                    <tr key={`${resp.userName}-${i}`} className="border-b border-zinc-800/60 last:border-0">
+                      <td className="px-5 py-3 align-top">
+                        <div className="flex items-center gap-2">
+                          {resp.isCorrect ? (
+                            <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          <span className="text-zinc-200">{resp.userName}</span>
+                        </div>
+                      </td>
+                      <td className={`px-4 py-3 align-top ${resp.isCorrect ? 'text-zinc-400' : 'text-red-300'}`}>
+                        {resp.chosen?.trim() ? resp.chosen : <span className="text-zinc-600 italic">No answer</span>}
+                      </td>
+                      <td className="px-5 py-3 align-top text-right text-zinc-500 whitespace-nowrap">
+                        {fmtDate(resp.takenAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

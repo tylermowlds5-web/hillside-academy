@@ -30,17 +30,25 @@ export default async function QuizInsightsPage() {
     { data: standaloneQuizRows },
     { data: videoAttemptRows },
     { data: standaloneAttemptRows },
+    { data: profileRows },
   ] = await Promise.all([
     supabase.from('quizzes').select('id, video_id'),
     supabase.from('videos').select('id, title'),
     supabase.from('standalone_quizzes').select('id, title'),
     supabase.from('quiz_attempts').select('quiz_id, user_id, taken_at, answers'),
     supabase.from('standalone_quiz_attempts').select('quiz_id, user_id, taken_at, answers'),
+    supabase.from('profiles').select('id, full_name, email'),
   ])
 
   const videoTitleById = new Map<string, string>()
   for (const v of (videoRows ?? []) as { id: string; title: string }[]) {
     videoTitleById.set(v.id, v.title)
+  }
+
+  // user_id → display name for the per-question drill-down.
+  const nameById = new Map<string, string>()
+  for (const p of (profileRows ?? []) as { id: string; full_name: string | null; email: string }[]) {
+    nameById.set(p.id, p.full_name ?? p.email)
   }
 
   // Normalize both quiz kinds into one list. A video quiz has no title of its
@@ -70,8 +78,19 @@ export default async function QuizInsightsPage() {
       if (!knownQuizIds.has(a.quiz_id) || !a.taken_at) continue
       const answers = (a.answers ?? [])
         .filter((ans) => ans && typeof ans.question_text === 'string')
-        .map((ans) => ({ question_text: ans.question_text, is_correct: !!ans.is_correct }))
-      attempts.push({ quizId: a.quiz_id, userId: a.user_id, takenAt: a.taken_at, answers })
+        .map((ans) => ({
+          question_text: ans.question_text,
+          is_correct: !!ans.is_correct,
+          chosen: ans.chosen ?? '',
+          correct: ans.correct ?? '',
+        }))
+      attempts.push({
+        quizId: a.quiz_id,
+        userId: a.user_id,
+        userName: nameById.get(a.user_id) ?? 'Unknown employee',
+        takenAt: a.taken_at,
+        answers,
+      })
     }
   }
   pushAttempts((videoAttemptRows ?? []) as { quiz_id: string; user_id: string; taken_at: string; answers: StoredAnswer[] | null }[])
