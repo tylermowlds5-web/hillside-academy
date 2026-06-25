@@ -5,7 +5,6 @@ import type { Profile, Progress, QuizAttempt } from '@/lib/types'
 import { getEffectiveProgress } from '@/lib/assignment-progress'
 import { fmtDate } from '@/lib/format-date'
 import AutoRefresh from './AutoRefresh'
-import StorageUsageCard from './StorageUsageCard'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -207,12 +206,6 @@ export default async function AdminPage() {
           </svg>
           Export CSV
         </a>
-      </div>
-
-      {/* R2 storage usage — fetched client-side (and cached) so listing the
-          bucket doesn't run on every dashboard load. */}
-      <div className="mb-8 max-w-md">
-        <StorageUsageCard />
       </div>
 
       {/* Top stats */}

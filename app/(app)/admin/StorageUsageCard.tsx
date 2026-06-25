@@ -35,7 +35,7 @@ function writeCache(data: Usage) {
   }
 }
 
-export default function StorageUsageCard() {
+export default function StorageUsageCard({ compact = false }: { compact?: boolean }) {
   const [usage, setUsage] = useState<Usage | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -74,6 +74,29 @@ export default function StorageUsageCard() {
   const percent = usage ? Math.min(100, (usage.totalBytes / usage.freeTierBytes) * 100) : 0
   const barColor = percent > 90 ? 'bg-red-500' : percent >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
   const freeTierHuman = usage ? formatGB(usage.freeTierBytes) : '10 GB'
+
+  // Compact variant — just "X GB of 10 GB" with a thin bar. Used in page
+  // headers (e.g. Manage Videos) where it must stay out of the way.
+  if (compact) {
+    return (
+      <div className="min-w-[8rem]" title="R2 storage used (free tier is 10 GB; overage ~$0.015/GB/mo)">
+        {error ? (
+          <span className="text-xs text-red-400">Storage unavailable</span>
+        ) : !usage ? (
+          <span className="text-xs text-zinc-500">{loading ? 'Storage…' : '—'}</span>
+        ) : (
+          <>
+            <div className="text-xs text-zinc-400 whitespace-nowrap mb-1">
+              <span className="text-zinc-200 font-medium">{usage.humanSize}</span> of {freeTierHuman}
+            </div>
+            <div className="w-full h-1 rounded-full bg-zinc-800 overflow-hidden">
+              <div className={`h-full ${barColor} transition-all`} style={{ width: `${percent}%` }} />
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 sm:p-5">

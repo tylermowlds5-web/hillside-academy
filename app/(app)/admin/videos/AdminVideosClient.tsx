@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { Video, Category, SubCategory } from '@/lib/types'
 import VideoForm from './VideoForm'
 import EditVideoPanel from './EditVideoPanel'
+import StorageUsageCard from '../StorageUsageCard'
 import {
   deleteVideo,
   reorderVideos,
@@ -652,7 +653,8 @@ export default function AdminVideosClient({ videos: initialVideos, categories: i
           <h1 className="text-2xl font-bold text-zinc-50">Videos</h1>
           <p className="text-zinc-400 text-sm mt-1">Manage your training video library</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <StorageUsageCard compact />
           {selectedCategoryId === null && (
             <button onClick={() => setShowCreateCategory(true)} className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm transition-colors">
               Add Category
