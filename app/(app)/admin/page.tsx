@@ -33,7 +33,7 @@ export default async function AdminPage() {
     supabase.from('progress').select('*'),
     supabase.from('quiz_attempts').select('user_id, quiz_id, score, passed, taken_at'),
     supabase.from('video_watch_events').select('user_id, watched_at'),
-    supabase.from('standalone_quiz_attempts').select('user_id, taken_at'),
+    supabase.from('standalone_quiz_attempts').select('user_id, quiz_id, score, passed, taken_at'),
   ])
 
   const typedEmployees = (employees ?? []) as Profile[]
@@ -41,7 +41,7 @@ export default async function AdminPage() {
   const typedProgress = (allProgress ?? []) as Progress[]
   const typedAttempts = (quizAttempts ?? []) as Pick<QuizAttempt, 'user_id' | 'quiz_id' | 'score' | 'passed' | 'taken_at'>[]
   const typedWatchEvents = (watchEvents ?? []) as { user_id: string; watched_at: string }[]
-  const typedStandaloneAttempts = (standaloneAttempts ?? []) as { user_id: string; taken_at: string }[]
+  const typedStandaloneAttempts = (standaloneAttempts ?? []) as { user_id: string; quiz_id: string; score: number; passed: boolean; taken_at: string }[]
 
   // Most recent activity timestamp per user from each source, so "Last Active"
   // reflects real activity even when last_login was never set.
@@ -73,9 +73,13 @@ export default async function AdminPage() {
   const progressMap = new Map<string, Progress>()
   for (const p of typedProgress) progressMap.set(`${p.user_id}:${p.video_id}`, p)
 
-  // Best attempt per (user, quiz) — what we score the employee on.
+  // Best attempt per (user, quiz) — what we score the employee on. Counts BOTH
+  // video-quiz attempts (quiz_attempts) and standalone-quiz attempts
+  // (standalone_quiz_attempts), matching the employee detail page. quiz_id uuids
+  // don't collide across the two tables, so a single map keyed by
+  // `${user_id}:${quiz_id}` correctly counts distinct quizzes across both.
   const bestAttemptMap = new Map<string, { score: number; passed: boolean; taken_at: string }>()
-  for (const a of typedAttempts) {
+  for (const a of [...typedAttempts, ...typedStandaloneAttempts]) {
     const key = `${a.user_id}:${a.quiz_id}`
     const existing = bestAttemptMap.get(key)
     if (!existing || a.score > existing.score) bestAttemptMap.set(key, a)
