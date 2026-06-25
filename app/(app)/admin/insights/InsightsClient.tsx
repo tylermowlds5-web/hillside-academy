@@ -590,19 +590,16 @@ function PersonRow({ resp }: { resp: ResponseDetail }) {
             <Mark ok={resp.isCorrect} />
             <span className="text-zinc-100 font-medium">{resp.userName}</span>
           </div>
-          <div className="mt-1 pl-6 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300/80">
-              Counted attempt
-            </span>
-            {extras.length > 0 && (
+          {extras.length > 0 && (
+            <div className="mt-1 pl-6">
               <button
                 onClick={() => setOpen((o) => !o)}
                 className="text-xs text-zinc-400 hover:text-zinc-200 underline decoration-dotted underline-offset-2"
               >
                 {open ? 'Hide attempts' : `View all ${total} attempts`}
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </td>
         <td className={`px-4 py-3 align-top font-medium ${resp.isCorrect ? 'text-zinc-300' : 'text-red-300'}`}>
           {resp.chosen?.trim() ? resp.chosen : <span className="text-zinc-600 italic">No answer</span>}
