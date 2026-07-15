@@ -18,7 +18,8 @@
       "Bash(git config *)",
       "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 40)",
       "Bash(node *)",
-      "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 30)"
+      "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 30)",
+      "Skill(claude-api)"
     ]
   }
 }
