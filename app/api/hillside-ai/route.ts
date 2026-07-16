@@ -95,7 +95,15 @@ export async function POST(request: Request) {
     // path. Crews see a friendly line, not the raw API error (that goes to
     // the server log).
     console.error('[hillside-ai] stream start failed after retries:', err)
-    if (err instanceof Anthropic.APIError && (err.status === 429 || err.status === 529)) {
+    // Overload can arrive two ways: an HTTP 429/529 response, or (as seen in
+    // practice) a 200 SSE stream whose first event is an overloaded_error —
+    // in that case err.status is undefined, so match on the error type too.
+    const errType = err instanceof Anthropic.APIError ? err.type : undefined
+    if (
+      err instanceof Anthropic.APIError &&
+      (err.status === 429 || err.status === 529 ||
+        errType === 'overloaded_error' || errType === 'rate_limit_error')
+    ) {
       return Response.json(
         { error: 'Hillside AI is swamped right now — give it a few seconds and try again.' },
         { status: 503 }
