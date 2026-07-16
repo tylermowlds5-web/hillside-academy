@@ -78,7 +78,17 @@ export async function POST(request: Request) {
   const stream = anthropic.messages.stream({
     model: CLAUDE_MODEL,
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    // The system prompt (persona + full knowledge base) is identical on every
+    // request, so cache it server-side: first request writes the cache
+    // (~1.25x), every request within the 5-min TTL reads it at ~0.1x input
+    // cost instead of re-processing the whole KB.
+    system: [
+      {
+        type: 'text',
+        text: SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
     thinking: { type: 'disabled' },
     messages,
   })
@@ -105,12 +115,12 @@ export async function POST(request: Request) {
         errType === 'overloaded_error' || errType === 'rate_limit_error')
     ) {
       return Response.json(
-        { error: 'Hillside AI is swamped right now — give it a few seconds and try again.' },
+        { error: 'Gus is swamped right now — give it a few seconds and try again.' },
         { status: 503 }
       )
     }
     return Response.json(
-      { error: 'Hillside AI hit a snag — wait a minute and try again.' },
+      { error: 'Gus hit a snag — wait a minute and try again.' },
       { status: 502 }
     )
   }
@@ -128,6 +138,12 @@ export async function POST(request: Request) {
           result = await iterator.next()
         }
         const final = await stream.finalMessage()
+        // Cache verification: cache_write > 0 on the first request in a 5-min
+        // window, cache_read > 0 (and small input) on the ones after it.
+        const u = final.usage
+        console.log(
+          `[hillside-ai] usage: input=${u.input_tokens} cache_write=${u.cache_creation_input_tokens} cache_read=${u.cache_read_input_tokens} output=${u.output_tokens}`
+        )
         if (final.stop_reason === 'max_tokens') {
           controller.enqueue(encoder.encode('\n\n[Answer cut off — ask a follow-up for the rest.]'))
         }
