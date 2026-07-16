@@ -71,7 +71,10 @@ export async function POST(request: Request) {
     return Response.json({ error: messages }, { status: 400 })
   }
 
-  const anthropic = new Anthropic() // reads ANTHROPIC_API_KEY
+  // maxRetries: 2 = up to 3 attempts total. The SDK retries 429 (rate limit),
+  // 529 (overloaded), and other 5xx/connection errors automatically with
+  // exponential backoff before the stream ever starts.
+  const anthropic = new Anthropic({ maxRetries: 2 }) // reads ANTHROPIC_API_KEY
   const stream = anthropic.messages.stream({
     model: CLAUDE_MODEL,
     max_tokens: 1024,
@@ -88,9 +91,20 @@ export async function POST(request: Request) {
   try {
     first = await iterator.next()
   } catch (err) {
-    console.error('[hillside-ai] stream start failed:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return Response.json({ error: `Hillside AI is unavailable right now: ${message}` }, { status: 502 })
+    // The SDK already retried 3x with backoff — this is the "still failing"
+    // path. Crews see a friendly line, not the raw API error (that goes to
+    // the server log).
+    console.error('[hillside-ai] stream start failed after retries:', err)
+    if (err instanceof Anthropic.APIError && (err.status === 429 || err.status === 529)) {
+      return Response.json(
+        { error: 'Hillside AI is swamped right now — give it a few seconds and try again.' },
+        { status: 503 }
+      )
+    }
+    return Response.json(
+      { error: 'Hillside AI hit a snag — wait a minute and try again.' },
+      { status: 502 }
+    )
   }
 
   const encoder = new TextEncoder()
