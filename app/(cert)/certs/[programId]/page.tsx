@@ -1,35 +1,39 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 import CertTopBar from '../../CertTopBar'
-import {
-  placeholderProgram,
-  programProgress,
-  totalMinutes,
-  type PlaceholderModule,
-} from '../placeholder-data'
+import { loadProgramState, topBarProgress, type CertModule } from '@/lib/certs'
+import { fmtDate } from '@/lib/format-date'
 
-// ── PLACEHOLDER PAGE — Step 3 look review. Dummy data, no DB reads. ──────
+function kindLabel(mod: CertModule) {
+  if (mod.kind === 'quiz') return 'Certification quiz'
+  if (mod.kind === 'path') return 'Learning path'
+  return mod.videoHasQuiz ? 'Video lesson + quiz' : 'Video lesson'
+}
 
-function KindLabel({ kind }: { kind: PlaceholderModule['kind'] }) {
-  const label = kind === 'exam' ? 'Certification exam' : kind === 'quiz' ? 'Knowledge check' : 'Video lesson'
-  return <span>{label}</span>
+function moduleMeta(mod: CertModule) {
+  const parts: string[] = [kindLabel(mod)]
+  if (mod.minutes) parts.push(`${mod.minutes} min`)
+  if (mod.kind === 'quiz' && mod.quizQuestionCount) parts.push(`${mod.quizQuestionCount} questions`)
+  if (mod.kind === 'path' && mod.pathVideoCount)
+    parts.push(`${mod.pathCompletedCount}/${mod.pathVideoCount} videos complete`)
+  return parts.join(' · ')
 }
 
 function ModuleRow({
-  module,
+  mod,
   index,
   programId,
+  isCurrent,
 }: {
-  module: PlaceholderModule
+  mod: CertModule
   index: number
   programId: string
+  isCurrent: boolean
 }) {
-  const n = index + 1
-  const locked = module.state === 'locked'
-  const completed = module.state === 'completed'
-  const current = module.state === 'current'
+  const locked = !mod.unlocked
 
-  const marker = completed ? (
+  const marker = mod.completed ? (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -43,7 +47,7 @@ function ModuleRow({
     </span>
   ) : (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-emerald-600 bg-white text-sm font-bold text-emerald-700">
-      {n}
+      {index + 1}
     </span>
   )
 
@@ -51,7 +55,7 @@ function ModuleRow({
     <div
       className={
         'flex items-center gap-4 rounded-xl border p-4 sm:p-5 transition-colors ' +
-        (current
+        (isCurrent
           ? 'border-emerald-600/40 bg-white shadow-sm'
           : locked
             ? 'border-plum/5 bg-white/50'
@@ -61,14 +65,13 @@ function ModuleRow({
       {marker}
       <div className="min-w-0 flex-1">
         <p className={'font-medium leading-snug ' + (locked ? 'text-plum/40' : 'text-plum')}>
-          {module.title}
+          {mod.title}
         </p>
         <p className={'mt-0.5 text-xs ' + (locked ? 'text-plum/30' : 'text-plum/50')}>
-          <KindLabel kind={module.kind} /> · {module.minutes} min
-          {module.blurb ? <> — {module.blurb}</> : null}
+          {moduleMeta(mod)}
         </p>
       </div>
-      {current && (
+      {isCurrent && !locked && (
         <span className="hidden shrink-0 rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white sm:inline-flex">
           Continue
         </span>
@@ -81,12 +84,13 @@ function ModuleRow({
     </div>
   )
 
-  // Locked modules aren't clickable — the lock state is the point.
+  // Locked modules are not links — and the module page re-checks the same
+  // gate server-side, so hand-typed URLs bounce too.
   if (locked) return <li>{inner}</li>
 
   return (
     <li>
-      <Link href={`/certs/${programId}/modules/${module.id}`} className="block">
+      <Link href={`/certs/${programId}/modules/${mod.requirementId}`} className="block">
         {inner}
       </Link>
     </li>
@@ -97,45 +101,69 @@ export default async function ProgramOverviewPage(props: {
   params: Promise<{ programId: string }>
 }) {
   const { programId } = await props.params
-  const program = placeholderProgram(programId)
-  if (!program) notFound()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  const progress = programProgress(program)
-  const pct = Math.round((progress.completed / progress.total) * 100)
-  const mins = totalMinutes(program)
+  const state = await loadProgramState(supabase, user.id, programId)
+  if (!state) notFound()
+
+  const { program, modules, completedCount, award } = state
+  const pct = modules.length ? Math.round((completedCount / modules.length) * 100) : 0
+  const totalMins = modules.reduce((sum, m) => sum + (m.minutes ?? 0), 0)
+  const currentIndex = modules.findIndex((m) => !m.completed && m.unlocked)
 
   return (
     <>
-      <CertTopBar title={program.name} progress={progress} backHref="/certs" />
+      <CertTopBar title={program.name} progress={topBarProgress(state)} backHref="/certs" />
 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
-        {/* Program hero */}
-        <div className="rounded-2xl border border-plum/10 bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-700">
-              Certification Program
-            </p>
-            {program.required && (
-              <span className="inline-flex items-center rounded-full border border-burgundy/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-burgundy">
-                Required
-              </span>
-            )}
+        {state.status === 'certified' && award && (
+          <div className="mb-6 flex items-center gap-4 rounded-2xl border border-emerald-600/30 bg-emerald-600/5 p-5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </span>
+            <div>
+              <p className="font-serif font-semibold text-plum">
+                Certified — earned {fmtDate(award.earned_at)}
+              </p>
+              {award.expires_at && (
+                <p className="text-xs text-plum/60">Renew by {fmtDate(award.expires_at)}</p>
+              )}
+            </div>
           </div>
+        )}
+
+        <div className="rounded-2xl border border-plum/10 bg-white p-6 shadow-sm sm:p-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-700">
+            Certification Program
+          </p>
           <h1 className="mt-3 font-serif text-2xl font-semibold text-plum sm:text-3xl">
             {program.name}
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-plum/60 sm:text-base">
-            {program.description}
-          </p>
+          {program.description && (
+            <p className="mt-3 text-sm leading-relaxed text-plum/60 sm:text-base">
+              {program.description}
+            </p>
+          )}
 
           <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-plum/50">
-            <span className="font-medium">{progress.total} modules</span>
             <span className="font-medium">
-              {Math.floor(mins / 60)} hr {mins % 60} min total
+              {modules.length} module{modules.length === 1 ? '' : 's'}
             </span>
+            {totalMins > 0 && (
+              <span className="font-medium">
+                {Math.floor(totalMins / 60) > 0 ? `${Math.floor(totalMins / 60)} hr ` : ''}
+                {totalMins % 60} min total
+              </span>
+            )}
             <span className="font-medium">
-              {program.validityMonths
-                ? `Credential valid ${program.validityMonths} months`
+              {program.validity_months
+                ? `Credential valid ${program.validity_months} months`
                 : 'Credential does not expire'}
             </span>
           </div>
@@ -148,19 +176,32 @@ export default async function ProgramOverviewPage(props: {
           </div>
         </div>
 
-        {/* Module list with lock states */}
         <div className="mt-10">
           <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
             Modules
           </h2>
-          <ul className="mt-4 space-y-3">
-            {program.modules.map((module, i) => (
-              <ModuleRow key={module.id} module={module} index={i} programId={program.id} />
-            ))}
-          </ul>
-          <p className="mt-4 text-xs text-plum/40">
-            Modules unlock in order — complete each one to open the next.
-          </p>
+          {modules.length === 0 ? (
+            <p className="mt-4 rounded-xl border border-dashed border-plum/20 bg-white/60 p-6 text-center text-sm text-plum/50">
+              This program has no modules yet.
+            </p>
+          ) : (
+            <>
+              <ul className="mt-4 space-y-3">
+                {modules.map((mod, i) => (
+                  <ModuleRow
+                    key={mod.requirementId}
+                    mod={mod}
+                    index={i}
+                    programId={program.id}
+                    isCurrent={i === currentIndex}
+                  />
+                ))}
+              </ul>
+              <p className="mt-4 text-xs text-plum/40">
+                Modules unlock in order — complete each one to open the next.
+              </p>
+            </>
+          )}
         </div>
       </main>
     </>
