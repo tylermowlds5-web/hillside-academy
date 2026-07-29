@@ -552,15 +552,24 @@ export type QuizPayload = {
 export async function saveQuiz(videoId: string, payload: QuizPayload) {
   const { supabase } = await requireAdmin()
 
-  // Delete existing quiz for this video (cascade deletes attempts)
-  await supabase.from('quizzes').delete().eq('video_id', videoId)
+  // Update in place — quiz_attempts.quiz_id is ON DELETE CASCADE, so a
+  // delete-and-reinsert here would destroy the quiz's attempt history.
+  const { data: existing } = await supabase
+    .from('quizzes')
+    .select('id')
+    .eq('video_id', videoId)
+    .limit(1)
+    .maybeSingle<{ id: string }>()
 
-  const { error } = await supabase.from('quizzes').insert({
-    video_id: videoId,
+  const row = {
     questions: payload.questions,
     passing_score: payload.passing_score,
     updated_at: new Date().toISOString(),
-  })
+  }
+
+  const { error } = existing
+    ? await supabase.from('quizzes').update(row).eq('id', existing.id)
+    : await supabase.from('quizzes').insert({ ...row, video_id: videoId })
 
   if (error) throw new Error(error.message ?? 'Failed to save quiz')
 

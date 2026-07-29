@@ -191,16 +191,22 @@ CREATE TABLE IF NOT EXISTS public.learning_path_documents (
 ALTER TABLE public.quizzes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_attempts ENABLE ROW LEVEL SECURITY;
 
+-- NOTE: CREATE POLICY has no IF NOT EXISTS clause in PostgreSQL, so we use
+-- DROP POLICY IF EXISTS + CREATE POLICY to keep this file re-run safe.
+
 -- Allow authenticated users to read quizzes
-CREATE POLICY IF NOT EXISTS "quizzes_read" ON public.quizzes
+DROP POLICY IF EXISTS "quizzes_read" ON public.quizzes;
+CREATE POLICY "quizzes_read" ON public.quizzes
   FOR SELECT TO authenticated USING (true);
 
 -- Allow authenticated users to insert their own attempts
-CREATE POLICY IF NOT EXISTS "quiz_attempts_insert" ON public.quiz_attempts
+DROP POLICY IF EXISTS "quiz_attempts_insert" ON public.quiz_attempts;
+CREATE POLICY "quiz_attempts_insert" ON public.quiz_attempts
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
 -- Allow authenticated users to read their own attempts
-CREATE POLICY IF NOT EXISTS "quiz_attempts_read" ON public.quiz_attempts
+DROP POLICY IF EXISTS "quiz_attempts_read" ON public.quiz_attempts;
+CREATE POLICY "quiz_attempts_read" ON public.quiz_attempts
   FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
 -- ── Cascade deletes for video-dependent rows ──────────────────────────────
