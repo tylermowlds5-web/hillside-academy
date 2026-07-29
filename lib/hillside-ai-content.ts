@@ -1209,6 +1209,645 @@ By taking these precautions, you'll protect your customer's property from perman
 
 ==============================
 SECTION: PLANTS & MATERIALS
+**When to Use This Technique**
+
+When daylilies, irises, or similar perennials have already been cut back once in fall and start growing back lightly, you can save significant time by using a string trimmer instead of hand clippers for the second cutback. This works best when you're already doing heavy leaf blowing in the area, since the trimmed debris will blend with leaf litter you're cleaning up anyway.
+
+**Ideal Conditions**
+
+- Later in the season (late fall into early winter) when regrowth is lighter and less vigorous
+- Dry, windy days when debris breaks down easily and blows away naturally
+- When you're already scheduled to blow that property — the small amount of plant debris won't add noticeable cleanup time
+
+**Steps**
+
+1. Use your string trimmer to knock down the regrown foliage, working through each plant quickly
+2. Start trimming from the top and work down gradually rather than cutting at the base all at once — this creates smaller pieces that are easier to manage
+3. Let the debris fall and mix with leaf litter
+4. Blow everything together during your regular leaf cleanup
+
+**Key Points**
+
+You don't need to be precise with how much you remove — the light regrowth cuts easily. Each plant takes roughly 10 seconds. This method works for various perennials including larger daylily clumps, irises, and similar plants that have already had their main fall cutback.
+
+Skip this technique during peak leaf season when workloads are overwhelming. Save it for lighter days or toward the end of leaf season when you have a few extra minutes to combine tasks efficiently.
+
+**Identifying the Plant**
+
+Hibiscus (commonly called Rose of Sharon) are late summer bloomers that typically finish flowering around September. You can identify new growth by its lighter color — newer stems appear lighter gray compared to older, darker wood. These plants send out vigorous shoots that can grow one to three feet in a single season.
+
+**Critical Timing Rule**
+
+Never trim hibiscus during spring or early summer, even if they look wild and overgrown. The mistake many people make is seeing two feet of green leafy growth in May, June, or July and assuming the plant needs trimming. If you trim them during this period, you'll cut off developing flower buds and the plant may bloom late or not at all. Customers who look forward to the blooms will be very upset if you trim too early.
+
+**When to Trim**
+
+Trim hibiscus once per year after they finish blooming — anytime from late September through winter. At this point, the stems will have spent blooms and seed pods scattered along their length.
+
+**How to Trim**
+
+- Always cut just above a bud to avoid leaving dead stem sections.
+- Look for where the plant was cut in previous years — you'll see clusters of shoots emerging from old cut points. This shows you the traditional height for that specific plant.
+- You can trim stems back to any point you choose, as these plants are very resilient.
+- Remove suckers at the base if desired, depending on whether the customer prefers an open base or growth to the ground.
+- For overgrown plants, you can remove entire stems or cut back aggressively without harming the plant.
+
+**When in Doubt**
+
+If you're unsure whether a plant should be trimmed, take a photo and send it to your supervisor before proceeding.
+
+# Pruning Heirloom Hydrangeas
+
+When pruning older, heirloom hydrangeas in the fall, you need to understand how they bloom. Unlike newer ever-blooming varieties, these classic hydrangeas only flower on new wood — the green stems that grew during the current season. If you cut back too far into the old brown stems, the plant will send up growth but won't produce flowers the following year.
+
+**Identifying What to Cut**
+
+Look for the swollen bud nodes along the green stems. These buds appear at nearly every leaf junction and will develop into flowering stems next season. Your goal is to always leave at least one set of these buds on each stem you're pruning.
+
+**Steps for Pruning**
+
+1. Follow a stem down from the spent flower to locate the bud nodes on the green wood.
+2. Choose a pair of buds as your stopping point — typically as far back as you can go while staying on green wood.
+3. Make a straight cut just above the selected buds, leaving them intact on the stem.
+4. Remove the old flower heads and excess stem above your cut.
+
+**Handling Oversized Plants**
+
+Sometimes a hydrangea outgrows its space and you need to cut back into the brown, older wood. This is acceptable when necessary, but understand you'll lose flowers wherever you make these cuts. Avoid cutting too many stems back to old wood at once, or you'll have no blooms the entire next season.
+
+**Remember:** Newer hydrangea varieties are more forgiving and will bloom regardless of where you cut. But with heirloom varieties at older properties, always stay on the green wood and preserve those bud nodes to ensure a beautiful flower display next year.
+
+# Trimming Hydrangeas: Understanding Varieties and Techniques
+
+When trimming hydrangeas, you'll encounter several common varieties, but the good news is the pruning technique remains the same across all types.
+
+**Common Hydrangea Varieties**
+
+You'll most often see Mophead hydrangeas at residential properties. These produce large, round ball-shaped blooms in colors that vary based on soil pH. In acidic soil, they appear blue or purple, while alkaline soil produces pink blooms. Since Pacific Northwest soil tends to become acidic over time, you'll typically see more blue and purple hydrangeas in the region. The flowers can actually change color over several years as soil chemistry shifts.
+
+Limelight hydrangeas have cone-shaped flowers that appear pale greenish during the growing season. By December, these blooms turn brown. These plants have slightly woodier stems than other varieties but still clip easily.
+
+Lacecap hydrangeas feature flat flower clusters rather than round or cone-shaped blooms.
+
+**Trimming Technique**
+
+Regardless of variety, follow this approach:
+
+1. Locate the buds along the stems
+2. Cut back to just above a bud at your desired height
+3. Choose your cutting depth based on client preference — there's no required height
+
+**Timing**
+
+Perform hydrangea trimming in December when flowers have faded. While some clients prefer keeping dried blooms for winter interest, most dead brown flowers should be removed. Start trimming as temperatures drop and plants begin wilting back.
+
+# Cutting Back Bulbs and Perennials
+
+As late summer and early fall approach, you'll need to cut back spent bulbs and perennials like irises and daylilies. This process keeps landscapes tidy and prepares properties for leaf season.
+
+**When to Cut Back**
+
+September is typically the ideal month for this work. The weather is still dry, making the job easier, and you'll clear away foliage that would otherwise catch leaves during the busy fall season. Wait until the foliage is clearly dying back and looking tattered before cutting — the plants should be obviously done for the season.
+
+**How to Cut Back**
+
+Cut all foliage and flower stems straight to the ground level. Don't leave stumps or stems sticking up an inch — get everything down so the plants virtually disappear. This applies to irises, daylilies, and most other bulbs and perennials.
+
+For daylilies specifically, you can pull out some of the dead, spongy material by hand first — it often pulls away easily when fully dead. After cutting with hand clippers, go back through with a string trimmer to clean up any remaining stubs and create a neat, low profile.
+
+**Important Warnings**
+
+- Never pull green foliage out by hand. With irises especially, you'll pull the bulbs right out of the ground and the customer won't have plants next year.
+- Sharpen your clippers before starting. Dull blades make the job much harder, especially with thick iris foliage or spongy daylily growth.
+- Check for client-specific notes. Some customers have preferences about timing or method, though most follow standard practice.
+
+Getting this work done early in dry weather makes everything easier and clears the way for efficient leaf cleanup later.
+
+# Rhododendron Pruning Guide
+
+Rhododendrons require specific timing and techniques to maintain their shape while preserving next year's blooms. Understanding their growth pattern is essential for proper pruning.
+
+**When to Prune**
+
+Always prune rhododendrons immediately after they finish blooming — typically between April and June, depending on the variety. Rhododendrons are spring bloomers that set buds on new growth during summer for the following year's flowers. Pruning at the wrong time removes these flower buds. You can do light shaping in fall if needed, but understand that each cut removes a potential flower.
+
+**Understanding Rhododendron Growth**
+
+Rhododendrons grow in segments. Each stem extends, forms a cluster of leaves, then produces either a flower bud or another stem segment. By examining these segments, you can tell how long it's been since the plant was pruned. The small buds at stem tips are next year's flowers.
+
+**Pruning Technique**
+
+1. Identify the current year's growth — typically one stem segment with its leaf cluster
+2. Cut just above the next cluster of leaves down, making the cut flush and clean
+3. Never leave stubs longer than a quarter inch — they die back and look unsightly
+4. Shape the plant by trimming uneven growth, working around the entire shrub
+5. Use hand pruners, not hedge trimmers — rhododendrons should look natural, not perfectly shaped
+
+**Key Points**
+
+- Remove only one year's growth annually to maintain size
+- Cut cleanly without leaving stubs
+- Accept slight unevenness — these plants shouldn't look perfectly manicured
+- Remove exceptionally tall or oddly placed shoots anytime for better overall appearance, even if it means losing a few flowers
+
+# Trimming Technique for Easier Cleanup
+
+When trimming bushes like euonymus, spirea, or sarcococca, the way you cut makes a huge difference in how much cleanup work you'll face afterward.
+
+**The Small-Cuts Technique**
+
+Instead of removing large sections all at once, take small nibbles as you work. Rather than cutting off 6-8 inch branches in single passes, gradually trim the bush down by making multiple shallow cuts. Each pass removes just a small amount, working your way down to the desired height and shape.
+
+**Why This Works**
+
+When you take big chunks off in one cut, you create long branches that must be raked up by hand. These large pieces are time-consuming to collect and can't simply be blown away. By taking small cuts, you produce tiny leaf pieces and short snippets that your blower can easily disperse. Often, you can blow this fine debris directly onto the lawn where it will disappear when mowed or simply break down quickly.
+
+**When to Use This Method**
+
+This technique works best when:
+- You're maintaining bushes with long stringers or fast growth
+- The area allows you to blow debris onto lawn or mulch
+- Cleanup time is a concern
+- The client wants a natural, less formal look
+
+**Natural vs. Perfect**
+
+Many customers today prefer a natural, maintained look rather than geometric perfection. You can achieve this by moving quickly with your trimmer and not obsessing over every detail. The bush should look tidy and cared for, but doesn't need razor-sharp edges.
+
+Use your judgment—sometimes you'll need to make bigger cuts when dealing with heavy cleanup anyway. But in many situations, the small-cuts method saves significant time overall.
+
+
 ==============================
-[PLACEHOLDER — PASTE PLANT / MATERIALS INFO HERE]
+[PLACEHOLDER — Irrigation]
+Backflow irrigation box
+Understanding the Backflow Device
+
+The backflow device (also called an anti-backflow device) prevents irrigation water from flowing backward into the home's drinking water or city supply. You'll typically find this box near the water meter, though it can be located anywhere along the main water line. Look for a rectangular box that may contain a device with two handles — usually blue, sometimes green — and several small valves called test cocks.
+
+Locating the Box
+
+The backflow box lid can become buried under bark dust or dirt. Sometimes moles or soil will fill the box completely, requiring you to dig out the device before you can access the handles. Keep a small shovel in your truck for these situations.
+
+Turning the System On and Off
+
+When the handles are parallel to the pipe, the system is on. When the handles are perpendicular (sideways) to the pipe, the system is off — think of this as a gate or dam blocking water flow.
+
+Steps to shut down (fall):
+
+Turn both handles perpendicular to the pipe
+This prevents freeze damage and stops water flow to the entire irrigation system
+Steps to turn on (spring):
+
+Turn both handles parallel to the pipe
+Listen for water rushing through pipes — this should stop after a moment
+If you hear continuous running water, a valve may be open somewhere
+Additional Shutoff Valves
+
+Sometimes you'll find a separate shutoff valve nearby in another round box. This might look like a standard valve or a garden hose faucet handle. If you turn on the backflow but get no water, search the area for this additional valve.
+
+Test Cocks and Leaks
+
+The backflow device has small test cocks (usually four) with caps. Each test cock has a small screw on the side. Sometimes these leak when you turn on the system. If water bubbles or shoots out, turn the screw until it's completely perpendicular — this stops the leak. You won't need to test these devices yourself, but be aware they exist and may occasionally leak.
+Irrigation Manual Valve Box
+# Understanding and Operating Irrigation Valve Boxes
+
+What You'll Find Inside
+
+When you open a valve box, you'll see the irrigation valves and wiring connections. The wires connect to special grease caps filled with dielectric grease to prevent corrosion. Over time, mud, water, and age can cause these connections to fail, so check them when troubleshooting valves that won't respond to the controller.
+
+Manual Valve Operation
+
+Each valve has a manual control on top. Look for a small handle (hexagon-shaped) that you turn to operate the valve. The valve body shows "on" and "off" markings to guide you. Sometimes handles are missing or broken — you might find only one handle per box that you move between valves, or none at all. You can still turn valves by gripping the stem directly, though it's harder without the handle.
+
+To manually activate a zone:
+
+Turn the valve handle or stem toward the "on" position
+The zone will begin watering immediately
+Turn back to "off" when finished
+Draining Valves
+
+On sloped properties, you can open these valves after shutting off the backflow to drain water from the system. This helps prevent freeze damage during cold weather. When you turn off a valve on a slope, water typically drains from the lowest sprinkler head — this is normal.
+
+When to Use Manual Operation
+
+Use manual valve operation to test zones, adjust sprinkler heads, diagnose problems, or check for damaged nozzles. This lets you work on the system without running back to the controller.
+
+Sprinkler Nozzle Replacement
+# Replacing a Spray Nozzle
+
+When you find a damaged or broken spray nozzle, you can replace it quickly to restore proper irrigation coverage. This is one of the most common and straightforward sprinkler repairs you'll encounter.
+
+Before You Start
+
+Turn off the irrigation system. If you're working on a slope, water will continue draining from the line after shutoff due to gravity — this is normal.
+
+Steps to Replace the Nozzle
+
+Remove the old nozzle by unscrewing it from the sprinkler body. If the nozzle is intact, you can usually grip it with your fingers and turn. For broken nozzles, use a flathead screwdriver to carefully pry up and unscrew the damaged piece.
+Check the filter screen inside the sprinkler body. These screens trap dirt and silt over time and often appear brown or discolored. Always replace the screen when installing a new nozzle — every nozzle comes with a fresh filter screen included.
+Screw on the new nozzle by hand. Tighten it snugly, but don't overtighten.
+Adjust the spray pattern. Set the nozzle to the correct coverage area (often 180 degrees for edge zones or other patterns as needed for the specific location).
+Test the system. Turn the water back on and verify the nozzle operates correctly with even spray coverage at the proper angle — not shooting erratically or too high.
+Key Points
+
+Most nozzle replacements take less than a minute once you know the process. This simple repair solves many irrigation problems inexpensively without requiring replacement of internal sprinkler components like springs or risers.
+
+Sprinkler nozzle adjustment on variable nozzle
+# Variable Arc Nozzle Adjustment Guide
+
+Understanding Variable Arc Nozzles
+
+Variable arc nozzles allow you to adjust both the spray pattern (arc) and the water flow distance. You can set these nozzles anywhere from a narrow arc up to a full 360-degree circle, making them versatile for different coverage needs.
+
+Adjusting the Arc Pattern
+
+To change how wide the nozzle sprays, simply rotate the arc adjustment on the nozzle body. Turn it to open the arc wider or narrow it down. Only adjust the arc to cover the plants or area that needs water—don't make it larger than necessary. You should make these adjustments while the zone is running so you can see the actual spray pattern.
+
+Controlling Water Flow and Distance
+
+At the very top center of the nozzle, you'll find a small adjustment screw. Use a small green screwdriver (or similar precision tool) to turn this screw:
+
+Tightening (turning clockwise): Reduces water flow and shortens the spray distance
+Loosening (turning counterclockwise): Increases water flow and extends the spray distance
+You can turn it down until the nozzle barely sprays, then adjust it back up to exactly what you need for the area.
+
+Selecting the Right Nozzle
+
+Different colored nozzles spray different distances. For example, tan nozzles might have an 18-foot diameter circle, while dark green ones might cover only 8 feet. Choose a nozzle size that matches your coverage area—an oversized nozzle wastes water and may spray unwanted areas like buildings or hardscapes.
+
+When to Adjust
+
+Perform these adjustments during system checks while the zone is actively running. Keep in mind that wind affects spray patterns, so ideally check systems during calm conditions in early morning or evening when the system normally operates.
+
+**When to Flush a Sprinkler Head**
+
+If a sprinkler head has been broken or damaged for an extended period, dirt and debris can accumulate inside the line. Before reinstalling a new head, you should flush out the system to clear any buildup. This prevents clogs and ensures proper water flow once you finish the repair.
+
+**How to Flush the Line**
+
+1. Remove the nozzle from the replacement sprinkler head before installing it.
+2. Position the head in place without the nozzle attached.
+3. Stand back and activate the zone. Water will shoot up like a geyser, forcing out dirt, debris, and any parts that may have fallen in.
+4. Let it run until the water runs clear, indicating the line is flushed.
+
+**Reinstalling the Nozzle**
+
+Once flushed, turn off the zone and reinstall the nozzle on the sprinkler head. Make sure it's securely attached — if the nozzle isn't on, the internal tube can slip down into the body and prevent proper operation.
+
+**Adjusting the Spray Pattern**
+
+After installation, turn the zone back on and check coverage. To adjust the direction, rotate the entire black shaft of the sprinkler head until the spray pattern covers the desired area without wasting water on patios, driveways, or structures. You can also open and close the head a few times to help clear any remaining debris.
+
+**Regular Maintenance**
+
+Perform zone-by-zone sprinkler checks regularly. Walk through each zone, looking for broken heads, poor coverage, and wasted water. Make adjustments as needed to keep the system running efficiently.
+
+**Understanding 12-Inch Pop-Up Sprinklers**
+
+When working with 12-inch pop-up sprinkler heads, you need to understand their construction and common failure points. These units extend a full 12 inches below ground level, making them taller than standard pop-ups.
+
+**Common Problems**
+
+The most frequent issue you'll encounter is nozzle loss. This happens when the nozzle threads become damaged or worn. When water pressure builds up, it can push the nozzle completely off if the threads aren't holding properly. Always inspect the threads carefully before reinstalling any nozzle — even if they look acceptable at first glance, damaged threads will cause repeated failures.
+
+**Repair Process**
+
+When a nozzle comes off, the internal shaft can sink down into the sprinkler body below the spring. To fix this:
+
+1. Remove the top cap to access the internal components
+2. Retrieve the shaft and position it above the spring where it belongs
+3. Inspect the nozzle threads on both the body and nozzle
+4. If threads are damaged, replace the entire sprinkler head — don't just replace the nozzle
+
+**Key Points to Remember**
+
+- Never assume threads are good enough. Water pressure will exploit any weakness and push the nozzle off repeatedly.
+- When you find damaged threads, complete replacement is necessary. Attempting to reuse compromised components leads to callback visits.
+- The entire 12-inch body sits below ground, so have replacement parts ready before starting the repair to minimize downtime.
+
+**Understanding Rotor Head Adjustments**
+
+When a rotor sprinkler head isn't covering the area it should, you need to adjust either its arc or spray distance. These adjustments are simple once you understand how rotor heads work.
+
+**Key Principle: The Left Edge Rule**
+
+Rotor heads always have a fixed left edge that cannot be adjusted — similar to how spray nozzles have an "L" marking. You must first position this left edge where you want coverage to begin, then adjust the arc to determine how far right the sprinkler rotates.
+
+**Adjusting the Arc**
+
+1. Locate the adjustment screw on the back of the sprinkler head. You'll need a thin flathead screwdriver or specialized sprinkler tool.
+2. Insert the screwdriver into the slot and find the screw inside.
+3. Look for the plus (+) and minus (−) arrows indicating which direction increases or decreases the arc.
+4. Turn the screw clockwise to increase the arc (make it sweep further) or counterclockwise to decrease it.
+5. Let the sprinkler complete a rotation to check your adjustment.
+6. To speed up testing, manually rotate the head to the opposite side — it will click as it returns to the starting position.
+7. Repeat adjustments until the coverage is correct.
+
+**Adjusting Spray Distance**
+
+The screw on top of the head controls the spray pattern. Screwing it down interrupts the water stream, creating a wider fan pattern that doesn't shoot as far. Unscrewing it allows full stream for maximum distance. Adjust this based on whether you need closer, wider coverage or longer distance.
+
+# Finding and Raising Buried Sprinkler Heads
+
+Over time, sprinkler heads can become buried under accumulated mulch, bark, and soil. When this happens, the spray pattern gets blocked and water barely reaches the surface. Here's how to locate and raise a buried head back to the proper grade.
+
+**Locating the Head**
+
+Start by looking for signs of water at the surface when the zone runs. Even if you can't see the head itself, water seeping up through mulch or soil indicates its location. Once you spot where water emerges, you've found your buried head.
+
+**Excavating Around the Head**
+
+Use a shovel to carefully dig around the sprinkler head. Make large scoops to clear away several inches of accumulated material in a wide area around the head. Dig down until you can clearly see the entire sprinkler body and the riser pipe it connects to. You need enough clearance to work comfortably and assess how far down the head sits.
+
+**Raising the Head**
+
+Once excavated, you can adjust the height by modifying the riser connection. The goal is to bring the top of the sprinkler flush with the finished grade—not buried below it, but level with the surrounding landscape surface. This ensures proper spray coverage and prevents future burial.
+
+**Key Points**
+
+- Check all zones periodically, as heads you didn't know existed may be buried somewhere on the property
+- Years of mulch application is the most common cause of burial
+- Always raise heads back to grade level rather than leaving them low
+
+# Raising a Buried Sprinkler Head
+
+When a sprinkler head gets buried under soil or mulch, you need to raise it back to ground level. This process involves digging out the head and either replacing it with a taller version or extending the flex pipe beneath it.
+
+**Digging Out the Head**
+
+Start by carefully digging around the buried head to expose the entire assembly. You'll find the sprinkler head attached to a swing joint with flex pipe (also called funny pipe). Clear away enough soil to access the threaded connection where the head screws onto the pipe.
+
+**Method 1: Install a Taller Head**
+
+The simplest approach is replacing the existing head with a taller one. Unscrew the old head and screw on a 6-inch replacement, which has both a taller frame and a longer shaft to clear future mulch or bark. This works well when the head is significantly buried.
+
+**Method 2: Extend the Flex Pipe**
+
+If you only need to raise the head an inch or so, you can often just pull up on the existing assembly — the flex pipe allows for repositioning. For greater height, cut the flex pipe, install a union or butt connector, and add a longer section of flex pipe before reattaching the original head.
+
+**Important: Always Use Flex Components**
+
+Never use solid risers. Flex pipe allows the head to withstand impacts from mowers, feet, or equipment without breaking. Solid risers snap easily when kicked, creating bigger problems.
+
+**Backfilling and Final Positioning**
+
+Once your taller head is installed, backfill around it while keeping it vertical. Position the top flush with the ground surface — visible but not protruding as a trip hazard or mower obstacle. Pack soil firmly around the base.
+
+**Testing**
+
+Always run the zone after installation to check for clogs in the nozzle, especially if it was buried. Replace the nozzle if water flow is restricted.
+
+# Replacing a Sunken Sprinkler Head in Cohesive Soil
+
+When bark mulch or soil buildup causes a sprinkler head to sink below grade, you can often replace it with minimal digging if the soil conditions are right. This shortcut works best in wet, clay-like soil that holds together and doesn't collapse.
+
+**Understanding Your Options**
+
+6-inch sprinkler heads come in two types: smooth body heads and those with a side inlet. The side inlet version lets you tap off water elsewhere or run your main line directly into the side port instead of from below. All heads use the same internal pop-up assembly, which unscrews and transfers between bodies.
+
+**When to Use the Quick Method**
+
+This technique only works when you have cohesive, muddy soil that sticks together. Never attempt this in sandy soil — dirt will collapse into the pipe and prevent proper threading.
+
+**Steps**
+
+1. Dig down partway to expose the sunken head without excavating the entire area around it.
+
+2. Rout out the soil slightly to access the head's threads.
+
+3. Unscrew the old head. The muddy soil will hold its shape and prevent collapse into the pipe opening.
+
+4. Transfer the pop-up assembly to your new smooth body head if needed.
+
+5. Thread the new head straight down into the same hole, screwing it onto the fitting below.
+
+**Benefits**
+
+This method saves significant time compared to fully excavating around the head. If water is present in the line, it may flush out debris as you work — an added advantage. Always assess soil conditions first before attempting this shortcut.
+
+**Installing a Rotor Head with Flex Pipe**
+
+When replacing or installing rotor heads, you'll typically find flex pipe (also called funny pipe) already in the ground. This flexible pipe connects the main irrigation line to your sprinkler head and is preferred over fixed pipe because it can withstand being run over by mowers without breaking.
+
+**Preparation**
+
+Before starting, prepare your rotor head by installing a funny pipe fitting into the bottom. These heads come with 3/4-inch female threads at the base — larger than the 1/2-inch threads on standard spray heads because rotors transmit more water. Simply screw the male 3/4-inch fitting into the head until snug. You don't need thread tape or sealant; any minor drips only occur when the system runs and won't cause problems.
+
+**Installation Steps**
+
+1. Locate the existing flex pipe in the ground and remove any old fittings or attachments.
+
+2. Slide the funny pipe fitting onto the flex pipe. In warm weather, the pipe is pliable enough to accept the fitting easily. In cold weather, use a torch to briefly warm the pipe — this softens it and allows the fitting to slide on smoothly.
+
+3. Push the prepared head firmly onto the pipe until secure.
+
+**Adjusting the Spray Pattern**
+
+Once installed, set your coverage area. Turn the entire head on its threads so the left-edge arrow points toward your desired starting position. Most rotors come preset at 180 degrees. Adjust the arc using the screw on the back of the head — for example, reducing it to 90 degrees if needed. This prevents overspray onto unwanted areas like driveways or buildings.
+
+**Why Flex Pipe Works Best**
+
+Flex pipe moves and bends under pressure, making it highly resistant to damage from mower wheels and foot traffic. Fixed pipe stands break easily when struck, especially in cold weather when plastic becomes brittle, leading to leaks and costly repairs.
+
+# Irrigation Timer Basics
+
+You won't work with irrigation timers frequently since most residential customers manage their own watering schedules. However, you'll occasionally need to help customers adjust settings or turn systems on and off for commercial clients without maintenance staff.
+
+**Understanding Timer Zones**
+
+Sprinkler systems divide yards into zones because one water line can't efficiently supply the entire property at once. Each zone contains a specific number of sprinkler heads based on available water flow and pressure. Timers control when and how long each zone runs — a 12-zone timer, for example, manages a large area by operating different sections sequentially.
+
+**Common Timer Features**
+
+Most irrigation timers include a main dial and an off button, regardless of manufacturer. Rain Bird is a popular brand you'll encounter. The dial typically lets you access:
+- Clock settings
+- Date settings
+- Individual zone controls
+
+Always look for the "Auto Run" setting to restart systems in spring or summer. Switch to "Off" in late fall when watering is no longer needed.
+
+**Adjusting Zone Settings**
+
+When customers need help customizing zones, focus on these key settings:
+
+**Runtime** – Adjust the number of minutes each zone waters. Use enough time to properly hydrate plants without creating soggy conditions.
+
+**Start Time** – Set when watering begins. Many timers allow 15-minute increments. Night watering is often preferred since it doesn't interfere with activities and allows water to sit overnight.
+
+**Frequency** – Select which days the zone operates (common patterns include Monday/Wednesday/Friday or Monday/Friday only).
+
+**Number of Cycles** – Choose whether zones run once or multiple times per day.
+
+**Finding Timers**
+
+Timers are mounted either outdoors on exterior walls or indoors in garages — roughly split 50/50. Outdoor installations allow easier access for adjustments. Instructions are usually printed inside the timer lid if you need guidance. When stuck, use FaceTime to connect with your supervisor for real-time help.
+
+**Understanding the System**
+
+Before you begin, understand how sprinkler timers work. Each irrigation valve has two wires: one connects to a numbered zone terminal on the timer, and the other connects to the common terminal (usually white). The timer activates zones by sending power through these wires to open specific valves on schedule.
+
+**Steps for Timer Replacement**
+
+1. **Turn off power** at the source. If the timer plugs into an outlet, unplug it. If it's hardwired, shut off the circuit breaker.
+
+2. **Document the existing wiring** before disconnecting anything. Take a photo or write down which wire connects to which zone number and identify the common wire.
+
+3. **Open the wire compartment** on the old timer and disconnect all zone wires and the common wire from their terminals.
+
+4. **Remove the old timer** from the wall by unscrewing the mounting screws.
+
+5. **Handle special wiring situations**: If the power cord runs through a wall or small opening, you may need to cut off the plug end to thread it through, then reconnect it after pulling the new timer's cord through the same path.
+
+6. **Mount the new timer** to the wall using appropriate screws.
+
+7. **Reconnect the wires** to match your documentation. Attach each zone wire to its corresponding numbered terminal and all common wires to the common terminal.
+
+8. **Restore power** by plugging in the timer or turning the breaker back on.
+
+9. **Program the timer** according to the watering schedule requirements for that property.
+
+**Key Tips**
+
+Always verify power is off before working with wires. Label wires if the system uses same-colored wiring instead of different colors for each zone.
+
+# Replacing an Irrigation Timer with Non-Standard Wiring
+
+When you encounter an irrigation timer replacement with heavy-gauge wires in PVC conduit instead of standard thin multi-conductor wire, you'll need to adapt your approach. Here's how to handle this less common scenario.
+
+**Preparing the New Timer**
+
+Start by removing the knockout hole on the new timer housing. Normally, standard sprinkler wire feeds through a small pre-drilled opening, but with PVC conduit feeding heavy-gauge wires, you need a larger opening. The knockout pries out easily to accommodate the conduit positioned directly beneath the timer.
+
+**Mounting the Timer**
+
+Most timers come with a center mounting screw already installed. Hang the timer on this screw first, then secure the bottom with additional screws into the siding. This top-mount, bottom-secure method keeps everything stable during installation.
+
+**Connecting the Wires**
+
+Before wiring, make sure the power cord is completely unplugged. Heavy-gauge wires work fine in timer terminals—they're just thicker than standard landscape wire. Each wire pushes into its corresponding numbered terminal and locks in place.
+
+If the original wires weren't color-coded, check for station numbers marked on each wire. Match these numbers to the corresponding terminals (1, 2, 3, 4, etc.). When dealing with standard color-coded wires, take a photo of the old timer's connections before removal—each color goes to its matching terminal on the new unit.
+
+**Troubleshooting Short Wires**
+
+If the common wire (typically white) won't reach its terminal, you'll need to extend it using wire nuts and additional wire. This is uncommon but manageable.
+
+Once all connections are secure, attach the wiring cover, plug in the power cord, and proceed with programming.
+
+**Why Truck Cleanliness Matters**
+
+Keeping your truck clean isn't just about appearance — it directly protects expensive equipment from rodent damage. Mice are attracted to food remnants in trucks, and they cause serious problems, especially in Fuso trucks where they commonly chew through seat belts. A single replacement seat belt costs over two hundred dollars, and we've had this problem across nearly all our Fuso fleet.
+
+**The Mouse Problem**
+
+Mice can smell even small amounts of food — crumbs in chip bags, residual sugar in drink cans, bits of snacks. While these scraps seem insignificant to you, they're a full meal for rodents. Mice enter through gaps around seat belts and other openings, then nest inside the truck. Once inside, they chew seat belts (making them malfunction), destroy paperwork in glove boxes, and even damage dashboard wiring. The problem intensifies in winter when mice seek warm shelter and discover a food supply.
+
+**Your Cleaning Routine**
+
+Clean your truck at minimum every Friday when you're already maintaining mowing equipment:
+
+- Remove all food items, including empty bags and drink cans
+- Check behind seats where trash accumulates
+- Throw away any food waste — don't leave anything with crumbs or residue
+- If you find green mouse bait cubes in the cab, leave them there; they're placed strategically to control rodents
+
+**What to Remove**
+
+Focus on removing anything edible or that contained food. Equipment like first aid kits and hose nozzles can stay, but get rid of chip bags, sandwich wrappers, drink cans, and any forgotten food items.
+
+Regular cleaning takes just a few minutes weekly and prevents expensive repairs, unpleasant surprises, and foul odors from rotting food.
+
+# Operating a Hydraulic NoRamp Trailer
+
+This hydraulic trailer lifts and lowers to load heavy equipment like tractors and lifts without needing a ramp. Before operating, understand the safety system and basic controls.
+
+**Locating the Controls**
+
+Find the hydraulic control box on the trailer. Inside, you'll see up and down buttons similar to those on dump truck beds. The hydraulics work the same way, but they include a critical safety feature.
+
+**Understanding the Safety Latch**
+
+The trailer has a safety latch that prevents accidental operation while driving. This latch shows "lock" and "unlock" positions. Always keep it locked during transport to prevent the trailer from lowering unexpectedly on the road.
+
+**Loading Equipment**
+
+1. Pull out the safety pin on the latch
+2. Slide the latch to the "unlock" position
+3. Release the pin to secure it
+4. Press and hold the down button until the trailer is fully lowered to the ground
+5. Drive or walk your equipment onto the trailer
+6. Press and hold the up button until the trailer stops moving completely
+7. Listen for the motor sound to confirm it has reached the top position
+
+**After Loading**
+
+Immediately return the safety latch to the "lock" position. Pull the pin, slide to lock, and release.
+
+**Maintenance Notes**
+
+The trailer has a solar panel that helps maintain battery charge. Monitor the battery levels regularly, as the solar charger may not keep up with heavy use. Charge the batteries manually when needed.
+
+**Understanding Trailer Brakes**
+
+When you're hauling dual-axle trailers, you need to understand that these trailers have their own braking systems. Your truck's brakes alone aren't designed to safely stop the combined weight of the truck, its load, the trailer, and the trailer's cargo. That's why larger trailers come equipped with brakes on each axle — typically four brakes total on a dual-axle setup.
+
+**How the System Works**
+
+The power cord connecting your trailer to the truck does more than just run your lights. It includes a wire that controls the trailer brakes through a brake controller mounted in your cab. When you press the brake pedal, you're activating both your truck's brakes and the trailer's brakes simultaneously. This doubles your braking power from two axles to four, which is crucial for stopping heavy loads safely.
+
+**The Breakaway Switch**
+
+Always hook up the breakaway cable that connects to a small box on the trailer. If your trailer ever becomes completely disconnected from the truck, this cable pulls a switch that activates a battery-powered system. The trailer brakes engage automatically, bringing the loose trailer to a stop rather than letting it roll freely. Hook this cable using the carabiner around the same loop where your safety chains attach.
+
+**Using the Brake Controller**
+
+Your brake controller applies voltage to activate the electric brakes on the trailer. You'll typically run it around the 4 or 5 setting, though this can be adjusted using the up and down buttons. The controller works off inertia, automatically engaging trailer brakes as your truck slows down.
+
+**Testing Your Trailer Brakes**
+
+Use the manual lever underneath the controller to test your trailer brakes while driving. Pull the lever with your finger and you should feel the trailer braking even without touching the brake pedal. This confirms your trailer brakes are working properly. The controller will also alert you if the trailer becomes disconnected.
+
+# Disconnecting the Trailer
+
+**Preparation**
+
+Before disconnecting, gather your trailer blocks (typically one or two) and wheel chock. These should be stored in the trailer toolbox.
+
+**Steps to Disconnect**
+
+1. Place the blocks directly under the trailer jack.
+
+2. Crank the jack down until it makes solid contact with the blocks.
+
+3. If you're on a slope, install a wheel chock by sliding it against the tire and stepping down to lock it in place. Even on level ground, this adds safety.
+
+4. **Important safety rule:** Leave the safety chains hooked up until you verify the trailer is secure.
+
+5. Continue cranking the jack up until the hitch lifts completely off the ball. Confirm the trailer remains stable and hasn't rolled.
+
+6. Disconnect the wiring harness by lifting the tab with your thumb and gripping the two side tabs with your fingers. Pull straight out using the tabs — never pull on the cord itself, as this damages the connection and requires costly replacement.
+
+7. Unhook the safety chains and let them rest on the ground.
+
+8. Disconnect the breakaway switch cable. This device activates the trailer's emergency brakes if the trailer separates from the truck.
+
+**Reconnecting the Trailer**
+
+1. Check that the hitch latch is in the back position, not forward. If it's forward, it won't seat properly on the ball.
+
+2. Crank the jack down slowly until the coupler fully seats on the ball, then continue until the latch engages. Never rush — an incomplete latch can cause the trailer to detach while driving.
+
+3. Reconnect the breakaway switch cable using the carabiner.
+
+4. Hook up the safety chains. Twist long chains a few times to prevent them from dragging and wearing out.
+
+5. Reconnect the wiring harness — lift the tab, slide in, and press down to latch.
+
+6. Thread the breakaway cable and wire through the clip to keep everything tidy.
+
+7. **Never forget:** Remove all blocks and wheel chocks before driving away.
+
+
+==============================
 `
+
