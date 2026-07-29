@@ -495,3 +495,111 @@ CREATE POLICY "cert_awards_read" ON public.cert_awards
 DROP POLICY IF EXISTS "cert_awards_admin_write" ON public.cert_awards;
 CREATE POLICY "cert_awards_admin_write" ON public.cert_awards
   FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ── Step 4b: Cert lessons, question bank, and quiz attempts ───────────────
+-- Cert progress is SELF-CONTAINED: watching a video in everyday HU does NOT
+-- count toward a certification. Cert watch state lives in its own table
+-- (cert_lesson_progress) keyed on the cert requirement, never on the shared
+-- progress table.
+
+-- Per-module quiz settings. quiz_draw_count = how many question GROUPS are
+-- randomly drawn per attempt (a group = one plant photo + its questions).
+ALTER TABLE public.cert_requirements
+  ADD COLUMN IF NOT EXISTS quiz_pass_score integer not null default 80,
+  ADD COLUMN IF NOT EXISTS quiz_draw_count integer not null default 4;
+
+-- Watch state for a cert video module. Mirrors the shape of `progress` but is
+-- deliberately independent of it.
+CREATE TABLE IF NOT EXISTS public.cert_lesson_progress (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  requirement_id uuid not null references public.cert_requirements(id) on delete cascade,
+  percent_watched integer not null default 0,
+  actual_seconds_watched integer not null default 0,
+  completed boolean not null default false,
+  last_watched_at timestamp with time zone default now(),
+  UNIQUE (user_id, requirement_id)
+);
+
+-- Question bank. A group is one shared stimulus (e.g. a plant photo) with its
+-- linked questions beneath (name / when we trim / how we trim), each scored
+-- separately. `label` is admin-facing only (it usually names the plant, i.e.
+-- the answer) and must never be sent to employees.
+CREATE TABLE IF NOT EXISTS public.cert_question_groups (
+  id uuid default gen_random_uuid() primary key,
+  requirement_id uuid not null references public.cert_requirements(id) on delete cascade,
+  label text,
+  image_url text,
+  sort_order integer not null default 0,
+  created_at timestamp with time zone default now()
+);
+
+-- Individual questions, one row each, in the same JSONB shape as everyday HU
+-- quiz questions so lib/quiz-scoring is reused unchanged.
+CREATE TABLE IF NOT EXISTS public.cert_questions (
+  id uuid default gen_random_uuid() primary key,
+  group_id uuid not null references public.cert_question_groups(id) on delete cascade,
+  question jsonb not null,
+  sort_order integer not null default 0,
+  created_at timestamp with time zone default now()
+);
+
+-- One row per attempt. `questions` is the full snapshot of what was served —
+-- which groups were drawn and the exact shuffled option order — INCLUDING the
+-- answer key, so history survives bank edits and retakes draw fresh. Because
+-- the key is in the row, employees get NO direct read access (see RLS below);
+-- all employee interaction goes through server actions using the service
+-- role after auth + gate checks.
+CREATE TABLE IF NOT EXISTS public.cert_quiz_attempts (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  requirement_id uuid not null references public.cert_requirements(id) on delete cascade,
+  questions jsonb not null,
+  answers jsonb,
+  score integer,
+  passed boolean,
+  started_at timestamp with time zone default now(),
+  submitted_at timestamp with time zone
+);
+
+CREATE INDEX IF NOT EXISTS cert_lesson_progress_req_idx ON public.cert_lesson_progress (requirement_id);
+CREATE INDEX IF NOT EXISTS cert_question_groups_req_idx ON public.cert_question_groups (requirement_id);
+CREATE INDEX IF NOT EXISTS cert_questions_group_idx ON public.cert_questions (group_id);
+CREATE INDEX IF NOT EXISTS cert_quiz_attempts_user_req_idx ON public.cert_quiz_attempts (user_id, requirement_id);
+
+ALTER TABLE public.cert_lesson_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cert_question_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cert_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cert_quiz_attempts ENABLE ROW LEVEL SECURITY;
+
+-- Lesson progress: users manage their own rows; admins read everything.
+DROP POLICY IF EXISTS "cert_lesson_progress_read" ON public.cert_lesson_progress;
+CREATE POLICY "cert_lesson_progress_read" ON public.cert_lesson_progress
+  FOR SELECT TO authenticated USING (auth.uid() = user_id OR public.is_admin());
+
+DROP POLICY IF EXISTS "cert_lesson_progress_insert" ON public.cert_lesson_progress;
+CREATE POLICY "cert_lesson_progress_insert" ON public.cert_lesson_progress
+  FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "cert_lesson_progress_update" ON public.cert_lesson_progress;
+CREATE POLICY "cert_lesson_progress_update" ON public.cert_lesson_progress
+  FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "cert_lesson_progress_admin" ON public.cert_lesson_progress;
+CREATE POLICY "cert_lesson_progress_admin" ON public.cert_lesson_progress
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- Question bank + attempts hold the answer key → admin-only. Employees never
+-- read these tables directly (not even their own attempt rows, which contain
+-- the served key); the app serves sanitized data via server actions.
+DROP POLICY IF EXISTS "cert_question_groups_admin" ON public.cert_question_groups;
+CREATE POLICY "cert_question_groups_admin" ON public.cert_question_groups
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "cert_questions_admin" ON public.cert_questions;
+CREATE POLICY "cert_questions_admin" ON public.cert_questions
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "cert_quiz_attempts_admin" ON public.cert_quiz_attempts;
+CREATE POLICY "cert_quiz_attempts_admin" ON public.cert_quiz_attempts
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());

@@ -374,6 +374,81 @@ export type CertRequirement = {
   path_id: string | null
   sort_order: number
   created_at: string
+  // Module quiz settings (used when the module has a question bank).
+  quiz_pass_score: number
+  quiz_draw_count: number
+}
+
+// Cert watch state — deliberately SEPARATE from the everyday `progress`
+// table. Watching a video in regular HU never counts toward a cert.
+export type CertLessonProgress = {
+  id: string
+  user_id: string
+  requirement_id: string
+  percent_watched: number
+  actual_seconds_watched: number
+  completed: boolean
+  last_watched_at: string
+}
+
+// One stimulus (e.g. a plant photo) with linked questions beneath it.
+// `label` is admin-facing (usually names the plant = the answer) and is
+// never sent to employees.
+export type CertQuestionGroup = {
+  id: string
+  requirement_id: string
+  label: string | null
+  image_url: string | null
+  sort_order: number
+  created_at: string
+}
+
+export type CertQuestionRow = {
+  id: string
+  group_id: string
+  question: QuizQuestion
+  sort_order: number
+  created_at: string
+}
+
+// Snapshot of one served group inside an attempt: the exact questions and
+// shuffled option order the employee saw. Includes the answer key — attempt
+// rows are admin/service-role readable only.
+export type CertServedGroup = {
+  group_id: string
+  image_url: string | null
+  questions: QuizQuestion[]
+}
+
+export type CertQuizAttempt = {
+  id: string
+  user_id: string
+  requirement_id: string
+  questions: CertServedGroup[]
+  answers: StoredAnswer[] | null
+  score: number | null
+  passed: boolean | null
+  started_at: string
+  submitted_at: string | null
+}
+
+// Sanitized quiz payload sent to the taker (answer key stripped: every
+// option arrives with is_correct=false, accepted short answers removed).
+export type ServedCertQuiz = {
+  attemptId: string
+  passScore: number
+  groups: { imageUrl: string | null; questions: QuizQuestion[] }[]
+}
+
+export type CertQuizResult = {
+  score: number
+  passed: boolean
+  passScore: number
+  correct: number
+  total: number
+  review: QuizReviewItem[]
+  // True when passing this quiz completed the module (video also watched).
+  moduleCompleted: boolean
 }
 
 export type CertAward = {

@@ -334,10 +334,18 @@ export default function VideoPlayer({
   video,
   initialProgress,
   onComplete,
+  persist,
 }: {
   video: Video
-  initialProgress: Progress | null
+  // Structural subset so alternate progress sources (e.g. the certification
+  // area's cert_lesson_progress rows) can drive the player too.
+  initialProgress: Pick<Progress, 'percent_watched' | 'actual_seconds_watched' | 'completed'> | null
   onComplete?: () => void
+  // Optional persistence override. When set, progress saves go HERE instead
+  // of the default updateVideoProgress + logWatchEvent pair — used by the
+  // certification area, whose watch state is deliberately separate from
+  // everyday HU progress. Anti-skip and completion behavior are unchanged.
+  persist?: (percent: number, watchedSeconds: number, duration: number) => void
 }) {
   const alreadyCompleted = initialProgress?.completed ?? false
   // If the video was already completed, start from the beginning instead of
@@ -383,13 +391,17 @@ export default function VideoPlayer({
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(() => {
         const p = pending.current
+        if (persist) {
+          persist(p.percent, p.watchedSeconds, p.duration)
+          return
+        }
         updateVideoProgress(video.id, p.percent, p.watchedSeconds, p.duration)
         // Watch-event seconds mirror real playback time (actual_seconds_watched),
         // not wall-clock time on the page.
         logWatchEvent(video.id, p.percent, p.watchedSeconds)
       }, 4000)
     },
-    [video.id, onComplete]
+    [video.id, onComplete, persist]
   )
 
   // Flush on unmount
@@ -399,11 +411,15 @@ export default function VideoPlayer({
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
         const p = pending.current
-        updateVideoProgress(video.id, p.percent, p.watchedSeconds, p.duration)
-        logWatchEvent(video.id, p.percent, p.watchedSeconds)
+        if (persist) {
+          persist(p.percent, p.watchedSeconds, p.duration)
+        } else {
+          updateVideoProgress(video.id, p.percent, p.watchedSeconds, p.duration)
+          logWatchEvent(video.id, p.percent, p.watchedSeconds)
+        }
       }
     }
-  }, [video.id])
+  }, [video.id, persist])
 
   const type = getVideoType(video.url)
 

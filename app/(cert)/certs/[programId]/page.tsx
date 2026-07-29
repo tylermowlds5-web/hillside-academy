@@ -8,7 +8,7 @@ import { fmtDate } from '@/lib/format-date'
 function kindLabel(mod: CertModule) {
   if (mod.kind === 'quiz') return 'Certification quiz'
   if (mod.kind === 'path') return 'Learning path'
-  return mod.videoHasQuiz ? 'Video lesson + quiz' : 'Video lesson'
+  return mod.hasQuizBank ? 'Video lesson + quiz' : 'Video lesson'
 }
 
 function moduleMeta(mod: CertModule) {
