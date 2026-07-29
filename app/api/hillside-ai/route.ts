@@ -115,12 +115,12 @@ export async function POST(request: Request) {
         errType === 'overloaded_error' || errType === 'rate_limit_error')
     ) {
       return Response.json(
-        { error: 'Gus is swamped right now — give it a few seconds and try again.' },
+        { error: 'Ricky is swamped right now — give it a few seconds and try again.' },
         { status: 503 }
       )
     }
     return Response.json(
-      { error: 'Gus hit a snag — wait a minute and try again.' },
+      { error: 'Ricky hit a snag — wait a minute and try again.' },
       { status: 502 }
     )
   }

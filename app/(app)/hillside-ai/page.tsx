@@ -1,6 +1,6 @@
 import HillsideAIChat from './HillsideAIChat'
 
-export const metadata = { title: 'Gus' }
+export const metadata = { title: 'Ricky Bobby' }
 
 // Auth (redirect to /login) and the sidebar come from app/(app)/layout.tsx.
 export default function HillsideAIPage() {

@@ -99,7 +99,7 @@ export default function HillsideAIChat() {
           </svg>
         </span>
         <div>
-          <h1 className="text-xl font-bold text-zinc-50">Gus</h1>
+          <h1 className="text-xl font-bold text-zinc-50">Ricky Bobby</h1>
           <p className="text-sm text-zinc-400">Your crew AI — ask about jobs, routes, and plants</p>
         </div>
       </div>
@@ -109,7 +109,7 @@ export default function HillsideAIChat() {
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <p className="text-zinc-500 text-sm text-center max-w-xs">
-              Ask Gus about a job, a route, or a plant — like &ldquo;How do we trim boxwoods?&rdquo;
+              Ask Ricky Bobby about a job, a route, or a plant — like &ldquo;How do we trim boxwoods?&rdquo;
             </p>
           </div>
         ) : (
@@ -125,11 +125,11 @@ export default function HillsideAIChat() {
               ) : (
                 <div key={i} className="flex items-end gap-2 max-w-[85%]">
                   <span className="flex-none flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500 text-plum-dark text-[10px] font-bold">
-                    G
+                    R
                   </span>
                   <div className="bg-plum-light border border-plum text-tan rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
                     {message.content === '' ? (
-                      <span className="flex gap-1 py-1" aria-label="Gus is typing">
+                      <span className="flex gap-1 py-1" aria-label="Ricky is typing">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse [animation-delay:150ms]" />
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse [animation-delay:300ms]" />
@@ -166,7 +166,7 @@ export default function HillsideAIChat() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={1}
-          placeholder="Ask Gus…"
+          placeholder="Ask Ricky…"
           disabled={streaming}
           className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 resize-none disabled:opacity-50"
         />
