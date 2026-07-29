@@ -347,3 +347,42 @@ export type LearningPathDocument = {
   sort_order: number
   created_at: string
 }
+
+// ── Certifications ────────────────────────────────────────────────────────
+// A cert program is a named credential made up of requirements (each exactly
+// one of: video, standalone quiz, learning path). Completing all requirements
+// earns a cert_awards row; validity_months drives expires_at (null = never).
+
+export type CertProgram = {
+  id: string
+  name: string
+  description: string | null
+  validity_months: number | null
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Exactly one of video_id / standalone_quiz_id / path_id is non-null
+// (DB CHECK constraint cert_requirements_one_target).
+export type CertRequirement = {
+  id: string
+  program_id: string
+  video_id: string | null
+  standalone_quiz_id: string | null
+  path_id: string | null
+  sort_order: number
+  created_at: string
+}
+
+export type CertAward = {
+  id: string
+  program_id: string
+  user_id: string
+  awarded_by: string | null   // null = auto-awarded on requirement completion
+  earned_at: string
+  expires_at: string | null   // null = never expires
+  revoked_at: string | null
+  revoked_by: string | null
+}

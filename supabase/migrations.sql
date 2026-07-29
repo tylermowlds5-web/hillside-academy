@@ -187,6 +187,28 @@ CREATE TABLE IF NOT EXISTS public.learning_path_documents (
   UNIQUE (path_id, document_id)
 );
 
+-- ── is_admin() helper ─────────────────────────────────────────────────────
+-- True when the calling session belongs to a profile with role = 'admin'.
+-- SECURITY DEFINER so the profiles lookup works even if profiles ever gets
+-- restrictive RLS of its own. Used by RLS policies below — every admin page
+-- and server action queries through the admin's OWN session (not the service
+-- role), so policies must grant admins access explicitly.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+
 -- 5. RLS policies (adjust as needed for your existing RLS setup)
 ALTER TABLE public.quizzes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_attempts ENABLE ROW LEVEL SECURITY;
@@ -199,15 +221,26 @@ DROP POLICY IF EXISTS "quizzes_read" ON public.quizzes;
 CREATE POLICY "quizzes_read" ON public.quizzes
   FOR SELECT TO authenticated USING (true);
 
+-- Admins create/update/delete quizzes. saveQuiz and deleteQuiz run under the
+-- admin's own session client, so without this policy enabling RLS would
+-- silently break quiz editing.
+DROP POLICY IF EXISTS "quizzes_admin_write" ON public.quizzes;
+CREATE POLICY "quizzes_admin_write" ON public.quizzes
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
 -- Allow authenticated users to insert their own attempts
 DROP POLICY IF EXISTS "quiz_attempts_insert" ON public.quiz_attempts;
 CREATE POLICY "quiz_attempts_insert" ON public.quiz_attempts
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
--- Allow authenticated users to read their own attempts
+-- Users read their own attempts; admins read everyone's (Progress Report,
+-- Quiz Insights, employee detail, and CSV export all query quiz_attempts
+-- through the admin's session client). Attempt deletion needs no policy:
+-- rows only ever go away via the quiz_id FK cascade, and referential
+-- actions bypass RLS.
 DROP POLICY IF EXISTS "quiz_attempts_read" ON public.quiz_attempts;
 CREATE POLICY "quiz_attempts_read" ON public.quiz_attempts
-  FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  FOR SELECT TO authenticated USING (auth.uid() = user_id OR public.is_admin());
 
 -- ── Cascade deletes for video-dependent rows ──────────────────────────────
 -- Deleting a video must remove its assignments / progress / watch events so
@@ -363,3 +396,102 @@ BEGIN
     WHERE p.id = activity.user_id AND p.last_login IS NULL
   $f$, union_sql);
 END $$;
+
+-- ── Step 2: Certifications ────────────────────────────────────────────────
+-- Purely additive: three new cert_* tables, their indexes, and their RLS.
+-- Touches ZERO existing tables — no ALTER TABLE, no data changes.
+--
+-- Model: a cert program is a named credential (e.g. "Irrigation Basics")
+-- made up of requirements. Each requirement is exactly ONE of: a video
+-- (complete + pass its quiz if it has one), a standalone quiz (pass), or a
+-- learning path (complete). When an employee satisfies every requirement
+-- they get a row in cert_awards; validity_months controls expiry
+-- (null = never expires). Renewal updates the existing award row —
+-- one row per (program, user), not a history table.
+
+CREATE TABLE IF NOT EXISTS public.cert_programs (
+  id uuid default gen_random_uuid() primary key,
+  name text not null unique,
+  description text,
+  -- How long an award stays valid, in months. NULL = never expires.
+  validity_months integer,
+  -- Inactive programs are hidden from employees but keep their awards.
+  is_active boolean not null default true,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+CREATE TABLE IF NOT EXISTS public.cert_requirements (
+  id uuid default gen_random_uuid() primary key,
+  program_id uuid not null references public.cert_programs(id) on delete cascade,
+  -- Exactly one of the three targets is set (enforced by CHECK below).
+  -- ON DELETE CASCADE: deleting a video/quiz/path removes the requirement so
+  -- programs never point at ghosts (same policy as assignments/progress).
+  video_id uuid references public.videos(id) on delete cascade,
+  standalone_quiz_id uuid references public.standalone_quizzes(id) on delete cascade,
+  path_id uuid references public.learning_paths(id) on delete cascade,
+  sort_order integer not null default 0,
+  created_at timestamp with time zone default now(),
+  CONSTRAINT cert_requirements_one_target CHECK (
+    (video_id IS NOT NULL)::int
+    + (standalone_quiz_id IS NOT NULL)::int
+    + (path_id IS NOT NULL)::int = 1
+  ),
+  -- Per-target uniqueness (NULLs don't collide, so each line only bites for
+  -- rows of its own target type).
+  UNIQUE (program_id, video_id),
+  UNIQUE (program_id, standalone_quiz_id),
+  UNIQUE (program_id, path_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.cert_awards (
+  id uuid default gen_random_uuid() primary key,
+  program_id uuid not null references public.cert_programs(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  -- NULL = auto-awarded by the app on requirement completion.
+  awarded_by uuid references auth.users(id) on delete set null,
+  earned_at timestamp with time zone not null default now(),
+  -- NULL = never expires (program had no validity_months at award time).
+  expires_at timestamp with time zone,
+  revoked_at timestamp with time zone,
+  revoked_by uuid references auth.users(id) on delete set null,
+  UNIQUE (program_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS cert_requirements_program_idx ON public.cert_requirements (program_id);
+CREATE INDEX IF NOT EXISTS cert_awards_user_idx ON public.cert_awards (user_id);
+CREATE INDEX IF NOT EXISTS cert_awards_program_idx ON public.cert_awards (program_id);
+
+ALTER TABLE public.cert_programs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cert_requirements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cert_awards ENABLE ROW LEVEL SECURITY;
+
+-- Everyone signed in can see programs + requirements (employees need them to
+-- see what a cert takes); only admins manage them.
+DROP POLICY IF EXISTS "cert_programs_read" ON public.cert_programs;
+CREATE POLICY "cert_programs_read" ON public.cert_programs
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "cert_programs_admin_write" ON public.cert_programs;
+CREATE POLICY "cert_programs_admin_write" ON public.cert_programs
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "cert_requirements_read" ON public.cert_requirements;
+CREATE POLICY "cert_requirements_read" ON public.cert_requirements
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "cert_requirements_admin_write" ON public.cert_requirements;
+CREATE POLICY "cert_requirements_admin_write" ON public.cert_requirements
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- Awards: employees see their own, admins see (and manage) everyone's.
+-- Auto-awarding from an employee action must go through the service-role
+-- client (employees can't insert their own awards by design).
+DROP POLICY IF EXISTS "cert_awards_read" ON public.cert_awards;
+CREATE POLICY "cert_awards_read" ON public.cert_awards
+  FOR SELECT TO authenticated USING (auth.uid() = user_id OR public.is_admin());
+
+DROP POLICY IF EXISTS "cert_awards_admin_write" ON public.cert_awards;
+CREATE POLICY "cert_awards_admin_write" ON public.cert_awards
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
