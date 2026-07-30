@@ -45,6 +45,7 @@ export default function CertTopBar({
   subtitle,
   progress,
   backHref,
+  manageHref,
 }: {
   title: string
   // Small line under the title (e.g. "Module 3 of 6") on module pages.
@@ -52,6 +53,9 @@ export default function CertTopBar({
   progress?: CertModuleProgress
   // Optional "up one level" link shown to the left of the title.
   backHref?: string
+  // Admin-only entry into the cert builder (/certs/admin…). Callers must
+  // only pass this after verifying the viewer is an admin.
+  manageHref?: string
 }) {
   return (
     <header className="sticky top-0 z-20 border-b border-plum/10 bg-white/90 backdrop-blur">
@@ -84,6 +88,15 @@ export default function CertTopBar({
         </div>
 
         {progress && <ProgressDots progress={progress} />}
+
+        {manageHref && (
+          <Link
+            href={manageHref}
+            className="shrink-0 rounded-full border border-emerald-600/40 px-4 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-600 hover:bg-emerald-600/5 whitespace-nowrap"
+          >
+            Manage
+          </Link>
+        )}
 
         <Link
           href="/dashboard"

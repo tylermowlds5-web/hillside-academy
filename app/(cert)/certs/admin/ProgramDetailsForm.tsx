@@ -54,7 +54,7 @@ export default function ProgramDetailsForm({
         isActive,
       })
       if (!programId) {
-        router.push(`/admin/certs/${id}`)
+        router.push(`/certs/admin/${id}`)
         return
       }
       setSaved(true)
@@ -72,7 +72,7 @@ export default function ProgramDetailsForm({
     setSaving(true)
     try {
       await deleteCertProgram(programId)
-      router.push('/admin/certs')
+      router.push('/certs/admin')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
       setSaving(false)

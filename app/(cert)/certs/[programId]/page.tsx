@@ -108,7 +108,10 @@ export default async function ProgramOverviewPage(props: {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const state = await loadProgramState(supabase, user.id, programId)
+  const [state, { data: profile }] = await Promise.all([
+    loadProgramState(supabase, user.id, programId),
+    supabase.from('profiles').select('role').eq('id', user.id).single<{ role: string }>(),
+  ])
   if (!state) notFound()
 
   const { program, modules, completedCount, award } = state
@@ -118,7 +121,12 @@ export default async function ProgramOverviewPage(props: {
 
   return (
     <>
-      <CertTopBar title={program.name} progress={topBarProgress(state)} backHref="/certs" />
+      <CertTopBar
+        title={program.name}
+        progress={topBarProgress(state)}
+        backHref="/certs"
+        manageHref={profile?.role === 'admin' ? `/certs/admin/${program.id}` : undefined}
+      />
 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
         {state.status === 'certified' && award && (

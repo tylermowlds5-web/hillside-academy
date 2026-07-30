@@ -121,11 +121,15 @@ export default async function CertCatalogPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const states = await loadCertStates(supabase, user.id)
+  const [states, { data: profile }] = await Promise.all([
+    loadCertStates(supabase, user.id),
+    supabase.from('profiles').select('role').eq('id', user.id).single<{ role: string }>(),
+  ])
+  const isAdmin = profile?.role === 'admin'
 
   return (
     <>
-      <CertTopBar title="Certification Center" />
+      <CertTopBar title="Certification Center" manageHref={isAdmin ? '/certs/admin' : undefined} />
 
       <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
         <div className="max-w-2xl">

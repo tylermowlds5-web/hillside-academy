@@ -109,7 +109,7 @@ export default async function EditCertProgramPage(props: {
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <Link
-        href="/admin/certs"
+        href="/certs/admin"
         className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-4 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -121,7 +121,7 @@ export default async function EditCertProgramPage(props: {
       <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="text-xl sm:text-2xl font-bold text-zinc-50 truncate">{program.name}</h1>
         <Link
-          href={`/admin/certs/${programId}/results`}
+          href={`/certs/admin/${programId}/results`}
           className="flex-shrink-0 px-4 py-2 rounded-lg border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm font-medium transition-colors"
         >
           View results

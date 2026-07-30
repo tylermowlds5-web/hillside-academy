@@ -67,7 +67,7 @@ export default async function CertBankEditorPage(props: {
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <Link
-        href={`/admin/certs/${programId}`}
+        href={`/certs/admin/${programId}`}
         className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-4 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

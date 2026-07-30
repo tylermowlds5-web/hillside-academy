@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Video, Profile, JobRole, UserJobRole } from '@/lib/types'
-import EmployeeSelector from '../../EmployeeSelector'
+import EmployeeSelector from '@/app/(app)/admin/EmployeeSelector'
 import {
   addCertModule,
   removeCertModule,
@@ -148,7 +148,7 @@ function ModuleRow({
         <p className="flex-1 min-w-0 text-sm font-medium text-zinc-100 truncate">{mod.title}</p>
 
         <Link
-          href={`/admin/certs/${programId}/modules/${mod.id}`}
+          href={`/certs/admin/${programId}/modules/${mod.id}`}
           className="flex-shrink-0 text-xs text-emerald-400 hover:text-emerald-300 px-2.5 py-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20"
         >
           Questions ({mod.groupCount}·{mod.questionCount})

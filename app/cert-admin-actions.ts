@@ -1,6 +1,6 @@
 'use server'
 
-// Admin server actions for the certification builder (/admin/certs).
+// Admin server actions for the certification builder (/certs/admin).
 // All actions are admin-gated; the cert_* RLS policies grant admins full
 // access through their own session client, so no service role is needed.
 

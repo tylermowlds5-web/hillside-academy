@@ -10,7 +10,7 @@ import {
   draftToQuestion,
   validateQuestionDrafts,
   type QuestionDraft,
-} from '../../../../QuestionEditor'
+} from '@/app/(app)/admin/QuestionEditor'
 import { saveCertGroup, deleteCertGroup, saveCertGroupQuestions } from '@/app/cert-admin-actions'
 
 // Question-bank editor: one card per group (photo + label + linked
