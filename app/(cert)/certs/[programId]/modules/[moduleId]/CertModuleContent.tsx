@@ -293,31 +293,46 @@ function CertQuizCard({
           </p>
         </div>
 
-        <div className="space-y-6">
+        {/* One card per plant: photo beside (desktop) / above (mobile) its
+            linked questions, visually a single bordered unit. Presentation
+            only — answers still key by flat question index and each part is
+            scored separately by the shared scorer. */}
+        <div className="space-y-5">
           {served.groups.map((group, gi) => (
-            <div key={gi} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-5">
-              {group.imageUrl && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={group.imageUrl}
-                  alt={`Plant ${gi + 1}`}
-                  className="mb-5 max-h-80 w-full rounded-lg border border-zinc-800 object-cover"
-                />
-              )}
-              <div className="space-y-6">
-                {group.questions.map((q, qi) => {
-                  flatIndex++
-                  const i = flatIndex
-                  return (
-                    <QuestionBlock
-                      key={`${gi}-${qi}`}
-                      q={q}
-                      qi={i}
-                      answer={answers[i]}
-                      onChange={(a) => setAnswers((prev) => ({ ...prev, [i]: a }))}
+            <div key={gi} className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900/60">
+              <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-900 px-4 py-2.5">
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                  Plant {gi + 1} of {served.groups.length}
+                </p>
+                <p className="text-[11px] text-zinc-500">each part scored separately</p>
+              </div>
+              <div className="sm:flex sm:items-stretch">
+                {group.imageUrl && (
+                  <div className="shrink-0 bg-zinc-950 sm:w-60 md:w-72">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={group.imageUrl}
+                      alt={`Plant ${gi + 1}`}
+                      className="h-52 w-full object-cover sm:h-full sm:min-h-full"
                     />
-                  )
-                })}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1 divide-y divide-zinc-800/70 px-4 sm:px-5">
+                  {group.questions.map((q, qi) => {
+                    flatIndex++
+                    const i = flatIndex
+                    return (
+                      <div key={`${gi}-${qi}`} className="py-4">
+                        <QuestionBlock
+                          q={q}
+                          qi={i}
+                          answer={answers[i]}
+                          onChange={(a) => setAnswers((prev) => ({ ...prev, [i]: a }))}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           ))}
