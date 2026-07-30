@@ -105,10 +105,10 @@ export default async function CertResultsPage(props: {
     r.lesson_title ?? r.videos?.title ?? (r.standalone_quiz_id ? 'HU quiz' : 'HU path')
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <Link
         href={`/certs/admin/${programId}`}
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-4 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-plum/60 hover:text-plum mb-4 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -116,38 +116,38 @@ export default async function CertResultsPage(props: {
         {program.name}
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-bold text-zinc-50 mb-1">Results</h1>
-      <p className="text-sm text-zinc-500 mb-6">
+      <h1 className="font-serif text-2xl sm:text-3xl font-semibold text-plum mb-1">Results</h1>
+      <p className="text-sm text-plum/50 mb-6">
         Per-module progress for everyone enrolled or active in this certification. Cert
         progress is separate from everyday HU watch history.
       </p>
 
       {(people ?? []).length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-800 px-4 py-10 text-center">
-          <p className="text-sm text-zinc-500">No enrollment or activity yet.</p>
+        <div className="rounded-xl border border-dashed border-plum/10 px-4 py-10 text-center">
+          <p className="text-sm text-plum/50">No enrollment or activity yet.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <div className="overflow-x-auto rounded-xl border border-plum/10">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
-              <tr className="bg-zinc-900 text-left">
-                <th className="px-4 py-3 font-semibold text-zinc-300 sticky left-0 bg-zinc-900">Employee</th>
+              <tr className="bg-tan text-left">
+                <th className="px-4 py-3 font-semibold text-plum/70 sticky left-0 bg-tan">Employee</th>
                 {reqs.map((r, i) => (
-                  <th key={r.id} className="px-4 py-3 font-semibold text-zinc-300 whitespace-nowrap">
-                    <span className="text-zinc-600 mr-1">{i + 1}.</span>
+                  <th key={r.id} className="px-4 py-3 font-semibold text-plum/70 whitespace-nowrap">
+                    <span className="text-plum/40 mr-1">{i + 1}.</span>
                     {moduleTitle(r)}
                     {bankReqIds.has(r.id) && (
-                      <span className="ml-1.5 text-[10px] font-bold uppercase text-zinc-500">quiz</span>
+                      <span className="ml-1.5 text-[10px] font-bold uppercase text-plum/50">quiz</span>
                     )}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800">
+            <tbody className="divide-y divide-plum/10">
               {(people ?? []).map((p) => (
-                <tr key={p.id} className="bg-zinc-950/60">
-                  <td className="px-4 py-3 sticky left-0 bg-zinc-950">
-                    <p className="font-medium text-zinc-100 whitespace-nowrap">{p.full_name ?? p.email}</p>
+                <tr key={p.id} className="bg-white">
+                  <td className="px-4 py-3 sticky left-0 bg-white">
+                    <p className="font-medium text-plum whitespace-nowrap">{p.full_name ?? p.email}</p>
                   </td>
                   {reqs.map((r) => {
                     const lesson = lessonBy.get(`${p.id}:${r.id}`)
@@ -163,14 +163,14 @@ export default async function CertResultsPage(props: {
                     return (
                       <td key={r.id} className="px-4 py-3 whitespace-nowrap">
                         {moduleDone ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
                             {hasBank && best !== null ? `${best}%` : 'Done'}
                           </span>
                         ) : lesson || atts.length > 0 ? (
-                          <span className="text-zinc-400">
+                          <span className="text-plum/60">
                             {lesson && !lesson.completed && `${lesson.percent_watched}% watched`}
                             {lesson?.completed && !passed && hasBank && (
                               <>
@@ -181,7 +181,7 @@ export default async function CertResultsPage(props: {
                             )}
                           </span>
                         ) : (
-                          <span className="text-zinc-700">—</span>
+                          <span className="text-plum/30">—</span>
                         )}
                       </td>
                     )

@@ -106,23 +106,23 @@ function GroupCard({
   }
 
   return (
-    <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 sm:p-5">
+    <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
           Group {index + 1}
         </h2>
         <button
           type="button"
           onClick={handleDelete}
           disabled={saving}
-          className="text-xs text-red-500 hover:text-red-400 px-2 py-1.5 rounded hover:bg-red-500/10"
+          className="text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
         >
           Delete group
         </button>
       </div>
 
       {error && (
-        <div className="mb-3 rounded-lg bg-red-950 border border-red-800 px-4 py-2.5 text-sm text-red-400">
+        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-600">
           {error}
         </div>
       )}
@@ -130,18 +130,18 @@ function GroupCard({
       <div className="flex flex-wrap items-start gap-4 mb-5">
         {/* Photo */}
         <div className="flex-shrink-0">
-          <p className="text-xs font-medium text-zinc-400 mb-1.5">Photo (shown once above the questions)</p>
+          <p className="text-xs font-medium text-plum/60 mb-1.5">Photo (shown once above the questions)</p>
           <div className="flex items-center gap-3">
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt="" className="h-24 w-36 object-cover rounded-lg border border-zinc-700" />
+              <img src={imageUrl} alt="" className="h-24 w-36 object-cover rounded-lg border border-plum/20" />
             ) : (
-              <div className="h-24 w-36 rounded-lg border border-dashed border-zinc-700 flex items-center justify-center text-xs text-zinc-600">
+              <div className="h-24 w-36 rounded-lg border border-dashed border-plum/20 flex items-center justify-center text-xs text-plum/40">
                 No photo
               </div>
             )}
             <div className="space-y-1.5">
-              <label className="block text-xs text-emerald-400 hover:text-emerald-300 px-3 py-2 rounded bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer text-center">
+              <label className="block text-xs text-emerald-700 hover:text-emerald-800 px-3 py-2 rounded bg-emerald-600/10 hover:bg-emerald-600/15 cursor-pointer text-center">
                 {uploading ? 'Uploading…' : imageUrl ? 'Replace photo' : 'Upload photo'}
                 <input type="file" accept="image/*" className="hidden" onChange={handleImage} disabled={uploading} />
               </label>
@@ -149,7 +149,7 @@ function GroupCard({
                 <button
                   type="button"
                   onClick={() => { setImageUrl(null); setSaved(false) }}
-                  className="block w-full text-xs text-zinc-500 hover:text-zinc-300"
+                  className="block w-full text-xs text-plum/50 hover:text-plum/70"
                 >
                   Remove photo
                 </button>
@@ -160,21 +160,23 @@ function GroupCard({
 
         {/* Label */}
         <div className="flex-1 min-w-52">
-          <p className="text-xs font-medium text-zinc-400 mb-1.5">
-            Label <span className="text-zinc-600">(admin-only — usually the plant name; employees never see it)</span>
+          <p className="text-xs font-medium text-plum/60 mb-1.5">
+            Label <span className="text-plum/40">(admin-only — usually the plant name; employees never see it)</span>
           </p>
           <input
             type="text"
             value={label}
             onChange={(e) => { setLabel(e.target.value); setSaved(false) }}
             placeholder="e.g. Boxwood"
-            className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500"
+            className="w-full px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600"
           />
         </div>
       </div>
 
-      {/* Questions */}
-      <div className="space-y-4">
+      {/* Questions — QuestionEditor is the dark HU-shared component,
+          presented in a dark inset panel (same pattern as the employee
+          side's dark quiz card on the tan theme). */}
+      <div className="space-y-4 rounded-xl bg-zinc-950 p-4">
         {questions.map((q, i) => (
           <QuestionEditor
             key={i}
@@ -197,7 +199,7 @@ function GroupCard({
         <button
           type="button"
           onClick={() => setQuestions((prev) => [...prev, defaultQuestion('multiple_choice')])}
-          className="px-4 py-2 rounded-lg border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm font-medium transition-colors"
+          className="px-4 py-2 rounded-lg border border-plum/20 hover:border-plum/40 text-plum/80 text-sm font-medium transition-colors"
         >
           + Add question
         </button>
@@ -205,11 +207,11 @@ function GroupCard({
           type="button"
           onClick={handleSave}
           disabled={saving || uploading}
-          className="px-5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+          className="px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
         >
           {saving ? 'Saving…' : 'Save group'}
         </button>
-        {saved && <span className="text-sm text-emerald-400">Saved</span>}
+        {saved && <span className="text-sm text-emerald-700">Saved</span>}
       </div>
     </section>
   )
@@ -243,14 +245,14 @@ export default function BankEditorClient({
   return (
     <div className="space-y-5">
       {error && (
-        <div className="rounded-lg bg-red-950 border border-red-800 px-4 py-3 text-sm text-red-400">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
           {error}
         </div>
       )}
 
       {groups.length === 0 && (
-        <div className="rounded-xl border border-dashed border-zinc-800 px-4 py-8 text-center">
-          <p className="text-sm text-zinc-500">
+        <div className="rounded-xl border border-dashed border-plum/10 px-4 py-8 text-center">
+          <p className="text-sm text-plum/50">
             No question groups yet. Each group is one photo with its linked questions — add
             your first below.
           </p>
@@ -274,7 +276,7 @@ export default function BankEditorClient({
         type="button"
         onClick={handleAddGroup}
         disabled={creating}
-        className="w-full px-4 py-3 rounded-xl border border-dashed border-zinc-700 hover:border-emerald-600 text-sm font-medium text-zinc-300 hover:text-emerald-400 transition-colors disabled:opacity-60"
+        className="w-full px-4 py-3 rounded-xl border border-dashed border-plum/20 hover:border-emerald-600 text-sm font-medium text-plum/70 hover:text-emerald-700 transition-colors disabled:opacity-60"
       >
         {creating ? 'Adding…' : '+ Add question group'}
       </button>

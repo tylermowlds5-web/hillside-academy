@@ -127,13 +127,13 @@ function ModuleRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className="bg-zinc-900 border border-zinc-800 rounded-xl"
+      className="rounded-2xl border border-plum/10 bg-white shadow-sm"
     >
       <div className="flex items-center gap-3 p-3">
         <div
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400 px-1 touch-none select-none"
+          className="cursor-grab active:cursor-grabbing text-plum/40 hover:text-plum/60 px-1 touch-none select-none"
         >
           <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">
             <circle cx="3" cy="3" r="1.5" /><circle cx="9" cy="3" r="1.5" />
@@ -141,53 +141,53 @@ function ModuleRow({
             <circle cx="3" cy="13" r="1.5" /><circle cx="9" cy="13" r="1.5" />
           </svg>
         </div>
-        <span className="flex-shrink-0 w-6 text-sm font-semibold text-zinc-500 text-center">{position}</span>
-        <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+        <span className="flex-shrink-0 w-6 text-sm font-semibold text-plum/50 text-center">{position}</span>
+        <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider bg-plum/10 text-plum/60 px-2 py-0.5 rounded-full">
           {KIND_LABEL[mod.kind]}
         </span>
-        <p className="flex-1 min-w-0 text-sm font-medium text-zinc-100 truncate">{mod.title}</p>
+        <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">{mod.title}</p>
 
         <Link
           href={`/certs/admin/${programId}/modules/${mod.id}`}
-          className="flex-shrink-0 text-xs text-emerald-400 hover:text-emerald-300 px-2.5 py-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20"
+          className="flex-shrink-0 text-xs text-emerald-700 hover:text-emerald-800 px-2.5 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15"
         >
           Questions ({mod.groupCount}·{mod.questionCount})
         </Link>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="flex-shrink-0 text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1.5 rounded hover:bg-zinc-800"
+          className="flex-shrink-0 text-xs text-plum/60 hover:text-plum px-2 py-1.5 rounded hover:bg-plum/5"
         >
           {expanded ? 'Close' : 'Settings'}
         </button>
         <button
           type="button"
           onClick={onRemove}
-          className="flex-shrink-0 text-xs text-red-500 hover:text-red-400 px-2 py-1.5 rounded hover:bg-red-500/10"
+          className="flex-shrink-0 text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
         >
           Remove
         </button>
       </div>
 
       {expanded && (
-        <div className="border-t border-zinc-800 p-4 space-y-4">
-          {error && <p className="text-sm text-red-400">{error}</p>}
+        <div className="border-t border-plum/10 p-4 space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
 
           <div className="flex flex-wrap gap-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Quiz pass mark (%)</label>
+              <label className="block text-xs font-medium text-plum/60 mb-1">Quiz pass mark (%)</label>
               <input
                 type="number" min={1} max={100} value={passScore}
                 onChange={(e) => setPassScore(e.target.value)}
-                className="w-28 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 text-sm focus:outline-none focus:border-emerald-500"
+                className="w-28 px-3 py-2 rounded-lg bg-white border border-plum/20 text-plum text-sm focus:outline-none focus:border-emerald-600"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Groups drawn per attempt</label>
+              <label className="block text-xs font-medium text-plum/60 mb-1">Groups drawn per attempt</label>
               <input
                 type="number" min={1} value={drawCount}
                 onChange={(e) => setDrawCount(e.target.value)}
-                className="w-28 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 text-sm focus:outline-none focus:border-emerald-500"
+                className="w-28 px-3 py-2 rounded-lg bg-white border border-plum/20 text-plum text-sm focus:outline-none focus:border-emerald-600"
               />
             </div>
           </div>
@@ -195,31 +195,31 @@ function ModuleRow({
           {mod.kind === 'lesson' && (
             <>
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Lesson title</label>
+                <label className="block text-xs font-medium text-plum/60 mb-1">Lesson title</label>
                 <input
                   type="text" value={lessonTitle}
                   onChange={(e) => setLessonTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-plum/20 text-plum text-sm focus:outline-none focus:border-emerald-600"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  Lesson text <span className="text-zinc-600">(blank line = new paragraph)</span>
+                <label className="block text-xs font-medium text-plum/60 mb-1">
+                  Lesson text <span className="text-plum/40">(blank line = new paragraph)</span>
                 </label>
                 <textarea
                   value={lessonBody} rows={6}
                   onChange={(e) => setLessonBody(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-plum/20 text-plum text-sm focus:outline-none focus:border-emerald-600"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Lesson image</label>
+                <label className="block text-xs font-medium text-plum/60 mb-1">Lesson image</label>
                 <div className="flex items-center gap-3">
                   {lessonImageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={lessonImageUrl} alt="" className="h-16 w-24 object-cover rounded-lg border border-zinc-700" />
+                    <img src={lessonImageUrl} alt="" className="h-16 w-24 object-cover rounded-lg border border-plum/20" />
                   )}
-                  <label className="text-xs text-emerald-400 hover:text-emerald-300 px-3 py-2 rounded bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer">
+                  <label className="text-xs text-emerald-700 hover:text-emerald-800 px-3 py-2 rounded bg-emerald-600/10 hover:bg-emerald-600/15 cursor-pointer">
                     {uploading ? 'Uploading…' : lessonImageUrl ? 'Replace image' : 'Upload image'}
                     <input type="file" accept="image/*" className="hidden" onChange={handleImage} disabled={uploading} />
                   </label>
@@ -227,7 +227,7 @@ function ModuleRow({
                     <button
                       type="button"
                       onClick={() => setLessonImageUrl(null)}
-                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                      className="text-xs text-plum/50 hover:text-plum/70"
                     >
                       Remove
                     </button>
@@ -241,7 +241,7 @@ function ModuleRow({
             type="button"
             onClick={handleSave}
             disabled={saving || uploading}
-            className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+            className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
           >
             {saving ? 'Saving…' : 'Save module'}
           </button>
@@ -375,21 +375,21 @@ export default function ProgramEditorClient({
   return (
     <>
       {/* ── Modules ── */}
-      <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 sm:p-5">
+      <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Modules</h2>
-          <span className="text-xs text-zinc-500">{modules.length} module{modules.length === 1 ? '' : 's'} · unlock in order</span>
+          <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">Modules</h2>
+          <span className="text-xs text-plum/50">{modules.length} module{modules.length === 1 ? '' : 's'} · unlock in order</span>
         </div>
 
         {moduleError && (
-          <div className="mb-3 rounded-lg bg-red-950 border border-red-800 px-4 py-2.5 text-sm text-red-400">
+          <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-600">
             {moduleError}
           </div>
         )}
 
         {modules.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-zinc-800 px-4 py-6 text-center mb-4">
-            <p className="text-sm text-zinc-500">No modules yet. Add a video or a text lesson below.</p>
+          <div className="rounded-lg border border-dashed border-plum/10 px-4 py-6 text-center mb-4">
+            <p className="text-sm text-plum/50">No modules yet. Add a video or a text lesson below.</p>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -411,33 +411,33 @@ export default function ProgramEditorClient({
         )}
 
         {/* Add video module */}
-        <div className="border-t border-zinc-800 pt-4 space-y-4">
+        <div className="border-t border-plum/10 pt-4 space-y-4">
           <div>
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Add a video module</p>
+            <p className="text-xs font-semibold text-plum/50 uppercase tracking-wider mb-2">Add a video module</p>
             <input
               type="text"
               value={videoSearch}
               onChange={(e) => setVideoSearch(e.target.value)}
               placeholder="Search the video library…"
-              className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 mb-2"
+              className="w-full px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600 mb-2"
             />
             {videoSearch.trim() !== '' && (
               availableVideos.length > 0 ? (
                 <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                   {availableVideos.slice(0, 20).map((v) => (
-                    <div key={v.id} className="flex items-center gap-3 bg-zinc-800/60 rounded-lg p-2.5">
-                      <div className="w-14 h-8 rounded bg-zinc-700 flex-shrink-0 overflow-hidden">
+                    <div key={v.id} className="flex items-center gap-3 bg-plum/5 rounded-lg p-2.5">
+                      <div className="w-14 h-8 rounded bg-plum/10 flex-shrink-0 overflow-hidden">
                         {v.thumbnail_url && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={v.thumbnail_url} alt="" className="w-full h-full object-cover" />
                         )}
                       </div>
-                      <p className="flex-1 text-sm text-zinc-200 truncate">{v.title}</p>
+                      <p className="flex-1 text-sm text-plum/80 truncate">{v.title}</p>
                       <button
                         type="button"
                         onClick={() => handleAddVideo(v)}
                         disabled={adding}
-                        className="text-xs text-emerald-400 hover:text-emerald-300 px-3 py-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 flex-shrink-0 disabled:opacity-50"
+                        className="text-xs text-emerald-700 hover:text-emerald-800 px-3 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15 flex-shrink-0 disabled:opacity-50"
                       >
                         Add
                       </button>
@@ -445,32 +445,32 @@ export default function ProgramEditorClient({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-zinc-500">No videos match your search.</p>
+                <p className="text-sm text-plum/50">No videos match your search.</p>
               )
             )}
           </div>
 
           {/* Add text lesson */}
           <div>
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Add a text / image lesson</p>
+            <p className="text-xs font-semibold text-plum/50 uppercase tracking-wider mb-2">Add a text / image lesson</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={lessonTitle}
                 onChange={(e) => setLessonTitle(e.target.value)}
                 placeholder="Lesson title, e.g. Plant Identification Basics"
-                className="flex-1 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500"
+                className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600"
               />
               <button
                 type="button"
                 onClick={handleAddLesson}
                 disabled={adding}
-                className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
+                className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
               >
                 Add lesson
               </button>
             </div>
-            <p className="text-[11px] text-zinc-600 mt-1.5">
+            <p className="text-[11px] text-plum/40 mt-1.5">
               After adding, open the module&apos;s Settings to write the lesson text and attach an image,
               and its Questions link to build the question bank.
             </p>
@@ -479,30 +479,35 @@ export default function ProgramEditorClient({
       </section>
 
       {/* ── Enrollment ── */}
-      <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-4">Enrollment</h2>
+      <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50 mb-4">Enrollment</h2>
         {assignError && (
-          <div className="mb-3 rounded-lg bg-red-950 border border-red-800 px-4 py-2.5 text-sm text-red-400">
+          <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-600">
             {assignError}
           </div>
         )}
-        <EmployeeSelector
-          employees={employees}
-          roles={roles}
-          userRoles={userRoles}
-          selected={selectedEmployees}
-          onChange={(next) => { setSelectedEmployees(next); setAssignmentsSaved(false) }}
-        />
+        {/* EmployeeSelector is the dark HU-shared component — presented in a
+            dark inset panel, same pattern as the employee side's dark quiz
+            card on the tan theme. */}
+        <div className="rounded-xl bg-zinc-950 p-4">
+          <EmployeeSelector
+            employees={employees}
+            roles={roles}
+            userRoles={userRoles}
+            selected={selectedEmployees}
+            onChange={(next) => { setSelectedEmployees(next); setAssignmentsSaved(false) }}
+          />
+        </div>
         <div className="flex items-center gap-3 mt-4">
           <button
             type="button"
             onClick={handleSaveAssignments}
             disabled={savingAssignments}
-            className="px-5 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+            className="px-5 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
           >
             {savingAssignments ? 'Saving…' : 'Save enrollment'}
           </button>
-          {assignmentsSaved && <span className="text-sm text-emerald-400">Saved</span>}
+          {assignmentsSaved && <span className="text-sm text-emerald-700">Saved</span>}
         </div>
       </section>
     </>

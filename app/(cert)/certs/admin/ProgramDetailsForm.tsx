@@ -82,13 +82,13 @@ export default function ProgramDetailsForm({
   return (
     <form onSubmit={handleSave} className="space-y-4">
       {error && (
-        <div className="rounded-lg bg-red-950 border border-red-800 px-4 py-3 text-sm text-red-400">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
           {error}
         </div>
       )}
 
       <div>
-        <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+        <label className="block text-sm font-medium text-plum/70 mb-1.5">
           Program Name <span className="text-red-500">*</span>
         </label>
         <input
@@ -97,24 +97,24 @@ export default function ProgramDetailsForm({
           onChange={(e) => setName(e.target.value)}
           required
           placeholder="e.g. Plant Care Fundamentals — Level 1"
-          className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500"
+          className="w-full px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-zinc-300 mb-1.5">Description</label>
+        <label className="block text-sm font-medium text-plum/70 mb-1.5">Description</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
           placeholder="What does this certification cover?"
-          className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500 resize-none"
+          className="w-full px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600 resize-none"
         />
       </div>
 
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+          <label className="block text-sm font-medium text-plum/70 mb-1.5">
             Valid for (months)
           </label>
           <input
@@ -123,9 +123,9 @@ export default function ProgramDetailsForm({
             value={validity}
             onChange={(e) => setValidity(e.target.value)}
             placeholder="Never expires"
-            className="w-40 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 text-sm focus:outline-none focus:border-emerald-500"
+            className="w-40 px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600"
           />
-          <p className="text-[11px] text-zinc-600 mt-1">Blank = credential never expires</p>
+          <p className="text-[11px] text-plum/40 mt-1">Blank = credential never expires</p>
         </div>
 
         <label className="flex items-center gap-2.5 pb-3 cursor-pointer select-none">
@@ -133,10 +133,10 @@ export default function ProgramDetailsForm({
             type="checkbox"
             checked={isActive}
             onChange={(e) => setIsActive(e.target.checked)}
-            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+            className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
           />
-          <span className="text-sm text-zinc-300">
-            Active <span className="text-zinc-500">(visible to employees)</span>
+          <span className="text-sm text-plum/70">
+            Active <span className="text-plum/50">(visible to employees)</span>
           </span>
         </label>
       </div>
@@ -145,17 +145,17 @@ export default function ProgramDetailsForm({
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+          className="px-5 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
         >
           {saving ? 'Saving…' : programId ? 'Save details' : 'Create program'}
         </button>
-        {saved && <span className="text-sm text-emerald-400">Saved</span>}
+        {saved && <span className="text-sm text-emerald-700">Saved</span>}
         {programId && (
           <button
             type="button"
             onClick={handleDelete}
             disabled={saving}
-            className="ml-auto text-sm text-red-500 hover:text-red-400 px-3 py-2 rounded hover:bg-red-500/10 transition-colors"
+            className="ml-auto text-sm text-red-600 hover:text-red-500 px-3 py-2 rounded hover:bg-red-500/10 transition-colors"
           >
             Delete program
           </button>

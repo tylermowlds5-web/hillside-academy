@@ -16,10 +16,10 @@ export default async function NewCertProgramPage() {
   if (profile?.role !== 'admin') redirect('/dashboard')
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
       <Link
         href="/certs/admin"
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-4 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-plum/60 hover:text-plum mb-4 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -27,9 +27,9 @@ export default async function NewCertProgramPage() {
         Certifications
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-bold text-zinc-50 mb-6">New Certification Program</h1>
+      <h1 className="font-serif text-2xl sm:text-3xl font-semibold text-plum mb-6">New Certification Program</h1>
 
-      <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 sm:p-5">
+      <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
         <ProgramDetailsForm />
       </section>
     </div>

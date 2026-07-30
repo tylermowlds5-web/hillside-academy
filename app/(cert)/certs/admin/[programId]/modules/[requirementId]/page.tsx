@@ -65,10 +65,10 @@ export default async function CertBankEditorPage(props: {
   }))
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
       <Link
         href={`/certs/admin/${programId}`}
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-4 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-plum/60 hover:text-plum mb-4 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -76,8 +76,8 @@ export default async function CertBankEditorPage(props: {
         {program.name}
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-bold text-zinc-50 mb-1">Question Bank</h1>
-      <p className="text-sm text-zinc-500 mb-6">
+      <h1 className="font-serif text-2xl sm:text-3xl font-semibold text-plum mb-1">Question Bank</h1>
+      <p className="text-sm text-plum/50 mb-6">
         {moduleTitle} — each attempt draws {requirement.quiz_draw_count} random group
         {requirement.quiz_draw_count === 1 ? '' : 's'}, pass mark {requirement.quiz_pass_score}%.
         A group is one photo with its linked questions beneath it (e.g. plant name / when we

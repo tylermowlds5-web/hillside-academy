@@ -107,10 +107,10 @@ export default async function EditCertProgramPage(props: {
   const usedVideoIds = (requirements ?? []).map((r) => r.video_id).filter(Boolean) as string[]
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
       <Link
         href="/certs/admin"
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-4 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-plum/60 hover:text-plum mb-4 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -119,18 +119,18 @@ export default async function EditCertProgramPage(props: {
       </Link>
 
       <div className="flex items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-zinc-50 truncate">{program.name}</h1>
+        <h1 className="font-serif text-2xl sm:text-3xl font-semibold text-plum truncate">{program.name}</h1>
         <Link
           href={`/certs/admin/${programId}/results`}
-          className="flex-shrink-0 px-4 py-2 rounded-lg border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm font-medium transition-colors"
+          className="flex-shrink-0 px-4 py-2 rounded-lg border border-plum/20 hover:border-plum/40 text-plum/80 text-sm font-medium transition-colors"
         >
           View results
         </Link>
       </div>
 
       <div className="space-y-6">
-        <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-4">
+        <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50 mb-4">
             Program details
           </h2>
           <ProgramDetailsForm
