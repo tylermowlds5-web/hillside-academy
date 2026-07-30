@@ -73,6 +73,8 @@ export type CertProgramState = {
   award: CertAward | null
   // Whether an admin has assigned this cert to the user (informational).
   assigned: boolean
+  // True while a renewal cycle is open (renewal started, not yet re-earned).
+  renewalOpen: boolean
 }
 
 type VideoLite = { id: string; title: string; url: string; duration: number | null; thumbnail_url: string | null }
@@ -169,12 +171,12 @@ export async function loadCertStates(
       quizIds.length
         ? supabase
             .from('standalone_quiz_attempts')
-            .select('quiz_id')
+            .select('quiz_id, taken_at')
             .eq('user_id', userId)
             .eq('passed', true)
             .in('quiz_id', quizIds)
-            .returns<{ quiz_id: string }[]>()
-        : Promise.resolve({ data: [] as { quiz_id: string }[] }),
+            .returns<{ quiz_id: string; taken_at: string }[]>()
+        : Promise.resolve({ data: [] as { quiz_id: string; taken_at: string }[] }),
       reqIds.length
         ? admin
             .from('cert_lesson_progress')
@@ -214,7 +216,7 @@ export async function loadCertStates(
   const huCompletedVideos = new Set(
     (pathProgressRes.data ?? []).filter((p) => p.completed).map((p) => p.video_id)
   )
-  const passedQuizIds = new Set((passedAttemptsRes.data ?? []).map((a) => a.quiz_id))
+  const passedHuAttempts = passedAttemptsRes.data ?? []
   const lessonByReq = new Map((lessonsRes.data ?? []).map((l) => [l.requirement_id, l]))
   const awardByProgram = new Map((awards ?? []).map((a) => [a.program_id, a]))
   const assignedPrograms = new Set((assignments ?? []).map((a) => a.program_id))
@@ -239,11 +241,19 @@ export async function loadCertStates(
 
   return programs.map((program) => {
     const programReqs = reqs.filter((r) => r.program_id === program.id)
+    const award = awardByProgram.get(program.id) ?? null
+
+    // Renewal cycle cutoff: once a renewal has been started, attempts made
+    // BEFORE it never count toward completion again — re-certifying means
+    // re-taking everything. (Lesson progress is deleted at renewal start.)
+    const cutoffMs = award?.renewal_started_at ? Date.parse(award.renewal_started_at) : null
+    const afterCutoff = (ts: string | null) =>
+      ts !== null && (cutoffMs === null || Date.parse(ts) > cutoffMs)
 
     let priorAllComplete = true
     const modules: CertModule[] = programReqs.map((r) => {
       const lesson = lessonByReq.get(r.id)
-      const attempts = (attemptsByReq.get(r.id) ?? []).filter((a) => a.submitted_at)
+      const attempts = (attemptsByReq.get(r.id) ?? []).filter((a) => afterCutoff(a.submitted_at))
       const hasQuizBank = bankReqIds.has(r.id)
       const quizPassed = attempts.some((a) => a.passed === true)
       const scores = attempts.map((a) => a.score).filter((s): s is number => s !== null)
@@ -295,7 +305,9 @@ export async function loadCertStates(
           kind: 'quiz',
           title: quiz?.title ?? 'Quiz (removed)',
           minutes: null,
-          completed: passedQuizIds.has(r.standalone_quiz_id),
+          completed: passedHuAttempts.some(
+            (a) => a.quiz_id === r.standalone_quiz_id && afterCutoff(a.taken_at)
+          ),
           quizId: r.standalone_quiz_id,
           quizQuestionCount: Array.isArray(quiz?.questions) ? quiz.questions.length : 0,
         }
@@ -322,7 +334,11 @@ export async function loadCertStates(
     })
 
     const completedCount = modules.filter((m) => m.completed).length
-    const award = awardByProgram.get(program.id) ?? null
+    const renewalOpen = Boolean(
+      award &&
+        award.renewal_started_at &&
+        Date.parse(award.renewal_started_at) > Date.parse(award.earned_at)
+    )
 
     let status: CertProgramStatus
     if (award && awardActive(award)) status = 'certified'
@@ -330,7 +346,15 @@ export async function loadCertStates(
     else if (completedCount > 0) status = 'in_progress'
     else status = 'not_started'
 
-    return { program, modules, completedCount, status, award, assigned: assignedPrograms.has(program.id) }
+    return {
+      program,
+      modules,
+      completedCount,
+      status,
+      award,
+      assigned: assignedPrograms.has(program.id),
+      renewalOpen,
+    }
   })
 }
 
@@ -386,7 +410,6 @@ export async function maybeAwardCert(
   const state = preloadedState ?? (await loadProgramState(supabase, userId, programId))
   if (!state || state.modules.length === 0) return false
   if (state.completedCount < state.modules.length) return false
-  if (state.award) return false
 
   const earned = new Date()
   let expires: string | null = null
@@ -397,6 +420,25 @@ export async function maybeAwardCert(
   }
 
   const admin = createAdminClient()
+
+  // Renewal completion: the user re-took everything after the cycle cutoff
+  // (completion above is cutoff-filtered), so re-stamp the same award row —
+  // new earned_at closes the cycle (renewal_started_at is no longer newer).
+  // Revoked awards never resurrect, and outside an open cycle an existing
+  // award is never rewritten.
+  if (state.award) {
+    if (!state.renewalOpen || state.award.revoked_at) return false
+    const { error } = await admin
+      .from('cert_awards')
+      .update({ earned_at: earned.toISOString(), expires_at: expires, awarded_by: null })
+      .eq('id', state.award.id)
+    if (error) {
+      console.error('[maybeAwardCert] renewal update error:', error.message)
+      return false
+    }
+    return true
+  }
+
   const { error } = await admin.from('cert_awards').upsert(
     {
       program_id: programId,

@@ -241,6 +241,25 @@ export async function saveCertStandaloneQuestions(
   if (error) throw new Error(error.message)
 }
 
+// ── Awards ────────────────────────────────────────────────────────────────
+
+// Manual expiration override from the roster: extend, shorten, or clear
+// (null = never expires / grandfathered). Touches ONLY expires_at — the
+// earned_at pass record is never rewritten.
+export async function setCertAwardExpiry(awardId: string, expiresAt: string | null) {
+  const { supabase } = await requireAdmin()
+
+  if (expiresAt !== null && isNaN(Date.parse(expiresAt))) {
+    throw new Error('Invalid expiration date')
+  }
+
+  const { error } = await supabase
+    .from('cert_awards')
+    .update({ expires_at: expiresAt })
+    .eq('id', awardId)
+  if (error) throw new Error(error.message)
+}
+
 // ── Enrollment ────────────────────────────────────────────────────────────
 
 // Syncs assignments to exactly the given employee set.

@@ -11,7 +11,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireUnlockedModule, maybeAwardCert } from '@/lib/certs'
+import { requireUnlockedModule, maybeAwardCert, loadProgramState } from '@/lib/certs'
 import { scoreQuiz, toReview } from '@/lib/quiz-scoring'
 import type {
   QuizQuestion,
@@ -108,6 +108,48 @@ export async function markCertLessonRead(programId: string, requirementId: strin
 
   // Reading a bank-less final lesson can complete the whole program.
   await maybeAwardCert(supabase, user.id, programId)
+  return {}
+}
+
+// ── Renewal ───────────────────────────────────────────────────────────────
+// Starting a renewal on an EXPIRED cert wipes the user's lesson progress for
+// the program and stamps the cycle cutoff — from that moment, old quiz
+// passes no longer count (see lib/certs.ts), so re-certifying requires
+// re-taking every module in order through the normal gates.
+export async function startCertRenewal(programId: string): Promise<{ error?: string }> {
+  const { supabase, user } = await getUser()
+  if (!user) return { error: 'Not signed in.' }
+
+  const state = await loadProgramState(supabase, user.id, programId)
+  if (!state?.award) return { error: 'No certification to renew.' }
+  if (state.award.revoked_at) return { error: 'This certification was revoked — talk to an admin.' }
+  const expired =
+    state.award.expires_at && new Date(state.award.expires_at).getTime() < Date.now()
+  if (!expired) return { error: 'This certification is still active.' }
+  if (state.renewalOpen) return {} // already renewing — idempotent
+
+  const admin = createAdminClient()
+  const reqIds = state.modules.map((m) => m.requirementId)
+  if (reqIds.length > 0) {
+    const { error: wipeError } = await admin
+      .from('cert_lesson_progress')
+      .delete()
+      .eq('user_id', user.id)
+      .in('requirement_id', reqIds)
+    if (wipeError) {
+      console.error('[startCertRenewal] wipe error:', wipeError.message)
+      return { error: 'Could not start the renewal. Try again.' }
+    }
+  }
+
+  const { error } = await admin
+    .from('cert_awards')
+    .update({ renewal_started_at: new Date().toISOString() })
+    .eq('id', state.award.id)
+  if (error) {
+    console.error('[startCertRenewal] stamp error:', error.message)
+    return { error: 'Could not start the renewal. Try again.' }
+  }
   return {}
 }
 

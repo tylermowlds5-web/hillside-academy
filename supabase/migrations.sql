@@ -664,3 +664,18 @@ ALTER TABLE public.cert_questions ADD CONSTRAINT cert_questions_one_parent CHECK
 );
 
 CREATE INDEX IF NOT EXISTS cert_questions_req_idx ON public.cert_questions (requirement_id);
+
+-- ── Step 7: Expiration & renewal ──────────────────────────────────────────
+
+-- New programs default to a 12-month validity (existing rows untouched;
+-- NULL still means the credential never expires).
+ALTER TABLE public.cert_programs ALTER COLUMN validity_months SET DEFAULT 12;
+
+-- Renewal cycle marker. Starting a renewal wipes the user's
+-- cert_lesson_progress for the program and stamps this; quiz attempts only
+-- count toward completion when submitted AFTER it, so re-certifying
+-- requires re-taking the whole course. A cycle is "open" while
+-- renewal_started_at > earned_at; completing every module again updates
+-- earned_at/expires_at, closing the cycle.
+ALTER TABLE public.cert_awards
+  ADD COLUMN IF NOT EXISTS renewal_started_at timestamp with time zone;

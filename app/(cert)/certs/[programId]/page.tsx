@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import CertTopBar from '../../CertTopBar'
+import RenewalCta from './RenewalCta'
 import { loadProgramState, maybeAwardCert, topBarProgress, type CertModule } from '@/lib/certs'
 import { fmtDate } from '@/lib/format-date'
 
@@ -138,6 +139,24 @@ export default async function ProgramOverviewPage(props: {
       />
 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+        {state.status === 'expired' && award && (
+          <div className="mb-6 rounded-2xl border border-burgundy/30 bg-burgundy/5 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="font-serif font-semibold text-burgundy">
+                  Certification expired {award.expires_at && fmtDate(award.expires_at)}
+                </p>
+                <p className="mt-0.5 text-xs text-plum/60">
+                  {state.renewalOpen
+                    ? 'Renewal in progress — complete every module again, in order, to re-certify.'
+                    : 'Renewing requires re-taking the whole course — every module, in order.'}
+                </p>
+              </div>
+              {!state.renewalOpen && <RenewalCta programId={program.id} />}
+            </div>
+          </div>
+        )}
+
         {state.status === 'certified' && award && (
           <div className="mb-6 flex items-center gap-4 rounded-2xl border border-emerald-600/30 bg-emerald-600/5 p-5">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">

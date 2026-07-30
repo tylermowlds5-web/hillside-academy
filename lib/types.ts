@@ -480,4 +480,8 @@ export type CertAward = {
   expires_at: string | null   // null = never expires
   revoked_at: string | null
   revoked_by: string | null
+  // Renewal cycle cutoff: progress/attempts only count when made after this.
+  // Cycle is open while renewal_started_at > earned_at; re-earning updates
+  // earned_at (closing it).
+  renewal_started_at: string | null
 }

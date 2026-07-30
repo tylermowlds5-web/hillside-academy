@@ -28,14 +28,22 @@ export default async function AdminCertsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="font-serif text-2xl sm:text-3xl font-semibold text-plum">Certifications</h1>
-        <Link
-          href="/certs/admin/new"
-          className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors"
-        >
-          + New Program
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/certs/admin/roster"
+            className="px-4 py-2 rounded-full border border-plum/20 hover:border-plum/40 text-plum/80 text-sm font-semibold transition-colors"
+          >
+            Roster
+          </Link>
+          <Link
+            href="/certs/admin/new"
+            className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors"
+          >
+            + New Program
+          </Link>
+        </div>
       </div>
 
       {(programs ?? []).length === 0 ? (

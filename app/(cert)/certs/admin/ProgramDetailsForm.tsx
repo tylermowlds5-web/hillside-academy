@@ -22,8 +22,10 @@ export default function ProgramDetailsForm({
   const router = useRouter()
   const [name, setName] = useState(initialName)
   const [description, setDescription] = useState(initialDescription)
+  // New programs default to 12 months (mirrors the DB default); an existing
+  // program with NULL validity stays blank = never expires.
   const [validity, setValidity] = useState<string>(
-    initialValidityMonths === null ? '' : String(initialValidityMonths)
+    initialValidityMonths !== null ? String(initialValidityMonths) : programId ? '' : '12'
   )
   const [isActive, setIsActive] = useState(initialIsActive)
   const [saving, setSaving] = useState(false)
