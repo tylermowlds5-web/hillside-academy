@@ -679,3 +679,24 @@ ALTER TABLE public.cert_programs ALTER COLUMN validity_months SET DEFAULT 12;
 -- earned_at/expires_at, closing the cycle.
 ALTER TABLE public.cert_awards
   ADD COLUMN IF NOT EXISTS renewal_started_at timestamp with time zone;
+
+-- ── Step 8: Expiration notification tracking ──────────────────────────────
+-- One row per notice actually sent by the daily cron (claim-before-send).
+-- The unique key includes expires_at (the expiration the notice was ABOUT):
+-- renewing a cert or editing its expiration changes expires_at, so notices
+-- automatically re-arm for the new date. Written by the service role;
+-- admin-only under RLS.
+CREATE TABLE IF NOT EXISTS public.cert_notifications (
+  id uuid default gen_random_uuid() primary key,
+  award_id uuid not null references public.cert_awards(id) on delete cascade,
+  kind text not null check (kind in ('expiry_1m', 'expiry_2w', 'expired_admin')),
+  expires_at timestamp with time zone not null,
+  sent_at timestamp with time zone default now(),
+  UNIQUE (award_id, kind, expires_at)
+);
+
+ALTER TABLE public.cert_notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "cert_notifications_admin" ON public.cert_notifications;
+CREATE POLICY "cert_notifications_admin" ON public.cert_notifications
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());

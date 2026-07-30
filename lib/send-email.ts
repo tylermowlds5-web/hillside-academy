@@ -457,3 +457,140 @@ export async function sendPathAssignmentEmail(params: PathAssignmentEmailParams)
     throw thrown
   }
 }
+
+// ── Cert expiration notices (sent by the daily cron) ──────────────────────
+
+// Shared minimal branded shell for the cert notices.
+function certEmailShell(title: string, inner: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f4f5;">
+  <tr>
+    <td align="center" style="padding:40px 20px 48px;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;">
+        <tr>
+          <td style="background:#10b981;border-radius:12px 12px 0 0;padding:24px 36px;">
+            <span style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:-0.3px;">Hillside University</span>
+            <span style="color:rgba(255,255,255,0.85);font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-top:2px;">Certification</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#ffffff;padding:36px;border-radius:0 0 12px 12px;border:1px solid #e4e4e7;border-top:none;">
+            ${inner}
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding-top:24px;">
+            <p style="margin:0;font-size:12px;color:#a1a1aa;">
+              Hillside University &middot; Employee Training Platform
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`
+}
+
+export interface CertExpiryEmailParams {
+  to: string
+  employeeName: string
+  certName: string
+  expiresAt: string   // ISO
+  certUrl: string     // absolute URL to the program overview
+  tier: '1m' | '2w'
+}
+
+// Employee warning: 1 month / 2 weeks before a certification expires.
+export async function sendCertExpiryEmail(params: CertExpiryEmailParams) {
+  const { to, employeeName, certName, expiresAt, certUrl, tier } = params
+  const windowText = tier === '1m' ? 'in about a month' : 'in two weeks'
+  const subject = `Your ${certName} certification expires ${fmtDate(expiresAt)}`
+
+  const inner = `
+    <h1 style="margin:0 0 12px;font-size:20px;color:#18181b;">Certification expiring ${windowText}</h1>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#3f3f46;">
+      Hi ${employeeName}, your <strong>${certName}</strong> certification expires on
+      <strong>${fmtDate(expiresAt)}</strong>.
+    </p>
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#3f3f46;">
+      Renewing means completing the full course again — every module, in order. Once it
+      expires you can start the renewal from the certification page.
+    </p>
+    <a href="${certUrl}"
+       style="display:inline-block;background:#10b981;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">
+      View certification
+    </a>`
+
+  const { error } = await resend.emails.send({
+    from: FROM, to, subject, html: certEmailShell(subject, inner),
+  })
+  if (error) {
+    console.error('[sendCertExpiryEmail] FAILED', JSON.stringify(error))
+    throw new Error(error.message ?? 'Resend returned an error')
+  }
+}
+
+export interface CertExpiredAdminEmailParams {
+  to: string
+  adminName: string
+  // Newly-expired certs in this run
+  expirations: { employeeName: string; certName: string; expiredAt: string }[]
+  rosterUrl: string
+}
+
+// Admin digest: certs that have just expired (one email per admin per run).
+export async function sendCertExpiredAdminEmail(params: CertExpiredAdminEmailParams) {
+  const { to, adminName, expirations, rosterUrl } = params
+  const subject =
+    expirations.length === 1
+      ? `Certification expired: ${expirations[0].employeeName} — ${expirations[0].certName}`
+      : `${expirations.length} certifications expired`
+
+  const rows = expirations
+    .map(
+      (e) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #f4f4f5;font-size:14px;color:#18181b;">${e.employeeName}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f4f4f5;font-size:14px;color:#3f3f46;">${e.certName}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f4f4f5;font-size:13px;color:#991b1b;white-space:nowrap;">${fmtDate(e.expiredAt)}</td>
+      </tr>`
+    )
+    .join('')
+
+  const inner = `
+    <h1 style="margin:0 0 12px;font-size:20px;color:#18181b;">Certification${expirations.length === 1 ? '' : 's'} expired</h1>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#3f3f46;">
+      Hi ${adminName}, the following certification${expirations.length === 1 ? ' has' : 's have'} expired.
+      Renewal requires the employee to re-take the full course; you can also adjust
+      expiration dates from the roster.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px;border:1px solid #e4e4e7;border-radius:8px;border-collapse:separate;overflow:hidden;">
+      <tr style="background:#fafafa;">
+        <th align="left" style="padding:8px 12px;font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Employee</th>
+        <th align="left" style="padding:8px 12px;font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Certification</th>
+        <th align="left" style="padding:8px 12px;font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Expired</th>
+      </tr>
+      ${rows}
+    </table>
+    <a href="${rosterUrl}"
+       style="display:inline-block;background:#10b981;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;">
+      Open the roster
+    </a>`
+
+  const { error } = await resend.emails.send({
+    from: FROM, to, subject, html: certEmailShell(subject, inner),
+  })
+  if (error) {
+    console.error('[sendCertExpiredAdminEmail] FAILED', JSON.stringify(error))
+    throw new Error(error.message ?? 'Resend returned an error')
+  }
+}
