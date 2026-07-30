@@ -1,14 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { QuizQuestion } from '@/lib/types'
+import type { QuizQuestion, QuizQuestionType } from '@/lib/types'
 import {
   QuestionEditor,
   defaultQuestion,
   questionToDraft,
   draftToQuestion,
   validateQuestionDrafts,
+  TYPE_LABEL,
   type QuestionDraft,
 } from '@/app/(app)/admin/QuestionEditor'
 import {
@@ -18,9 +19,13 @@ import {
   saveCertStandaloneQuestions,
 } from '@/app/cert-admin-actions'
 
-// Question-bank editor: one card per group (photo + label + linked
-// questions). Groups save individually; questions reuse the shared
-// QuestionEditor drafts/validation from the quiz builder.
+// ── Unified question bank editor ─────────────────────────────────────────
+// ONE list of units, one "+ Add question" action. A unit is a standalone
+// question of any type OR a photo group ("photo group" is just the sixth
+// choice in the type picker; picking it edits the shared photo + linked
+// questions inline). Pure UI structure — persistence still writes standalone
+// rows and group rows exactly as before, and each unit remains one drawable
+// unit with per-part scoring inside groups.
 
 export type BankGroup = {
   id: string
@@ -28,6 +33,20 @@ export type BankGroup = {
   imageUrl: string | null
   questions: QuizQuestion[]
 }
+
+type Unit =
+  | { kind: 'question'; key: string; draft: QuestionDraft }
+  | {
+      kind: 'group'
+      key: string
+      id: string | null // null until first save creates the DB row
+      label: string
+      imageUrl: string | null
+      drafts: QuestionDraft[]
+    }
+
+let unitSeq = 0
+const newKey = () => `unit-${Date.now()}-${unitSeq++}`
 
 async function uploadCertImage(file: File): Promise<string> {
   const fd = new FormData()
@@ -39,121 +58,59 @@ async function uploadCertImage(file: File): Promise<string> {
   return json.url
 }
 
-function GroupCard({
-  group,
-  index,
-  requirementId,
-  onDeleted,
+// ── Photo-group unit body: shared photo + label + linked questions ────────
+
+function GroupUnitBody({
+  unit,
+  onChange,
 }: {
-  group: BankGroup
-  index: number
-  requirementId: string
-  onDeleted: () => void
+  unit: Extract<Unit, { kind: 'group' }>
+  onChange: (patch: Partial<Pick<Extract<Unit, { kind: 'group' }>, 'label' | 'imageUrl' | 'drafts'>>) => void
 }) {
-  const [label, setLabel] = useState(group.label)
-  const [imageUrl, setImageUrl] = useState(group.imageUrl)
-  const [questions, setQuestions] = useState<QuestionDraft[]>(() =>
-    group.questions.length > 0
-      ? group.questions.map(questionToDraft)
-      : [defaultQuestion('multiple_choice')]
-  )
   const [uploading, setUploading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   async function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
-    setError(null)
+    setUploadError(null)
     try {
-      setImageUrl(await uploadCertImage(file))
-      setSaved(false)
+      onChange({ imageUrl: await uploadCertImage(file) })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(false)
       e.target.value = ''
     }
   }
 
-  async function handleSave() {
-    setError(null)
-    setSaved(false)
-    const validationError = validateQuestionDrafts(questions)
-    if (validationError) {
-      setError(validationError)
-      return
-    }
-    setSaving(true)
-    try {
-      await saveCertGroup({ groupId: group.id, requirementId, label, imageUrl })
-      await saveCertGroupQuestions(group.id, questions.map(draftToQuestion))
-      setSaved(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!confirm('Delete this group and its questions?')) return
-    setSaving(true)
-    try {
-      await deleteCertGroup(group.id)
-      onDeleted()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
-      setSaving(false)
-    }
-  }
-
   return (
-    <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
-          Group {index + 1}
-        </h2>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={saving}
-          className="text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
-        >
-          Delete group
-        </button>
-      </div>
-
-      {error && (
-        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-start gap-4 mb-5">
-        {/* Photo */}
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start gap-4">
+        {/* Shared photo */}
         <div className="flex-shrink-0">
-          <p className="text-xs font-medium text-plum/60 mb-1.5">Photo (shown once above the questions)</p>
+          <p className="text-xs font-medium text-plum/60 mb-1.5">
+            Photo <span className="text-plum/40">(shown once above the linked questions)</span>
+          </p>
           <div className="flex items-center gap-3">
-            {imageUrl ? (
+            {unit.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt="" className="h-24 w-36 object-cover rounded-lg border border-plum/20" />
+              <img src={unit.imageUrl} alt="" className="h-24 w-36 object-cover rounded-lg border border-plum/20" />
             ) : (
-              <div className="h-24 w-36 rounded-lg border border-dashed border-plum/20 flex items-center justify-center text-xs text-plum/40">
+              <div className="h-24 w-36 rounded-lg border border-dashed border-plum/25 flex items-center justify-center text-xs text-plum/40">
                 No photo
               </div>
             )}
             <div className="space-y-1.5">
               <label className="block text-xs text-emerald-700 hover:text-emerald-800 px-3 py-2 rounded bg-emerald-600/10 hover:bg-emerald-600/15 cursor-pointer text-center">
-                {uploading ? 'Uploading…' : imageUrl ? 'Replace photo' : 'Upload photo'}
+                {uploading ? 'Uploading…' : unit.imageUrl ? 'Replace photo' : 'Upload photo'}
                 <input type="file" accept="image/*" className="hidden" onChange={handleImage} disabled={uploading} />
               </label>
-              {imageUrl && (
+              {unit.imageUrl && (
                 <button
                   type="button"
-                  onClick={() => { setImageUrl(null); setSaved(false) }}
+                  onClick={() => onChange({ imageUrl: null })}
                   className="block w-full text-xs text-plum/50 hover:text-plum/70"
                 >
                   Remove photo
@@ -161,175 +118,54 @@ function GroupCard({
               )}
             </div>
           </div>
+          {uploadError && <p className="mt-1.5 text-xs text-red-600">{uploadError}</p>}
         </div>
 
-        {/* Label */}
+        {/* Admin label */}
         <div className="flex-1 min-w-52">
           <p className="text-xs font-medium text-plum/60 mb-1.5">
             Label <span className="text-plum/40">(admin-only — usually the plant name; employees never see it)</span>
           </p>
           <input
             type="text"
-            value={label}
-            onChange={(e) => { setLabel(e.target.value); setSaved(false) }}
+            value={unit.label}
+            onChange={(e) => onChange({ label: e.target.value })}
             placeholder="e.g. Boxwood"
             className="w-full px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600"
           />
         </div>
       </div>
 
-      {/* Questions — shared QuestionEditor in its light variant so it
-          matches the cert theme (dark stays the default for HU builders). */}
+      {/* Linked questions (each scored separately) */}
       <div className="space-y-4">
-        {questions.map((q, i) => (
+        {unit.drafts.map((q, i) => (
           <QuestionEditor
             key={i}
             q={q}
             index={i}
             light
-            onChange={(next) => {
-              setQuestions((prev) => prev.map((x, xi) => (xi === i ? next : x)))
-              setSaved(false)
-            }}
-            onRemove={() => {
-              setQuestions((prev) => prev.filter((_, xi) => xi !== i))
-              setSaved(false)
-            }}
-            canRemove={questions.length > 1}
+            onChange={(next) => onChange({ drafts: unit.drafts.map((x, xi) => (xi === i ? next : x)) })}
+            onRemove={() => onChange({ drafts: unit.drafts.filter((_, xi) => xi !== i) })}
+            canRemove={unit.drafts.length > 1}
           />
         ))}
       </div>
 
-      <div className="flex items-center gap-3 mt-4">
-        <button
-          type="button"
-          onClick={() => setQuestions((prev) => [...prev, defaultQuestion('multiple_choice')])}
-          className="px-4 py-2 rounded-lg border border-plum/20 hover:border-plum/40 text-plum/80 text-sm font-medium transition-colors"
-        >
-          + Add question
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || uploading}
-          className="px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-        >
-          {saving ? 'Saving…' : 'Save group'}
-        </button>
-        {saved && <span className="text-sm text-emerald-700">Saved</span>}
-      </div>
-    </section>
+      <button
+        type="button"
+        onClick={() => onChange({ drafts: [...unit.drafts, defaultQuestion('multiple_choice')] })}
+        className="text-xs text-plum/50 hover:text-emerald-700 transition-colors"
+      >
+        + Add linked question
+      </button>
+    </div>
   )
 }
 
-// ── Standalone questions ──────────────────────────────────────────────────
-// Questions of any type attached directly to the module — each one is its
-// own drawable unit alongside the photo groups.
+// ── Main editor ───────────────────────────────────────────────────────────
 
-function StandaloneSection({
-  requirementId,
-  initialQuestions,
-}: {
-  requirementId: string
-  initialQuestions: QuizQuestion[]
-}) {
-  const [questions, setQuestions] = useState<QuestionDraft[]>(() =>
-    initialQuestions.map(questionToDraft)
-  )
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSave() {
-    setError(null)
-    setSaved(false)
-    const validationError = validateQuestionDrafts(questions)
-    if (validationError) {
-      setError(validationError)
-      return
-    }
-    setSaving(true)
-    try {
-      await saveCertStandaloneQuestions(requirementId, questions.map(draftToQuestion))
-      setSaved(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
-      <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
-          Standalone questions
-        </h2>
-        <span className="text-xs text-plum/50">
-          {questions.length} question{questions.length === 1 ? '' : 's'}
-        </span>
-      </div>
-      <p className="mb-4 text-xs text-plum/50">
-        Any question type, no photo group — each standalone question is its own drawable
-        unit in the quiz.
-      </p>
-
-      {error && (
-        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
-      {questions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-plum/20 px-4 py-6 text-center">
-          <p className="text-sm text-plum/50">No standalone questions yet.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {questions.map((q, i) => (
-            <QuestionEditor
-              key={i}
-              q={q}
-              index={i}
-              light
-              onChange={(next) => {
-                setQuestions((prev) => prev.map((x, xi) => (xi === i ? next : x)))
-                setSaved(false)
-              }}
-              onRemove={() => {
-                setQuestions((prev) => prev.filter((_, xi) => xi !== i))
-                setSaved(false)
-              }}
-              canRemove
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            setQuestions((prev) => [...prev, defaultQuestion('multiple_choice')])
-            setSaved(false)
-          }}
-          className="px-4 py-2 rounded-lg border border-plum/20 hover:border-plum/40 text-plum/80 text-sm font-medium transition-colors"
-        >
-          + Add question
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-        >
-          {saving ? 'Saving…' : 'Save standalone questions'}
-        </button>
-        {saved && <span className="text-sm text-emerald-700">Saved</span>}
-      </div>
-    </section>
-  )
-}
+const GROUP_CHOICE = 'photo_group' as const
+type AddChoice = QuizQuestionType | typeof GROUP_CHOICE
 
 export default function BankEditorClient({
   requirementId,
@@ -341,20 +177,111 @@ export default function BankEditorClient({
   initialStandalone: QuizQuestion[]
 }) {
   const router = useRouter()
-  const [groups, setGroups] = useState(initialGroups)
-  const [creating, setCreating] = useState(false)
+  const [units, setUnits] = useState<Unit[]>(() => [
+    ...initialStandalone.map<Unit>((q) => ({ kind: 'question', key: newKey(), draft: questionToDraft(q) })),
+    ...initialGroups.map<Unit>((g) => ({
+      kind: 'group',
+      key: newKey(),
+      id: g.id,
+      label: g.label,
+      imageUrl: g.imageUrl,
+      drafts: g.questions.length > 0 ? g.questions.map(questionToDraft) : [defaultQuestion('multiple_choice')],
+    })),
+  ])
+  // Existing groups removed from the list — deleted from the DB on save,
+  // so removals and edits commit together.
+  const deletedGroupIds = useRef<string[]>([])
+
+  const [chooserOpen, setChooserOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleAddGroup() {
-    setCreating(true)
+  function addUnit(choice: AddChoice) {
+    setChooserOpen(false)
+    setSaved(false)
+    setUnits((prev) => [
+      ...prev,
+      choice === GROUP_CHOICE
+        ? { kind: 'group', key: newKey(), id: null, label: '', imageUrl: null, drafts: [defaultQuestion('multiple_choice')] }
+        : { kind: 'question', key: newKey(), draft: defaultQuestion(choice) },
+    ])
+  }
+
+  function removeUnit(idx: number) {
+    const unit = units[idx]
+    if (unit.kind === 'group') {
+      if (!confirm('Remove this photo group and its linked questions? The removal is applied when you save the bank.')) return
+      if (unit.id) deletedGroupIds.current.push(unit.id)
+    }
+    setSaved(false)
+    setUnits((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function updateUnit(idx: number, next: Unit) {
+    setSaved(false)
+    setUnits((prev) => prev.map((u, i) => (i === idx ? next : u)))
+  }
+
+  function validate(): string | null {
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i]
+      const drafts = u.kind === 'question' ? [u.draft] : u.drafts
+      const err = validateQuestionDrafts(drafts)
+      if (err) return `Unit ${i + 1}${u.kind === 'group' ? ' (photo group)' : ''}: ${err}`
+    }
+    return null
+  }
+
+  async function handleSave() {
     setError(null)
+    setSaved(false)
+    const validationError = validate()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    setSaving(true)
     try {
-      const { id } = await saveCertGroup({ requirementId, label: '', imageUrl: null })
-      setGroups((prev) => [...prev, { id, label: '', imageUrl: null, questions: [] }])
+      // Standalone questions: wholesale replace in list order.
+      const standalone = units
+        .filter((u): u is Extract<Unit, { kind: 'question' }> => u.kind === 'question')
+        .map((u) => draftToQuestion(u.draft))
+      await saveCertStandaloneQuestions(requirementId, standalone)
+
+      // Groups: create missing rows, update the rest, replace their questions.
+      const idByKey = new Map<string, string>()
+      for (const u of units) {
+        if (u.kind !== 'group') continue
+        const { id } = await saveCertGroup({
+          groupId: u.id ?? undefined,
+          requirementId,
+          label: u.label,
+          imageUrl: u.imageUrl,
+        })
+        idByKey.set(u.key, id)
+        await saveCertGroupQuestions(id, u.drafts.map(draftToQuestion))
+      }
+
+      // Deletions last, so a failed save above leaves nothing half-removed.
+      for (const gid of deletedGroupIds.current) {
+        await deleteCertGroup(gid)
+      }
+      deletedGroupIds.current = []
+
+      // Stamp freshly-created group ids so a re-save updates instead of duplicating.
+      setUnits((prev) =>
+        prev.map((u) =>
+          u.kind === 'group' && !u.id && idByKey.has(u.key) ? { ...u, id: idByKey.get(u.key)! } : u
+        )
+      )
+      setSaved(true)
+      router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add group')
+      setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
-      setCreating(false)
+      setSaving(false)
     }
   }
 
@@ -366,48 +293,114 @@ export default function BankEditorClient({
         </div>
       )}
 
-      <StandaloneSection requirementId={requirementId} initialQuestions={initialStandalone} />
-
-      <div className="pt-2">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
-          Photo groups
-        </h2>
-        <p className="mt-1 text-xs text-plum/50">
-          One shared photo with linked questions beneath it (the Plant ID format). The whole
-          group is one drawable unit; each linked question is still scored separately.
-        </p>
-      </div>
-
-      {groups.length === 0 && (
-        <div className="rounded-xl border border-dashed border-plum/10 px-4 py-8 text-center">
+      {units.length === 0 && (
+        <div className="rounded-xl border border-dashed border-plum/20 px-4 py-8 text-center">
           <p className="text-sm text-plum/50">
-            No question groups yet. Each group is one photo with its linked questions — add
-            your first below.
+            No questions yet. Add your first below — any question type, or a photo group
+            (one shared photo with linked questions).
           </p>
         </div>
       )}
 
-      {groups.map((g, i) => (
-        <GroupCard
-          key={g.id}
-          group={g}
-          index={i}
-          requirementId={requirementId}
-          onDeleted={() => {
-            setGroups((prev) => prev.filter((x) => x.id !== g.id))
-            router.refresh()
-          }}
-        />
+      {/* One unified unit list */}
+      {units.map((unit, i) => (
+        <section key={unit.key} className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50 whitespace-nowrap">
+                Unit {i + 1}
+              </h2>
+              <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider bg-plum/10 text-plum/60 px-2 py-0.5 rounded-full">
+                {unit.kind === 'group' ? 'Photo group' : TYPE_LABEL[unit.draft.type]}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => removeUnit(i)}
+              className="flex-shrink-0 text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
+            >
+              Remove
+            </button>
+          </div>
+
+          {unit.kind === 'question' ? (
+            <QuestionEditor
+              q={unit.draft}
+              index={i}
+              light
+              onChange={(next) => updateUnit(i, { ...unit, draft: next })}
+              onRemove={() => {}}
+              canRemove={false}
+            />
+          ) : (
+            <GroupUnitBody
+              unit={unit}
+              onChange={(patch) => updateUnit(i, { ...unit, ...patch })}
+            />
+          )}
+        </section>
       ))}
 
-      <button
-        type="button"
-        onClick={handleAddGroup}
-        disabled={creating}
-        className="w-full px-4 py-3 rounded-xl border border-dashed border-plum/20 hover:border-emerald-600 text-sm font-medium text-plum/70 hover:text-emerald-700 transition-colors disabled:opacity-60"
-      >
-        {creating ? 'Adding…' : '+ Add question group'}
-      </button>
+      {/* One add action: pick a type, photo group included */}
+      {chooserOpen ? (
+        <div className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
+              What kind of question?
+            </p>
+            <button
+              type="button"
+              onClick={() => setChooserOpen(false)}
+              className="text-xs text-plum/50 hover:text-plum"
+            >
+              Cancel
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(TYPE_LABEL) as QuizQuestionType[]).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => addUnit(type)}
+                className="rounded-full border border-plum/20 bg-white px-4 py-2 text-sm font-medium text-plum/80 transition-colors hover:border-emerald-600 hover:text-emerald-700"
+              >
+                {TYPE_LABEL[type]}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => addUnit(GROUP_CHOICE)}
+              className="rounded-full border border-emerald-600/40 bg-emerald-600/5 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:border-emerald-600 hover:bg-emerald-600/10"
+            >
+              Photo Group — one photo, linked questions
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setChooserOpen(true)}
+          className="w-full px-4 py-3 rounded-xl border border-dashed border-plum/20 hover:border-emerald-600 text-sm font-medium text-plum/70 hover:text-emerald-700 transition-colors"
+        >
+          + Add question
+        </button>
+      )}
+
+      {/* One save for the whole bank */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+        >
+          {saving ? 'Saving…' : 'Save bank'}
+        </button>
+        {saved && <span className="text-sm text-emerald-700">Saved</span>}
+        <span className="text-xs text-plum/40">
+          {units.length} unit{units.length === 1 ? '' : 's'} — each is one draw
+        </span>
+      </div>
     </div>
   )
 }
