@@ -143,7 +143,9 @@ const QE_DARK: QETheme = {
 }
 
 const QE_LIGHT: QETheme = {
-  panel: 'bg-tan/60 border border-plum/15',
+  // Cool plum tint — deliberately distinct from both the tan page background
+  // and the white card, so page / card / question area read as three layers.
+  panel: 'bg-plum/5 border border-plum/15',
   qNum: 'text-plum/50',
   input: 'bg-white border border-plum/20 text-plum placeholder-plum/40 focus:outline-none focus:border-emerald-600',
   inputFixed: 'bg-white border border-plum/20 text-plum/70',

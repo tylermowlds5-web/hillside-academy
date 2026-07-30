@@ -137,7 +137,7 @@ export default async function CertResultsPage(props: {
           <p className="text-sm text-plum/50">No enrollment or activity yet.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-plum/10">
+        <div className="overflow-x-auto rounded-xl border border-plum/10 bg-white shadow-sm">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="bg-tan text-left">

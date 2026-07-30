@@ -8,6 +8,73 @@ interface Props {
   userRoles: UserJobRole[]
   selected: Set<string> // selected employee IDs
   onChange: (next: Set<string>) => void
+  // Render on the cert area's light tan/plum palette instead of the default
+  // dark zinc used by the HU admin screens.
+  light?: boolean
+}
+
+// ── Theming ──────────────────────────────────────────────────────────────
+// DARK values are the original classes byte-for-byte, so the existing HU
+// admin screens (paths, assign, quiz modals) are visually unchanged.
+
+type ESTheme = {
+  countText: string
+  countNum: string
+  muted: string
+  linkPrimary: string
+  dot: string
+  linkQuiet: string
+  chipOn: string
+  chipPartial: string
+  chipOff: string
+  chipCountOff: string
+  listBorder: string
+  rowChecked: string
+  rowHover: string
+  avatar: string
+  avatarText: string
+  name: string
+  roleChip: string
+}
+
+const ES_DARK: ESTheme = {
+  countText: 'text-zinc-300',
+  countNum: 'text-emerald-400',
+  muted: 'text-zinc-500',
+  linkPrimary: 'text-emerald-400 hover:text-emerald-300',
+  dot: 'text-zinc-700',
+  linkQuiet: 'text-zinc-400 hover:text-zinc-200',
+  chipOn: 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400',
+  chipPartial: 'bg-emerald-500/20 border-emerald-700 text-emerald-300 hover:bg-emerald-500/30',
+  chipOff: 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500',
+  chipCountOff: 'text-zinc-500',
+  listBorder: 'border-zinc-800',
+  rowChecked: 'bg-emerald-500/10',
+  rowHover: 'hover:bg-zinc-800',
+  avatar: 'bg-emerald-900',
+  avatarText: 'text-emerald-400',
+  name: 'text-zinc-100',
+  roleChip: 'bg-zinc-800 text-zinc-400',
+}
+
+const ES_LIGHT: ESTheme = {
+  countText: 'text-plum/70',
+  countNum: 'text-emerald-700',
+  muted: 'text-plum/50',
+  linkPrimary: 'text-emerald-700 hover:text-emerald-800',
+  dot: 'text-plum/30',
+  linkQuiet: 'text-plum/60 hover:text-plum',
+  chipOn: 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700',
+  chipPartial: 'bg-emerald-600/10 border-emerald-600/40 text-emerald-700 hover:bg-emerald-600/20',
+  chipOff: 'bg-white border-plum/20 text-plum/80 hover:border-plum/40',
+  chipCountOff: 'text-plum/50',
+  listBorder: 'border-plum/15',
+  rowChecked: 'bg-emerald-600/10',
+  rowHover: 'hover:bg-plum/5',
+  avatar: 'bg-emerald-600/15',
+  avatarText: 'text-emerald-700',
+  name: 'text-plum',
+  roleChip: 'bg-plum/10 text-plum/60',
 }
 
 /**
@@ -24,7 +91,10 @@ export default function EmployeeSelector({
   userRoles,
   selected,
   onChange,
+  light = false,
 }: Props) {
+  const t = light ? ES_LIGHT : ES_DARK
+
   // Only count active employees (passed as `employees`) toward role memberships
   const activeEmpIds = new Set(employees.map((e) => e.id))
 
@@ -89,24 +159,24 @@ export default function EmployeeSelector({
     <div className="space-y-4">
       {/* Count + quick actions */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-sm text-zinc-300">
-          <span className="font-semibold text-emerald-400">{selected.size}</span>
-          <span className="text-zinc-500"> of {employees.length} employee{employees.length === 1 ? '' : 's'} selected</span>
+        <p className={`text-sm ${t.countText}`}>
+          <span className={`font-semibold ${t.countNum}`}>{selected.size}</span>
+          <span className={t.muted}> of {employees.length} employee{employees.length === 1 ? '' : 's'} selected</span>
         </p>
         {employees.length > 0 && (
           <div className="flex items-center gap-2 text-xs">
             <button
               type="button"
               onClick={selectAll}
-              className="text-emerald-400 hover:text-emerald-300 cursor-pointer"
+              className={`${t.linkPrimary} cursor-pointer`}
             >
               Select all
             </button>
-            <span className="text-zinc-700">·</span>
+            <span className={t.dot}>·</span>
             <button
               type="button"
               onClick={clearAll}
-              className="text-zinc-400 hover:text-zinc-200 cursor-pointer"
+              className={`${t.linkQuiet} cursor-pointer`}
             >
               Clear
             </button>
@@ -117,7 +187,7 @@ export default function EmployeeSelector({
       {/* ── Assign by Role ─────────────────────────────────────────────── */}
       {roles.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+          <p className={`text-xs font-semibold ${t.muted} uppercase tracking-wider mb-2`}>
             Assign by Role
           </p>
           <div className="flex flex-wrap gap-2">
@@ -134,11 +204,7 @@ export default function EmployeeSelector({
                   disabled={disabled}
                   title={r.description ?? undefined}
                   className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
-                    fully
-                      ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400'
-                      : partial
-                      ? 'bg-emerald-500/20 border-emerald-700 text-emerald-300 hover:bg-emerald-500/30'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500'
+                    fully ? t.chipOn : partial ? t.chipPartial : t.chipOff
                   }`}
                 >
                   {fully && (
@@ -147,7 +213,7 @@ export default function EmployeeSelector({
                     </svg>
                   )}
                   <span>{r.name}</span>
-                  <span className={`text-[10px] ${fully ? 'text-white/80' : 'text-zinc-500'}`}>
+                  <span className={`text-[10px] ${fully ? 'text-white/80' : t.chipCountOff}`}>
                     {members.length}
                   </span>
                 </button>
@@ -159,13 +225,13 @@ export default function EmployeeSelector({
 
       {/* ── Assign by Individual ──────────────────────────────────────── */}
       <div>
-        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+        <p className={`text-xs font-semibold ${t.muted} uppercase tracking-wider mb-2`}>
           Assign by Individual
         </p>
         {employees.length === 0 ? (
-          <p className="text-sm text-zinc-500">No employees found.</p>
+          <p className={`text-sm ${t.muted}`}>No employees found.</p>
         ) : (
-          <div className="space-y-1 max-h-72 overflow-y-auto border border-zinc-800 rounded-lg p-1">
+          <div className={`space-y-1 max-h-72 overflow-y-auto border ${t.listBorder} rounded-lg p-1`}>
             {employees.map((emp) => {
               const checked = selected.has(emp.id)
               const empRoleIds = rolesByEmp.get(emp.id) ?? []
@@ -173,7 +239,7 @@ export default function EmployeeSelector({
                 <label
                   key={emp.id}
                   className={`flex items-center gap-3 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
-                    checked ? 'bg-emerald-500/10' : 'hover:bg-zinc-800'
+                    checked ? t.rowChecked : t.rowHover
                   }`}
                 >
                   <input
@@ -182,25 +248,25 @@ export default function EmployeeSelector({
                     onChange={() => toggleEmployee(emp.id)}
                     className="w-4 h-4 rounded accent-emerald-500 cursor-pointer flex-shrink-0"
                   />
-                  <div className="w-7 h-7 rounded-full bg-emerald-900 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-semibold text-emerald-400">
+                  <div className={`w-7 h-7 rounded-full ${t.avatar} flex items-center justify-center flex-shrink-0`}>
+                    <span className={`text-xs font-semibold ${t.avatarText}`}>
                       {(emp.full_name ?? emp.email).charAt(0).toUpperCase()}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-zinc-100 truncate">
+                    <p className={`text-sm font-medium ${t.name} truncate`}>
                       {emp.full_name ?? emp.email}
                     </p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                       {emp.full_name && (
-                        <span className="text-xs text-zinc-500 truncate">{emp.email}</span>
+                        <span className={`text-xs ${t.muted} truncate`}>{emp.email}</span>
                       )}
                       {empRoleIds.length > 0 && (
                         <>
                           {empRoleIds.map((rid) => (
                             <span
                               key={rid}
-                              className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded"
+                              className={`text-[10px] ${t.roleChip} px-1.5 py-0.5 rounded`}
                             >
                               {roleNameById.get(rid) ?? 'Role'}
                             </span>

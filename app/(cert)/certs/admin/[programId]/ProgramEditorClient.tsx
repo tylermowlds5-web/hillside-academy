@@ -488,18 +488,16 @@ export default function ProgramEditorClient({
             {assignError}
           </div>
         )}
-        {/* EmployeeSelector is the dark HU-shared component — presented in a
-            dark inset panel, same pattern as the employee side's dark quiz
-            card on the tan theme. */}
-        <div className="rounded-xl bg-zinc-950 p-4">
-          <EmployeeSelector
-            employees={employees}
-            roles={roles}
-            userRoles={userRoles}
-            selected={selectedEmployees}
-            onChange={(next) => { setSelectedEmployees(next); setAssignmentsSaved(false) }}
-          />
-        </div>
+        {/* Shared EmployeeSelector in its light variant so enrollment matches
+            the cert theme (dark stays the default for HU admin screens). */}
+        <EmployeeSelector
+          employees={employees}
+          roles={roles}
+          userRoles={userRoles}
+          selected={selectedEmployees}
+          onChange={(next) => { setSelectedEmployees(next); setAssignmentsSaved(false) }}
+          light
+        />
         <div className="flex items-center gap-3 mt-4">
           <button
             type="button"
