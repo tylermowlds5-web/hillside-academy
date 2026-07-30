@@ -80,6 +80,96 @@ export const TYPE_LABEL: Record<QuizQuestionType, string> = {
   sequence: 'Sequence / Order the Steps',
 }
 
+// ── Theming ──────────────────────────────────────────────────────────────
+// The editor renders dark (zinc) inside the HU quiz builders and light (the
+// cert area's tan/plum palette) when the `light` prop is set. DARK values
+// are the original classes byte-for-byte, so the existing builders are
+// visually unchanged.
+
+type QETheme = {
+  panel: string
+  qNum: string
+  input: string
+  inputFixed: string
+  label: string
+  labelFaint: string
+  hint: string
+  hintStrong: string
+  hintFaint: string
+  removeIcon: string
+  removeIconFaint: string
+  addLink: string
+  imgFrame: string
+  imgReplace: string
+  imgRemove: string
+  imgUpload: string
+  err: string
+  optionUnchecked: string
+  dragHandle: string
+  stepNum: string
+  toggleOff: string
+  groupBtn: string
+  groupQuiet: string
+  groupWarn: string
+  ungroup: string
+}
+
+const QE_DARK: QETheme = {
+  panel: 'bg-zinc-800 border border-zinc-700',
+  qNum: 'text-zinc-500',
+  input: 'bg-zinc-900 border border-zinc-700 text-zinc-50 placeholder-zinc-600 focus:outline-none focus:border-emerald-500',
+  inputFixed: 'bg-zinc-900 border border-zinc-700 text-zinc-300',
+  label: 'text-zinc-400',
+  labelFaint: 'text-zinc-600',
+  hint: 'text-zinc-500',
+  hintStrong: 'text-zinc-300',
+  hintFaint: 'text-zinc-600',
+  removeIcon: 'text-zinc-600 hover:text-red-400',
+  removeIconFaint: 'text-zinc-700 hover:text-red-400',
+  addLink: 'text-zinc-500 hover:text-emerald-400',
+  imgFrame: 'border-zinc-700 bg-zinc-900',
+  imgReplace: 'text-zinc-400 hover:text-emerald-400 hover:bg-zinc-700',
+  imgRemove: 'text-red-500 hover:text-red-400',
+  imgUpload: 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300',
+  err: 'text-red-400',
+  optionUnchecked: 'border-zinc-600 hover:border-zinc-400',
+  dragHandle: 'text-zinc-600 hover:text-zinc-300',
+  stepNum: 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25',
+  toggleOff: 'bg-zinc-700',
+  groupBtn: 'bg-violet-500/15 hover:bg-violet-500/25 text-violet-300',
+  groupQuiet: 'text-zinc-500 hover:text-zinc-300',
+  groupWarn: 'text-amber-400',
+  ungroup: 'text-violet-300 hover:text-violet-200',
+}
+
+const QE_LIGHT: QETheme = {
+  panel: 'bg-tan/60 border border-plum/15',
+  qNum: 'text-plum/50',
+  input: 'bg-white border border-plum/20 text-plum placeholder-plum/40 focus:outline-none focus:border-emerald-600',
+  inputFixed: 'bg-white border border-plum/20 text-plum/70',
+  label: 'text-plum/60',
+  labelFaint: 'text-plum/40',
+  hint: 'text-plum/50',
+  hintStrong: 'text-plum/70',
+  hintFaint: 'text-plum/40',
+  removeIcon: 'text-plum/40 hover:text-red-600',
+  removeIconFaint: 'text-plum/30 hover:text-red-600',
+  addLink: 'text-plum/50 hover:text-emerald-700',
+  imgFrame: 'border-plum/20 bg-white',
+  imgReplace: 'text-plum/60 hover:text-emerald-700 hover:bg-plum/10',
+  imgRemove: 'text-red-600 hover:text-red-500',
+  imgUpload: 'border-plum/25 text-plum/50 hover:border-plum/40 hover:text-plum/70',
+  err: 'text-red-600',
+  optionUnchecked: 'border-plum/30 hover:border-plum/50',
+  dragHandle: 'text-plum/40 hover:text-plum/70',
+  stepNum: 'bg-emerald-600/10 text-emerald-700 hover:bg-emerald-600/20',
+  toggleOff: 'bg-plum/20',
+  groupBtn: 'bg-violet-500/10 hover:bg-violet-500/20 text-violet-700',
+  groupQuiet: 'text-plum/50 hover:text-plum/70',
+  groupWarn: 'text-amber-600',
+  ungroup: 'text-violet-700 hover:text-violet-800',
+}
+
 // ── Draft ↔ stored-question conversion ───────────────────────────────────
 
 // Loads a stored JSONB question into an editable draft.
@@ -261,6 +351,7 @@ function SortableStep({
   onToggleSelect,
   onChange,
   onRemove,
+  t,
 }: {
   step: StepDraft
   position: number
@@ -273,6 +364,7 @@ function SortableStep({
   onToggleSelect: () => void
   onChange: (text: string) => void
   onRemove: () => void
+  t: QETheme
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
@@ -303,7 +395,7 @@ function SortableStep({
         type="button"
         {...attributes}
         {...listeners}
-        className="flex-shrink-0 p-2 -ml-1 text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing touch-none"
+        className={`flex-shrink-0 p-2 -ml-1 ${t.dragHandle} cursor-grab active:cursor-grabbing touch-none`}
         title="Drag to reorder"
         aria-label="Drag to reorder step"
       >
@@ -320,7 +412,7 @@ function SortableStep({
         className={`flex-shrink-0 w-6 h-6 rounded-full text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer ${
           selected
             ? 'bg-violet-500 text-white ring-2 ring-violet-400/50'
-            : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+            : t.stepNum
         }`}
       >
         {position + 1}
@@ -330,13 +422,13 @@ function SortableStep({
         value={step.text}
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Step ${position + 1}`}
-        className="flex-1 min-w-0 px-3 py-2 min-h-[44px] rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-50 placeholder-zinc-600 text-sm focus:outline-none focus:border-emerald-500"
+        className={`flex-1 min-w-0 px-3 py-2 min-h-[44px] rounded-lg ${t.input} text-sm`}
       />
       {canRemove && (
         <button
           type="button"
           onClick={onRemove}
-          className="flex-shrink-0 p-2 text-zinc-600 hover:text-red-400 transition-colors cursor-pointer"
+          className={`flex-shrink-0 p-2 ${t.removeIcon} transition-colors cursor-pointer`}
           title="Remove step"
           aria-label="Remove step"
         >
@@ -352,9 +444,11 @@ function SortableStep({
 function SequenceEditor({
   q,
   onChange,
+  t,
 }: {
   q: QuestionDraft
   onChange: (q: QuestionDraft) => void
+  t: QETheme
 }) {
   // Internally, the editor tracks groups by step ID so they survive reorders
   // and re-numbering. The draft on the parent stores index-based groups; we
@@ -476,8 +570,8 @@ function SequenceEditor({
 
   return (
     <div className="space-y-3 pl-6">
-      <p className="text-xs text-zinc-500">
-        List the steps in the <span className="text-zinc-300">correct order</span>. Drag the handle to
+      <p className={`text-xs ${t.hint}`}>
+        List the steps in the <span className={t.hintStrong}>correct order</span>. Drag the handle to
         rearrange. Click a step&apos;s number to select multiple, then group them so any order within the
         group counts as correct.
       </p>
@@ -510,6 +604,7 @@ function SequenceEditor({
                     sync(steps.map((s, idx) => (idx === i ? { ...s, text } : s)), groups)
                   }
                   onRemove={() => handleRemove(i)}
+                  t={t}
                 />
               )
             })}
@@ -520,7 +615,7 @@ function SequenceEditor({
       {/* Grouping toolbar: only shown once at least one step is selected. */}
       {selected.size > 0 && (
         <div className="flex items-center gap-2 flex-wrap text-xs">
-          <span className="text-zinc-500">
+          <span className={t.hint}>
             {selected.size} step{selected.size !== 1 ? 's' : ''} selected
           </span>
           <button
@@ -533,22 +628,22 @@ function SequenceEditor({
               : !selectionContiguous ? 'Selected steps must be next to each other'
               : 'Group these steps'
             }
-            className="px-3 py-1.5 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className={`px-3 py-1.5 rounded-lg ${t.groupBtn} font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer`}
           >
             Group these steps
           </button>
           <button
             type="button"
             onClick={() => setSelected(new Set())}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+            className={`${t.groupQuiet} transition-colors cursor-pointer`}
           >
             Clear selection
           </button>
           {selected.size >= 2 && !selectionContiguous && (
-            <span className="text-amber-400">Selected steps must be next to each other.</span>
+            <span className={t.groupWarn}>Selected steps must be next to each other.</span>
           )}
           {selectionAlreadyGrouped && (
-            <span className="text-amber-400">Ungroup first to re-group.</span>
+            <span className={t.groupWarn}>Ungroup first to re-group.</span>
           )}
         </div>
       )}
@@ -562,7 +657,7 @@ function SequenceEditor({
               .filter((p): p is number => p !== undefined)
               .sort((a, b) => a - b)
             return (
-              <li key={gi} className="flex items-center gap-2 text-xs text-zinc-400">
+              <li key={gi} className={`flex items-center gap-2 text-xs ${t.label}`}>
                 <span className="w-1 h-3 rounded-sm bg-violet-500/70 inline-block" />
                 <span>
                   Steps {positions.map((p) => p + 1).join(', ')} — any order counts as correct
@@ -570,7 +665,7 @@ function SequenceEditor({
                 <button
                   type="button"
                   onClick={() => handleUngroup(gi)}
-                  className="text-violet-300 hover:text-violet-200 transition-colors cursor-pointer"
+                  className={`${t.ungroup} transition-colors cursor-pointer`}
                 >
                   Ungroup
                 </button>
@@ -583,7 +678,7 @@ function SequenceEditor({
       <button
         type="button"
         onClick={() => sync([...steps, { id: newStepId(), text: '' }], groups)}
-        className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer"
+        className={`text-xs ${t.addLink} transition-colors cursor-pointer`}
       >
         + Add step
       </button>
@@ -596,7 +691,7 @@ function SequenceEditor({
           aria-checked={q.partial_credit}
           onClick={() => onChange({ ...q, partial_credit: !q.partial_credit })}
           className={`mt-0.5 relative w-9 h-5 rounded-full flex-shrink-0 transition-colors cursor-pointer ${
-            q.partial_credit ? 'bg-emerald-500' : 'bg-zinc-700'
+            q.partial_credit ? 'bg-emerald-500' : t.toggleOff
           }`}
         >
           <span
@@ -605,8 +700,8 @@ function SequenceEditor({
             }`}
           />
         </button>
-        <span className="text-xs text-zinc-400">
-          <span className="text-zinc-300 font-medium">Partial credit</span> — each correctly placed step
+        <span className={`text-xs ${t.label}`}>
+          <span className={`${t.hintStrong} font-medium`}>Partial credit</span> — each correctly placed step
           counts (e.g. 3 of 4 correct = 75%). Off = all-or-nothing.
         </span>
       </label>
@@ -622,13 +717,18 @@ export function QuestionEditor({
   onChange,
   onRemove,
   canRemove,
+  light = false,
 }: {
   q: QuestionDraft
   index: number
   onChange: (q: QuestionDraft) => void
   onRemove: () => void
   canRemove: boolean
+  // Render on the cert area's light tan/plum palette instead of the default
+  // dark zinc used by the HU quiz builders.
+  light?: boolean
 }) {
+  const t = light ? QE_LIGHT : QE_DARK
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
@@ -696,24 +796,24 @@ export function QuestionEditor({
   const isMultipleSelect = q.type === 'multiple_select'
 
   return (
-    <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4 space-y-3 w-full max-w-full">
+    <div className={`${t.panel} rounded-xl p-4 space-y-3 w-full max-w-full`}>
       {/* Header: type + Q number + remove */}
       <div className="flex items-start gap-3 flex-wrap">
-        <span className="text-zinc-500 text-sm font-medium mt-2.5 flex-shrink-0">Q{index + 1}</span>
+        <span className={`${t.qNum} text-sm font-medium mt-2.5 flex-shrink-0`}>Q{index + 1}</span>
         <select
           value={q.type}
           onChange={(e) => updateType(e.target.value as QuizQuestionType)}
-          className="flex-1 min-w-[160px] px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-50 text-sm focus:outline-none focus:border-emerald-500"
+          className={`flex-1 min-w-[160px] px-3 py-2 rounded-lg ${t.input} text-sm`}
         >
-          {(Object.keys(TYPE_LABEL) as QuizQuestionType[]).map((t) => (
-            <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+          {(Object.keys(TYPE_LABEL) as QuizQuestionType[]).map((qt) => (
+            <option key={qt} value={qt}>{TYPE_LABEL[qt]}</option>
           ))}
         </select>
         {canRemove && (
           <button
             type="button"
             onClick={onRemove}
-            className="mt-1 text-zinc-600 hover:text-red-400 transition-colors flex-shrink-0 cursor-pointer"
+            className={`mt-1 ${t.removeIcon} transition-colors flex-shrink-0 cursor-pointer`}
             title="Remove question"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -729,14 +829,14 @@ export function QuestionEditor({
         onChange={(e) => onChange({ ...q, question_text: e.target.value })}
         placeholder="Enter question…"
         rows={2}
-        className="w-full max-w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-50 placeholder-zinc-600 text-sm focus:outline-none focus:border-emerald-500 resize-none"
+        className={`w-full max-w-full px-3 py-2 rounded-lg ${t.input} text-sm resize-none`}
       />
 
       {/* Image — optional for ANY question type. Shown above the question
           text to employees during the quiz. */}
       <div className="space-y-2">
-        <label className="block text-xs font-medium text-zinc-400">
-          Image <span className="text-zinc-600 font-normal">(optional)</span>
+        <label className={`block text-xs font-medium ${t.label}`}>
+          Image <span className={`${t.labelFaint} font-normal`}>(optional)</span>
         </label>
         {q.image_url ? (
           <div className="flex items-start gap-3">
@@ -744,20 +844,20 @@ export function QuestionEditor({
             <img
               src={q.image_url}
               alt="Question"
-              className="max-h-40 rounded-lg border border-zinc-700 bg-zinc-900"
+              className={`max-h-40 rounded-lg border ${t.imgFrame}`}
             />
             <div className="space-y-1">
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                className="text-xs text-zinc-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-zinc-700 cursor-pointer"
+                className={`text-xs ${t.imgReplace} px-2 py-1 rounded cursor-pointer`}
               >
                 Replace
               </button>
               <button
                 type="button"
                 onClick={() => onChange({ ...q, image_url: null })}
-                className="block text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 cursor-pointer"
+                className={`block text-xs ${t.imgRemove} px-2 py-1 rounded hover:bg-red-500/10 cursor-pointer`}
               >
                 Remove
               </button>
@@ -768,7 +868,7 @@ export function QuestionEditor({
             type="button"
             onClick={() => imageInputRef.current?.click()}
             disabled={imageUploading}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 min-h-[44px] rounded-lg border border-dashed border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300 text-sm disabled:opacity-50 cursor-pointer"
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 min-h-[44px] rounded-lg border border-dashed ${t.imgUpload} text-sm disabled:opacity-50 cursor-pointer`}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
@@ -783,13 +883,13 @@ export function QuestionEditor({
           onChange={handleImageFile}
           className="sr-only"
         />
-        {imageError && <p className="text-xs text-red-400">{imageError}</p>}
+        {imageError && <p className={`text-xs ${t.err}`}>{imageError}</p>}
       </div>
 
       {/* Short-answer: list of accepted answers (any one correct = full credit) */}
       {q.type === 'short_answer' && (
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1.5">Accepted answers</label>
+          <label className={`block text-xs font-medium ${t.label} mb-1.5`}>Accepted answers</label>
           <div className="space-y-2">
             {q.correct_answers.map((ans, ai) => (
               <div key={ai} className="flex items-center gap-2">
@@ -802,7 +902,7 @@ export function QuestionEditor({
                     onChange({ ...q, correct_answers: next })
                   }}
                   placeholder={ai === 0 ? 'e.g. Rhododendron' : 'e.g. Rhody'}
-                  className="flex-1 min-w-0 px-3 py-2 min-h-[44px] rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-50 placeholder-zinc-600 text-sm focus:outline-none focus:border-emerald-500"
+                  className={`flex-1 min-w-0 px-3 py-2 min-h-[44px] rounded-lg ${t.input} text-sm`}
                 />
                 {q.correct_answers.length > 1 && (
                   <button
@@ -813,7 +913,7 @@ export function QuestionEditor({
                         correct_answers: q.correct_answers.filter((_, i) => i !== ai),
                       })
                     }}
-                    className="text-zinc-600 hover:text-red-400 transition-colors flex-shrink-0 p-2 rounded hover:bg-red-500/10 cursor-pointer"
+                    className={`${t.removeIcon} transition-colors flex-shrink-0 p-2 rounded hover:bg-red-500/10 cursor-pointer`}
                     title="Remove this accepted answer"
                     aria-label="Remove accepted answer"
                   >
@@ -828,23 +928,23 @@ export function QuestionEditor({
           <button
             type="button"
             onClick={() => onChange({ ...q, correct_answers: [...q.correct_answers, ''] })}
-            className="mt-2 text-xs text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer"
+            className={`mt-2 text-xs ${t.addLink} transition-colors cursor-pointer`}
           >
             + Add another accepted answer
           </button>
-          <p className="text-xs text-zinc-600 mt-2">
+          <p className={`text-xs ${t.hintFaint} mt-2`}>
             Any of these answers counts as correct. Case-insensitive, extra whitespace ignored.
           </p>
         </div>
       )}
 
       {/* Sequence / order-the-steps editor */}
-      {q.type === 'sequence' && <SequenceEditor q={q} onChange={onChange} />}
+      {q.type === 'sequence' && <SequenceEditor q={q} onChange={onChange} t={t} />}
 
       {/* Options for option-based types */}
       {hasOptions && (
         <div className="space-y-2 pl-6">
-          <p className="text-xs text-zinc-500 mb-1">
+          <p className={`text-xs ${t.hint} mb-1`}>
             Options — {isMultipleSelect ? 'check all correct answers' : 'click circle to mark correct answer'}
           </p>
           {q.options.map((opt, oi) => {
@@ -858,7 +958,7 @@ export function QuestionEditor({
                   className={`w-5 h-5 flex-shrink-0 border-2 flex items-center justify-center transition-colors cursor-pointer ${
                     isMultipleSelect ? 'rounded' : 'rounded-full'
                   } ${
-                    opt.is_correct ? 'border-emerald-500' : 'border-zinc-600 hover:border-zinc-400'
+                    opt.is_correct ? 'border-emerald-500' : t.optionUnchecked
                   }`}
                   title={isMultipleSelect ? 'Toggle correct' : 'Mark as correct'}
                 >
@@ -873,7 +973,7 @@ export function QuestionEditor({
                   )}
                 </button>
                 {isFixedLabel ? (
-                  <span className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300 text-sm">
+                  <span className={`flex-1 px-3 py-2 rounded-lg ${t.inputFixed} text-sm`}>
                     {opt.option_text}
                   </span>
                 ) : (
@@ -882,14 +982,14 @@ export function QuestionEditor({
                     value={opt.option_text}
                     onChange={(e) => setOption(oi, e.target.value)}
                     placeholder={`Option ${oi + 1}`}
-                    className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-50 placeholder-zinc-600 text-sm focus:outline-none focus:border-emerald-500"
+                    className={`flex-1 min-w-0 px-3 py-2 rounded-lg ${t.input} text-sm`}
                   />
                 )}
                 {q.options.length > 2 && q.type !== 'true_false' && (
                   <button
                     type="button"
                     onClick={() => removeOption(oi)}
-                    className="text-zinc-700 hover:text-red-400 transition-colors cursor-pointer"
+                    className={`${t.removeIconFaint} transition-colors cursor-pointer`}
                     title="Remove option"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -904,7 +1004,7 @@ export function QuestionEditor({
             <button
               type="button"
               onClick={addOption}
-              className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors cursor-pointer"
+              className={`text-xs ${t.addLink} transition-colors cursor-pointer`}
             >
               + Add option
             </button>

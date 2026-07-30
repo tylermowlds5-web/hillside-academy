@@ -173,15 +173,15 @@ function GroupCard({
         </div>
       </div>
 
-      {/* Questions — QuestionEditor is the dark HU-shared component,
-          presented in a dark inset panel (same pattern as the employee
-          side's dark quiz card on the tan theme). */}
-      <div className="space-y-4 rounded-xl bg-zinc-950 p-4">
+      {/* Questions — shared QuestionEditor in its light variant so it
+          matches the cert theme (dark stays the default for HU builders). */}
+      <div className="space-y-4">
         {questions.map((q, i) => (
           <QuestionEditor
             key={i}
             q={q}
             index={i}
+            light
             onChange={(next) => {
               setQuestions((prev) => prev.map((x, xi) => (xi === i ? next : x)))
               setSaved(false)
