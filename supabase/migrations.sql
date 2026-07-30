@@ -603,3 +603,46 @@ CREATE POLICY "cert_questions_admin" ON public.cert_questions
 DROP POLICY IF EXISTS "cert_quiz_attempts_admin" ON public.cert_quiz_attempts;
 CREATE POLICY "cert_quiz_attempts_admin" ON public.cert_quiz_attempts
   FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ── Step 5: Text/image lessons + cert enrollment ──────────────────────────
+
+-- A module can now be a TEXT LESSON (title + body + optional image) instead
+-- of pointing at a video/quiz/path. Completed via "Mark as read" (a
+-- cert_lesson_progress row), then its question bank if it has one.
+ALTER TABLE public.cert_requirements
+  ADD COLUMN IF NOT EXISTS lesson_title text,
+  ADD COLUMN IF NOT EXISTS lesson_body text,
+  ADD COLUMN IF NOT EXISTS lesson_image_url text;
+
+-- Widen the one-target rule: exactly ONE of video / standalone quiz / path /
+-- text lesson per requirement.
+ALTER TABLE public.cert_requirements DROP CONSTRAINT IF EXISTS cert_requirements_one_target;
+ALTER TABLE public.cert_requirements ADD CONSTRAINT cert_requirements_one_target CHECK (
+  (video_id IS NOT NULL)::int
+  + (standalone_quiz_id IS NOT NULL)::int
+  + (path_id IS NOT NULL)::int
+  + (lesson_title IS NOT NULL)::int = 1
+);
+
+-- Enrollment: which employees a cert is assigned to. Assignment is
+-- informational (badge/ordering) — active programs remain visible to all.
+CREATE TABLE IF NOT EXISTS public.cert_assignments (
+  id uuid default gen_random_uuid() primary key,
+  program_id uuid not null references public.cert_programs(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  assigned_by uuid references auth.users(id) on delete set null,
+  assigned_at timestamp with time zone default now(),
+  UNIQUE (program_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS cert_assignments_user_idx ON public.cert_assignments (user_id);
+
+ALTER TABLE public.cert_assignments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "cert_assignments_read" ON public.cert_assignments;
+CREATE POLICY "cert_assignments_read" ON public.cert_assignments
+  FOR SELECT TO authenticated USING (auth.uid() = user_id OR public.is_admin());
+
+DROP POLICY IF EXISTS "cert_assignments_admin" ON public.cert_assignments;
+CREATE POLICY "cert_assignments_admin" ON public.cert_assignments
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());

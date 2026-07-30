@@ -8,6 +8,7 @@ import { fmtDate } from '@/lib/format-date'
 function kindLabel(mod: CertModule) {
   if (mod.kind === 'quiz') return 'Certification quiz'
   if (mod.kind === 'path') return 'Learning path'
+  if (mod.kind === 'lesson') return mod.hasQuizBank ? 'Reading + quiz' : 'Reading'
   return mod.hasQuizBank ? 'Video lesson + quiz' : 'Video lesson'
 }
 

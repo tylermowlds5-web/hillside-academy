@@ -43,7 +43,26 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'R2 storage is not fully configured.' }, { status: 500 })
   }
 
-  const key = `thumbnails/${Date.now()}-thumb.jpg`
+  // Optional destination folder. Allowlisted so the endpoint can't be used to
+  // write arbitrary keys; defaults to the original thumbnails behavior.
+  const ALLOWED_PREFIXES = ['thumbnails', 'cert-images'] as const
+  const rawPrefix = formData.get('prefix')
+  const prefix =
+    typeof rawPrefix === 'string' && (ALLOWED_PREFIXES as readonly string[]).includes(rawPrefix)
+      ? rawPrefix
+      : 'thumbnails'
+
+  // Keep the real image type instead of mislabeling everything as JPEG.
+  const EXT_BY_TYPE: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  }
+  const contentType = EXT_BY_TYPE[file.type] ? file.type : 'image/jpeg'
+  const ext = EXT_BY_TYPE[contentType] ?? 'jpg'
+
+  const key = `${prefix}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
   try {
@@ -53,12 +72,12 @@ export async function POST(request: NextRequest) {
         Bucket: process.env.R2_BUCKET_NAME,
         Key: key,
         Body: buffer,
-        ContentType: 'image/jpeg',
+        ContentType: contentType,
       })
     )
   } catch (err) {
-    console.error('R2 thumbnail upload error:', err)
-    return Response.json({ error: 'Thumbnail upload to storage failed.' }, { status: 500 })
+    console.error('R2 image upload error:', err)
+    return Response.json({ error: 'Image upload to storage failed.' }, { status: 500 })
   }
 
   const publicUrl = `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`

@@ -1,0 +1,197 @@
+import Link from 'next/link'
+import { notFound, redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import type { CertProgram, CertRequirement, Profile } from '@/lib/types'
+
+// Per-module results for a cert program: who's attempted, lesson progress,
+// best quiz score, and pass state. Admin RLS grants full reads through the
+// admin's own session.
+
+type LessonRow = { user_id: string; requirement_id: string; percent_watched: number; completed: boolean }
+type AttemptRow = { user_id: string; requirement_id: string; score: number | null; passed: boolean | null; submitted_at: string | null }
+
+export default async function CertResultsPage(props: {
+  params: Promise<{ programId: string }>
+}) {
+  const { programId } = await props.params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single<{ role: string }>()
+  if (profile?.role !== 'admin') redirect('/dashboard')
+
+  const { data: program } = await supabase
+    .from('cert_programs')
+    .select('*')
+    .eq('id', programId)
+    .single<CertProgram>()
+  if (!program) notFound()
+
+  const { data: requirements } = await supabase
+    .from('cert_requirements')
+    .select('*, videos ( title )')
+    .eq('program_id', programId)
+    .order('sort_order')
+    .returns<(CertRequirement & { videos: { title: string } | null })[]>()
+
+  const reqs = requirements ?? []
+  const reqIds = reqs.map((r) => r.id)
+
+  const [{ data: assignments }, lessonsRes, attemptsRes, banksRes] = await Promise.all([
+    supabase
+      .from('cert_assignments')
+      .select('user_id')
+      .eq('program_id', programId)
+      .returns<{ user_id: string }[]>(),
+    reqIds.length
+      ? supabase
+          .from('cert_lesson_progress')
+          .select('user_id, requirement_id, percent_watched, completed')
+          .in('requirement_id', reqIds)
+          .returns<LessonRow[]>()
+      : Promise.resolve({ data: [] as LessonRow[] }),
+    reqIds.length
+      ? supabase
+          .from('cert_quiz_attempts')
+          .select('user_id, requirement_id, score, passed, submitted_at')
+          .in('requirement_id', reqIds)
+          .returns<AttemptRow[]>()
+      : Promise.resolve({ data: [] as AttemptRow[] }),
+    reqIds.length
+      ? supabase
+          .from('cert_question_groups')
+          .select('requirement_id')
+          .in('requirement_id', reqIds)
+          .returns<{ requirement_id: string }[]>()
+      : Promise.resolve({ data: [] as { requirement_id: string }[] }),
+  ])
+
+  const lessons = lessonsRes.data ?? []
+  const attempts = (attemptsRes.data ?? []).filter((a) => a.submitted_at)
+  const bankReqIds = new Set((banksRes.data ?? []).map((b) => b.requirement_id))
+
+  // Roster: everyone assigned plus anyone with activity.
+  const userIds = new Set<string>([
+    ...(assignments ?? []).map((a) => a.user_id),
+    ...lessons.map((l) => l.user_id),
+    ...attempts.map((a) => a.user_id),
+  ])
+
+  const { data: people } = userIds.size
+    ? await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', [...userIds])
+        .order('full_name')
+        .returns<Profile[]>()
+    : { data: [] as Profile[] }
+
+  const lessonBy = new Map<string, LessonRow>()
+  for (const l of lessons) lessonBy.set(`${l.user_id}:${l.requirement_id}`, l)
+  const attemptsBy = new Map<string, AttemptRow[]>()
+  for (const a of attempts) {
+    const k = `${a.user_id}:${a.requirement_id}`
+    const list = attemptsBy.get(k) ?? []
+    list.push(a)
+    attemptsBy.set(k, list)
+  }
+
+  const moduleTitle = (r: CertRequirement & { videos: { title: string } | null }) =>
+    r.lesson_title ?? r.videos?.title ?? (r.standalone_quiz_id ? 'HU quiz' : 'HU path')
+
+  return (
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+      <Link
+        href={`/admin/certs/${programId}`}
+        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-4 transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+        </svg>
+        {program.name}
+      </Link>
+
+      <h1 className="text-xl sm:text-2xl font-bold text-zinc-50 mb-1">Results</h1>
+      <p className="text-sm text-zinc-500 mb-6">
+        Per-module progress for everyone enrolled or active in this certification. Cert
+        progress is separate from everyday HU watch history.
+      </p>
+
+      {(people ?? []).length === 0 ? (
+        <div className="rounded-xl border border-dashed border-zinc-800 px-4 py-10 text-center">
+          <p className="text-sm text-zinc-500">No enrollment or activity yet.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <table className="w-full text-sm min-w-[640px]">
+            <thead>
+              <tr className="bg-zinc-900 text-left">
+                <th className="px-4 py-3 font-semibold text-zinc-300 sticky left-0 bg-zinc-900">Employee</th>
+                {reqs.map((r, i) => (
+                  <th key={r.id} className="px-4 py-3 font-semibold text-zinc-300 whitespace-nowrap">
+                    <span className="text-zinc-600 mr-1">{i + 1}.</span>
+                    {moduleTitle(r)}
+                    {bankReqIds.has(r.id) && (
+                      <span className="ml-1.5 text-[10px] font-bold uppercase text-zinc-500">quiz</span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800">
+              {(people ?? []).map((p) => (
+                <tr key={p.id} className="bg-zinc-950/60">
+                  <td className="px-4 py-3 sticky left-0 bg-zinc-950">
+                    <p className="font-medium text-zinc-100 whitespace-nowrap">{p.full_name ?? p.email}</p>
+                  </td>
+                  {reqs.map((r) => {
+                    const lesson = lessonBy.get(`${p.id}:${r.id}`)
+                    const atts = attemptsBy.get(`${p.id}:${r.id}`) ?? []
+                    const hasBank = bankReqIds.has(r.id)
+                    const passed = atts.some((a) => a.passed)
+                    const best = atts.reduce<number | null>(
+                      (m, a) => (a.score !== null && (m === null || a.score > m) ? a.score : m),
+                      null
+                    )
+                    const moduleDone = Boolean(lesson?.completed && (!hasBank || passed))
+
+                    return (
+                      <td key={r.id} className="px-4 py-3 whitespace-nowrap">
+                        {moduleDone ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            {hasBank && best !== null ? `${best}%` : 'Done'}
+                          </span>
+                        ) : lesson || atts.length > 0 ? (
+                          <span className="text-zinc-400">
+                            {lesson && !lesson.completed && `${lesson.percent_watched}% watched`}
+                            {lesson?.completed && !passed && hasBank && (
+                              <>
+                                {atts.length === 0
+                                  ? 'quiz not taken'
+                                  : `best ${best ?? '—'}% · ${atts.length} attempt${atts.length === 1 ? '' : 's'}`}
+                              </>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-zinc-700">—</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}

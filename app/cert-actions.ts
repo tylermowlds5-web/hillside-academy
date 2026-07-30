@@ -73,6 +73,33 @@ export async function updateCertLessonProgress(
   if (error) console.error('[updateCertLessonProgress] upsert error:', error.message, error.code)
 }
 
+// ── Text/image lessons ────────────────────────────────────────────────────
+// "Mark as read" for a text lesson module. Same gate + same table as video
+// watch completion, so the unlock chain works identically.
+export async function markCertLessonRead(programId: string, requirementId: string) {
+  const { supabase, user } = await getUser()
+  if (!user) return { error: 'Not signed in.' }
+
+  const gate = await requireUnlockedModule(supabase, user.id, programId, requirementId)
+  if (!gate || gate.module.kind !== 'lesson') return { error: 'This module is locked.' }
+
+  const { error } = await supabase.from('cert_lesson_progress').upsert(
+    {
+      user_id: user.id,
+      requirement_id: requirementId,
+      percent_watched: 100,
+      completed: true,
+      last_watched_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,requirement_id' }
+  )
+  if (error) {
+    console.error('[markCertLessonRead] upsert error:', error.message)
+    return { error: 'Could not save. Try again.' }
+  }
+  return {}
+}
+
 // ── Quiz serving ──────────────────────────────────────────────────────────
 
 function shuffle<T>(arr: T[]): T[] {
@@ -118,8 +145,16 @@ export async function startCertQuizAttempt(
   const gate = await requireUnlockedModule(supabase, user.id, programId, requirementId)
   if (!gate) return { error: 'This module is locked.' }
   if (!gate.module.hasQuizBank) return { error: 'This module has no quiz.' }
-  if (gate.module.kind === 'video' && !gate.module.lessonCompleted) {
-    return { error: 'Finish the video before taking the quiz.' }
+  if (
+    (gate.module.kind === 'video' || gate.module.kind === 'lesson') &&
+    !gate.module.lessonCompleted
+  ) {
+    return {
+      error:
+        gate.module.kind === 'video'
+          ? 'Finish the video before taking the quiz.'
+          : 'Mark the lesson as read before taking the quiz.',
+    }
   }
 
   const admin = createAdminClient()

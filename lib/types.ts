@@ -364,19 +364,31 @@ export type CertProgram = {
   updated_at: string
 }
 
-// Exactly one of video_id / standalone_quiz_id / path_id is non-null
-// (DB CHECK constraint cert_requirements_one_target).
+// Exactly one target per row (DB CHECK constraint cert_requirements_one_target):
+// video_id, standalone_quiz_id, path_id, or lesson_title (a text/image lesson).
 export type CertRequirement = {
   id: string
   program_id: string
   video_id: string | null
   standalone_quiz_id: string | null
   path_id: string | null
+  // Text/image lesson fields (lesson_title non-null = this IS a text lesson)
+  lesson_title: string | null
+  lesson_body: string | null
+  lesson_image_url: string | null
   sort_order: number
   created_at: string
   // Module quiz settings (used when the module has a question bank).
   quiz_pass_score: number
   quiz_draw_count: number
+}
+
+export type CertAssignment = {
+  id: string
+  program_id: string
+  user_id: string
+  assigned_by: string | null
+  assigned_at: string
 }
 
 // Cert watch state — deliberately SEPARATE from the everyday `progress`

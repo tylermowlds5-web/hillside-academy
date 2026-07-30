@@ -28,7 +28,7 @@ import type { CertProgram, CertRequirement, CertAward } from '@/lib/types'
 // service-role client, scoped to the userId the caller derived from the
 // session. Catalog-type tables are read with the caller's session client.
 
-export type CertModuleKind = 'video' | 'quiz' | 'path'
+export type CertModuleKind = 'video' | 'quiz' | 'path' | 'lesson'
 
 export type CertModule = {
   requirementId: string
@@ -58,6 +58,9 @@ export type CertModule = {
   pathId?: string
   pathVideoCount?: number
   pathCompletedCount?: number
+  // Text/image lesson content
+  lessonBody?: string | null
+  lessonImageUrl?: string | null
 }
 
 export type CertProgramStatus = 'not_started' | 'in_progress' | 'certified' | 'expired'
@@ -68,6 +71,8 @@ export type CertProgramState = {
   completedCount: number
   status: CertProgramStatus
   award: CertAward | null
+  // Whether an admin has assigned this cert to the user (informational).
+  assigned: boolean
 }
 
 type VideoLite = { id: string; title: string; url: string; duration: number | null; thumbnail_url: string | null }
@@ -91,7 +96,7 @@ export async function loadCertStates(
 ): Promise<CertProgramState[]> {
   const admin = createAdminClient()
 
-  const [{ data: programs }, { data: awards }] = await Promise.all([
+  const [{ data: programs }, { data: awards }, { data: assignments }] = await Promise.all([
     supabase
       .from('cert_programs')
       .select('*')
@@ -99,6 +104,11 @@ export async function loadCertStates(
       .order('created_at', { ascending: true })
       .returns<CertProgram[]>(),
     supabase.from('cert_awards').select('*').eq('user_id', userId).returns<CertAward[]>(),
+    supabase
+      .from('cert_assignments')
+      .select('program_id')
+      .eq('user_id', userId)
+      .returns<{ program_id: string }[]>(),
   ])
 
   if (!programs || programs.length === 0) return []
@@ -199,6 +209,7 @@ export async function loadCertStates(
   const passedQuizIds = new Set((passedAttemptsRes.data ?? []).map((a) => a.quiz_id))
   const lessonByReq = new Map((lessonsRes.data ?? []).map((l) => [l.requirement_id, l]))
   const awardByProgram = new Map((awards ?? []).map((a) => [a.program_id, a]))
+  const assignedPrograms = new Set((assignments ?? []).map((a) => a.program_id))
   const bankReqIds = new Set((bankRes.data ?? []).map((b) => b.requirement_id))
 
   const attemptsByReq = new Map<string, AttemptLite[]>()
@@ -241,7 +252,19 @@ export async function loadCertStates(
       }
 
       let mod: CertModule
-      if (r.video_id) {
+      if (r.lesson_title) {
+        // Text/image lesson — completes like a video module: mark-as-read
+        // (cert_lesson_progress) plus its question bank if it has one.
+        mod = {
+          ...base,
+          kind: 'lesson',
+          title: r.lesson_title,
+          minutes: null,
+          completed: base.lessonCompleted && (!hasQuizBank || quizPassed),
+          lessonBody: r.lesson_body,
+          lessonImageUrl: r.lesson_image_url,
+        }
+      } else if (r.video_id) {
         const video = videoById.get(r.video_id)
         const completed = base.lessonCompleted && (!hasQuizBank || quizPassed)
         mod = {
@@ -296,7 +319,7 @@ export async function loadCertStates(
     else if (completedCount > 0) status = 'in_progress'
     else status = 'not_started'
 
-    return { program, modules, completedCount, status, award }
+    return { program, modules, completedCount, status, award, assigned: assignedPrograms.has(program.id) }
   })
 }
 

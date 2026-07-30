@@ -7,16 +7,18 @@ import { QuestionBlock, isAnswered } from '@/components/quiz/QuestionBlock'
 import { AnswerReview } from '@/components/quiz/AnswerReview'
 import {
   updateCertLessonProgress,
+  markCertLessonRead,
   startCertQuizAttempt,
   submitCertQuizAttempt,
 } from '@/app/cert-actions'
 import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult } from '@/lib/types'
 
-// Client orchestration for a cert VIDEO module: the real VideoPlayer (same
-// anti-skip + 95% completion behavior as everyday HU) persisting to
-// cert_lesson_progress, then the module quiz drawn from the question bank.
-// All lock decisions are re-checked server-side by the actions — this
-// component only decides what to show, never what counts.
+// Client orchestration for a cert VIDEO or TEXT-LESSON module: the real
+// VideoPlayer (same anti-skip + 95% completion behavior as everyday HU) or a
+// mark-as-read lesson, both persisting to cert_lesson_progress, then the
+// module quiz drawn from the question bank. All lock decisions are
+// re-checked server-side by the actions — this component only decides what
+// to show, never what counts.
 
 type QuizMeta = {
   hasBank: boolean
@@ -29,19 +31,27 @@ type QuizMeta = {
 export default function CertModuleContent({
   programId,
   requirementId,
+  kind,
   video,
+  lessonBody,
+  lessonImageUrl,
   initialLesson,
   quiz,
 }: {
   programId: string
   requirementId: string
-  video: Video
+  kind: 'video' | 'lesson'
+  video?: Video | null
+  lessonBody?: string | null
+  lessonImageUrl?: string | null
   initialLesson: { percent_watched: number; actual_seconds_watched: number; completed: boolean }
   quiz: QuizMeta
 }) {
   const router = useRouter()
   const [lessonDone, setLessonDone] = useState(initialLesson.completed)
   const [quizPassed, setQuizPassed] = useState(quiz.passed)
+  const [marking, setMarking] = useState(false)
+  const [markError, setMarkError] = useState<string | null>(null)
 
   const persist = useCallback(
     (percent: number, watchedSeconds: number, duration: number) => {
@@ -56,18 +66,71 @@ export default function CertModuleContent({
     router.refresh()
   }, [router])
 
+  const handleMarkRead = useCallback(async () => {
+    setMarking(true)
+    setMarkError(null)
+    const res = await markCertLessonRead(programId, requirementId)
+    setMarking(false)
+    if (res && 'error' in res && res.error) {
+      setMarkError(res.error)
+      return
+    }
+    setLessonDone(true)
+    router.refresh()
+  }, [programId, requirementId, router])
+
   return (
     <div className="space-y-8">
-      <div className="overflow-hidden rounded-2xl shadow-md">
-        <VideoPlayer
-          video={video}
-          initialProgress={initialLesson}
-          onComplete={handleComplete}
-          persist={persist}
-        />
-      </div>
+      {kind === 'video' && video && (
+        <div className="overflow-hidden rounded-2xl shadow-md">
+          <VideoPlayer
+            video={video}
+            initialProgress={initialLesson}
+            onComplete={handleComplete}
+            persist={persist}
+          />
+        </div>
+      )}
 
-      {!lessonDone && (
+      {kind === 'lesson' && (
+        <div className="rounded-2xl border border-plum/10 bg-white p-6 shadow-sm sm:p-8">
+          {lessonImageUrl && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={lessonImageUrl}
+              alt=""
+              className="mb-6 max-h-96 w-full rounded-xl border border-plum/10 object-cover"
+            />
+          )}
+          {lessonBody ? (
+            <div className="space-y-4 text-sm leading-relaxed text-plum/80 sm:text-base">
+              {lessonBody.split(/\n{2,}/).map((para, i) => (
+                <p key={i} className="whitespace-pre-line">
+                  {para}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-plum/50">This lesson has no content yet.</p>
+          )}
+
+          {!lessonDone && (
+            <div className="mt-8 border-t border-plum/10 pt-6">
+              {markError && <p className="mb-3 text-sm font-medium text-red-500">{markError}</p>}
+              <button
+                type="button"
+                onClick={handleMarkRead}
+                disabled={marking}
+                className="rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {marking ? 'Saving…' : 'Mark as read'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!lessonDone && kind === 'video' && (
         <p className="rounded-xl border border-plum/10 bg-white p-4 text-sm text-plum/60">
           Watch the full video to
           {quiz.hasBank ? ' unlock this module’s quiz.' : ' complete this module.'} Progress
@@ -101,7 +164,9 @@ export default function CertModuleContent({
                 <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
-                <p className="text-sm font-medium">Locked — finish the video first.</p>
+                <p className="text-sm font-medium">
+                  Locked — {kind === 'video' ? 'finish the video' : 'mark the lesson as read'} first.
+                </p>
               </div>
             ) : (
               <CertQuizCard

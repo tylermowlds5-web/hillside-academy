@@ -58,6 +58,11 @@ function ProgramCard({ state }: { state: CertProgramState }) {
     >
       <div className="flex items-start justify-between gap-3">
         <StatusBadge state={state} />
+        {state.assigned && (
+          <span className="inline-flex items-center rounded-full border border-emerald-600/30 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+            Assigned to you
+          </span>
+        )}
       </div>
 
       <h2 className="mt-4 font-serif text-xl font-semibold leading-snug text-plum group-hover:text-plum-dark">

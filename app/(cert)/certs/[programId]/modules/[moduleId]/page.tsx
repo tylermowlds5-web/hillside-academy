@@ -72,30 +72,34 @@ export default async function ModulePage(props: {
           {mod.title}
         </h1>
 
-        {mod.kind === 'video' &&
-          (video ? (
-            <CertModuleContent
-              programId={programId}
-              requirementId={mod.requirementId}
-              video={video}
-              initialLesson={{
-                percent_watched: mod.lessonPercent,
-                actual_seconds_watched: mod.lessonSeconds,
-                completed: mod.lessonCompleted,
-              }}
-              quiz={{
-                hasBank: mod.hasQuizBank,
-                passed: mod.quizPassed,
-                passScore: mod.quizPassScore,
-                attemptCount: mod.quizAttemptCount,
-                bestScore: mod.quizBestScore,
-              }}
-            />
-          ) : (
-            <p className="rounded-xl border border-plum/10 bg-white p-6 text-sm text-plum/60">
-              This module&apos;s video is no longer available. Let an admin know.
-            </p>
-          ))}
+        {mod.kind === 'video' && !video && (
+          <p className="rounded-xl border border-plum/10 bg-white p-6 text-sm text-plum/60">
+            This module&apos;s video is no longer available. Let an admin know.
+          </p>
+        )}
+
+        {((mod.kind === 'video' && video) || mod.kind === 'lesson') && (
+          <CertModuleContent
+            programId={programId}
+            requirementId={mod.requirementId}
+            kind={mod.kind === 'video' ? 'video' : 'lesson'}
+            video={video}
+            lessonBody={mod.lessonBody}
+            lessonImageUrl={mod.lessonImageUrl}
+            initialLesson={{
+              percent_watched: mod.lessonPercent,
+              actual_seconds_watched: mod.lessonSeconds,
+              completed: mod.lessonCompleted,
+            }}
+            quiz={{
+              hasBank: mod.hasQuizBank,
+              passed: mod.quizPassed,
+              passScore: mod.quizPassScore,
+              attemptCount: mod.quizAttemptCount,
+              bestScore: mod.quizBestScore,
+            }}
+          />
+        )}
 
         {mod.kind === 'quiz' && (
           <div className="rounded-2xl border border-plum/10 bg-white p-8 text-center shadow-sm">
