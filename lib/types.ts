@@ -466,6 +466,9 @@ export type CertQuizResult = {
   review: QuizReviewItem[]
   // True when passing this quiz completed the module (video also watched).
   moduleCompleted: boolean
+  // True when completing this module earned the certification (all modules
+  // now complete and a cert_awards row was just recorded).
+  certEarned: boolean
 }
 
 export type CertAward = {

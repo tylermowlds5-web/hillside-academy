@@ -260,6 +260,11 @@ function CertQuizCard({
               ? 'Passed — this module is complete.'
               : 'Not passed yet. Review below, then try again with a fresh set of questions.'}
           </p>
+          {result.certEarned && (
+            <p className="mx-auto mt-3 max-w-md rounded-full border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
+              🎉 Certification earned — your credential has been recorded.
+            </p>
+          )}
         </div>
         <AnswerReview review={result.review} />
         {!result.passed && (

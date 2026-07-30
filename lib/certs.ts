@@ -364,6 +364,56 @@ export async function requireUnlockedModule(
   return { state, module: mod, index }
 }
 
+// Awards the cert when (and only when) every module is genuinely complete.
+// This row is the official pass record (used later for raise eligibility):
+// who passed which cert and when, with expiry derived from validity_months.
+// Idempotent and conservative:
+// - no-ops unless the program has modules and ALL are complete
+// - no-ops if ANY award row already exists (active, expired, or revoked) —
+//   earned_at must never be silently rewritten, and a revoked award must
+//   never quietly resurrect; renewals are a deliberate future flow
+// - unique(program_id, user_id) + ignoreDuplicates makes concurrent
+//   completions (e.g. double submit) safe
+// Writes via the service role: employees can't insert their own awards
+// under RLS, so the server is the only author. Returns true when a new
+// award was recorded.
+export async function maybeAwardCert(
+  supabase: SupabaseClient,
+  userId: string,
+  programId: string,
+  preloadedState?: CertProgramState
+): Promise<boolean> {
+  const state = preloadedState ?? (await loadProgramState(supabase, userId, programId))
+  if (!state || state.modules.length === 0) return false
+  if (state.completedCount < state.modules.length) return false
+  if (state.award) return false
+
+  const earned = new Date()
+  let expires: string | null = null
+  if (state.program.validity_months) {
+    const d = new Date(earned)
+    d.setMonth(d.getMonth() + state.program.validity_months)
+    expires = d.toISOString()
+  }
+
+  const admin = createAdminClient()
+  const { error } = await admin.from('cert_awards').upsert(
+    {
+      program_id: programId,
+      user_id: userId,
+      awarded_by: null, // null = earned automatically by completing the program
+      earned_at: earned.toISOString(),
+      expires_at: expires,
+    },
+    { onConflict: 'program_id,user_id', ignoreDuplicates: true }
+  )
+  if (error) {
+    console.error('[maybeAwardCert] upsert error:', error.message)
+    return false
+  }
+  return true
+}
+
 // Progress shape for the CertTopBar dots.
 export function topBarProgress(state: CertProgramState, currentIndex?: number) {
   const firstIncomplete = state.modules.findIndex((m) => !m.completed)

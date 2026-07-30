@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { CertProgram, CertRequirement, Profile } from '@/lib/types'
+import { fmtDate } from '@/lib/format-date'
 
 // Per-module results for a cert program: who's attempted, lesson progress,
 // best quiz score, and pass state. Admin RLS grants full reads through the
@@ -42,12 +43,17 @@ export default async function CertResultsPage(props: {
   const reqs = requirements ?? []
   const reqIds = reqs.map((r) => r.id)
 
-  const [{ data: assignments }, lessonsRes, attemptsRes, banksRes, standaloneBankRes] = await Promise.all([
+  const [{ data: assignments }, { data: awards }, lessonsRes, attemptsRes, banksRes, standaloneBankRes] = await Promise.all([
     supabase
       .from('cert_assignments')
       .select('user_id')
       .eq('program_id', programId)
       .returns<{ user_id: string }[]>(),
+    supabase
+      .from('cert_awards')
+      .select('user_id, earned_at, expires_at, revoked_at')
+      .eq('program_id', programId)
+      .returns<{ user_id: string; earned_at: string; expires_at: string | null; revoked_at: string | null }[]>(),
     reqIds.length
       ? supabase
           .from('cert_lesson_progress')
@@ -85,11 +91,12 @@ export default async function CertResultsPage(props: {
     ...(standaloneBankRes.data ?? []).map((b) => b.requirement_id),
   ])
 
-  // Roster: everyone assigned plus anyone with activity.
+  // Roster: everyone assigned, anyone with activity, and anyone certified.
   const userIds = new Set<string>([
     ...(assignments ?? []).map((a) => a.user_id),
     ...lessons.map((l) => l.user_id),
     ...attempts.map((a) => a.user_id),
+    ...(awards ?? []).map((a) => a.user_id),
   ])
 
   const { data: people } = userIds.size
@@ -101,6 +108,7 @@ export default async function CertResultsPage(props: {
         .returns<Profile[]>()
     : { data: [] as Profile[] }
 
+  const awardBy = new Map((awards ?? []).map((a) => [a.user_id, a]))
   const lessonBy = new Map<string, LessonRow>()
   for (const l of lessons) lessonBy.set(`${l.user_id}:${l.requirement_id}`, l)
   const attemptsBy = new Map<string, AttemptRow[]>()
@@ -142,6 +150,7 @@ export default async function CertResultsPage(props: {
             <thead>
               <tr className="bg-tan text-left">
                 <th className="px-4 py-3 font-semibold text-plum/70 sticky left-0 bg-tan">Employee</th>
+                <th className="px-4 py-3 font-semibold text-plum/70 whitespace-nowrap">Certified</th>
                 {reqs.map((r, i) => (
                   <th key={r.id} className="px-4 py-3 font-semibold text-plum/70 whitespace-nowrap">
                     <span className="text-plum/40 mr-1">{i + 1}.</span>
@@ -158,6 +167,22 @@ export default async function CertResultsPage(props: {
                 <tr key={p.id} className="bg-white">
                   <td className="px-4 py-3 sticky left-0 bg-white">
                     <p className="font-medium text-plum whitespace-nowrap">{p.full_name ?? p.email}</p>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {(() => {
+                      const award = awardBy.get(p.id)
+                      if (!award) return <span className="text-plum/30">—</span>
+                      if (award.revoked_at)
+                        return <span className="font-medium text-red-600">Revoked {fmtDate(award.revoked_at)}</span>
+                      const expired =
+                        award.expires_at && new Date(award.expires_at).getTime() < Date.now()
+                      return (
+                        <span className={`font-medium ${expired ? 'text-burgundy' : 'text-emerald-700'}`}>
+                          {fmtDate(award.earned_at)}
+                          {expired && ' (expired)'}
+                        </span>
+                      )
+                    })()}
                   </td>
                   {reqs.map((r) => {
                     const lesson = lessonBy.get(`${p.id}:${r.id}`)

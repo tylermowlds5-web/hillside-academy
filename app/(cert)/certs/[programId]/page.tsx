@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import CertTopBar from '../../CertTopBar'
-import { loadProgramState, topBarProgress, type CertModule } from '@/lib/certs'
+import { loadProgramState, maybeAwardCert, topBarProgress, type CertModule } from '@/lib/certs'
 import { fmtDate } from '@/lib/format-date'
 
 function kindLabel(mod: CertModule) {
@@ -108,11 +108,20 @@ export default async function ProgramOverviewPage(props: {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [state, { data: profile }] = await Promise.all([
+  const [initialState, { data: profile }] = await Promise.all([
     loadProgramState(supabase, user.id, programId),
     supabase.from('profiles').select('role').eq('id', user.id).single<{ role: string }>(),
   ])
-  if (!state) notFound()
+  if (!initialState) notFound()
+  let state = initialState
+
+  // Safety net for module kinds completed outside the cert area (HU paths /
+  // standalone quizzes): if everything is complete but no award exists yet,
+  // record it now so the pass record never lags reality.
+  if (state.completedCount === state.modules.length && state.modules.length > 0 && !state.award) {
+    const awarded = await maybeAwardCert(supabase, user.id, programId, state)
+    if (awarded) state = (await loadProgramState(supabase, user.id, programId)) ?? state
+  }
 
   const { program, modules, completedCount, award } = state
   const pct = modules.length ? Math.round((completedCount / modules.length) * 100) : 0

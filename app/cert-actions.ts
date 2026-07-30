@@ -11,7 +11,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireUnlockedModule } from '@/lib/certs'
+import { requireUnlockedModule, maybeAwardCert } from '@/lib/certs'
 import { scoreQuiz, toReview } from '@/lib/quiz-scoring'
 import type {
   QuizQuestion,
@@ -70,7 +70,15 @@ export async function updateCertLessonProgress(
     },
     { onConflict: 'user_id,requirement_id' }
   )
-  if (error) console.error('[updateCertLessonProgress] upsert error:', error.message, error.code)
+  if (error) {
+    console.error('[updateCertLessonProgress] upsert error:', error.message, error.code)
+    return
+  }
+
+  // Finishing a bank-less final video can complete the whole program.
+  if (completed && !wasCompleted) {
+    await maybeAwardCert(supabase, user.id, programId)
+  }
 }
 
 // ── Text/image lessons ────────────────────────────────────────────────────
@@ -97,6 +105,9 @@ export async function markCertLessonRead(programId: string, requirementId: strin
     console.error('[markCertLessonRead] upsert error:', error.message)
     return { error: 'Could not save. Try again.' }
   }
+
+  // Reading a bank-less final lesson can complete the whole program.
+  await maybeAwardCert(supabase, user.id, programId)
   return {}
 }
 
@@ -275,6 +286,13 @@ export async function submitCertQuizAttempt(
     return { error: 'Could not record the attempt. Try again.' }
   }
 
+  // Passing the final module's quiz can complete the whole program — record
+  // the award (the official pass record) the moment it happens.
+  const moduleCompleted = passed && gate.module.lessonCompleted
+  const certEarned = moduleCompleted
+    ? await maybeAwardCert(supabase, user.id, req.program_id)
+    : false
+
   return {
     score,
     passed,
@@ -282,6 +300,7 @@ export async function submitCertQuizAttempt(
     correct,
     total: flat.length,
     review: toReview(storedAnswers),
-    moduleCompleted: passed && gate.module.lessonCompleted,
+    moduleCompleted,
+    certEarned,
   }
 }
