@@ -2,11 +2,17 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { CertAward, CertProgram, Profile } from '@/lib/types'
-import RosterClient, { type RosterRow, type RosterStatus } from './RosterClient'
+import RosterClient, {
+  type RosterEmployee,
+  type RosterCert,
+  type RosterStatus,
+  type RosterProgram,
+} from './RosterClient'
 
-// Certification roster: every award across all programs — who holds what,
-// its status, and its expiration — with inline expiry override. This is the
-// record used for raise/renewal decisions.
+// Certification roster: EVERY active employee with all the certs they hold
+// (including nobody-certified-yet rows), inline expiry override, manual
+// grant, revoke, and delete. This is the record used for raise/renewal
+// decisions.
 
 const EXPIRING_SOON_DAYS = 30
 
@@ -32,41 +38,50 @@ export default async function CertRosterPage() {
     .single<{ role: string }>()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  const [{ data: awards }, { data: programs }] = await Promise.all([
+  const [{ data: awards }, { data: programs }, { data: people }] = await Promise.all([
     supabase.from('cert_awards').select('*').returns<CertAward[]>(),
     supabase.from('cert_programs').select('*').returns<CertProgram[]>(),
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('is_active', true)
+      .order('full_name')
+      .returns<Profile[]>(),
   ])
 
-  const userIds = [...new Set((awards ?? []).map((a) => a.user_id))]
-  const { data: people } = userIds.length
-    ? await supabase.from('profiles').select('*').in('id', userIds).returns<Profile[]>()
-    : { data: [] as Profile[] }
-
   const programById = new Map((programs ?? []).map((p) => [p.id, p]))
-  const personById = new Map((people ?? []).map((p) => [p.id, p]))
 
-  const rows: RosterRow[] = (awards ?? [])
-    .map((a) => {
-      const person = personById.get(a.user_id)
-      const program = programById.get(a.program_id)
-      return {
-        awardId: a.id,
-        employeeName: person?.full_name ?? person?.email ?? 'Unknown employee',
-        employeeEmail: person?.email ?? '',
-        programId: a.program_id,
-        programName: program?.name ?? 'Removed program',
-        earnedAt: a.earned_at,
-        expiresAt: a.expires_at,
-        status: statusOf(a),
-        renewalOpen: Boolean(
-          a.renewal_started_at && Date.parse(a.renewal_started_at) > Date.parse(a.earned_at)
-        ),
-      }
+  const certsByUser = new Map<string, RosterCert[]>()
+  for (const a of awards ?? []) {
+    const program = programById.get(a.program_id)
+    const list = certsByUser.get(a.user_id) ?? []
+    list.push({
+      awardId: a.id,
+      programId: a.program_id,
+      programName: program?.name ?? 'Removed program',
+      earnedAt: a.earned_at,
+      expiresAt: a.expires_at,
+      status: statusOf(a),
+      adminGranted: a.awarded_by !== null,
+      renewalOpen: Boolean(
+        a.renewal_started_at && Date.parse(a.renewal_started_at) > Date.parse(a.earned_at)
+      ),
     })
-    .sort((x, y) => x.employeeName.localeCompare(y.employeeName))
+    certsByUser.set(a.user_id, list)
+  }
 
-  const programOptions = (programs ?? [])
-    .map((p) => ({ id: p.id, name: p.name }))
+  const employees: RosterEmployee[] = (people ?? []).map((p) => ({
+    userId: p.id,
+    name: p.full_name ?? p.email,
+    email: p.email,
+    isAdmin: p.role === 'admin',
+    certs: (certsByUser.get(p.id) ?? []).sort((a, b) =>
+      a.programName.localeCompare(b.programName)
+    ),
+  }))
+
+  const programOptions: RosterProgram[] = (programs ?? [])
+    .map((p) => ({ id: p.id, name: p.name, validityMonths: p.validity_months }))
     .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
@@ -85,12 +100,14 @@ export default async function CertRosterPage() {
         Certification Roster
       </h1>
       <p className="text-sm text-plum/50 mb-6">
-        Every credential held, with status and expiration — the record for raise and renewal
-        decisions. &ldquo;Expiring soon&rdquo; = within {EXPIRING_SOON_DAYS} days. Edit an
-        expiration date inline to extend, shorten, or grandfather (blank = never expires).
+        Every active employee and the credentials they hold — the record for raise and
+        renewal decisions. &ldquo;Expiring soon&rdquo; = within {EXPIRING_SOON_DAYS} days.
+        Grant, revoke, or delete certs, and edit expirations inline (blank = never
+        expires). Manual grants are marked so they stay distinguishable from
+        earned-by-passing.
       </p>
 
-      <RosterClient rows={rows} programs={programOptions} />
+      <RosterClient employees={employees} programs={programOptions} />
     </main>
   )
 }

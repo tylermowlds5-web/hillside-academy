@@ -5,6 +5,7 @@
 // access through their own session client, so no service role is needed.
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { QuizQuestion } from '@/lib/types'
 
 async function requireAdmin() {
@@ -257,6 +258,60 @@ export async function setCertAwardExpiry(awardId: string, expiresAt: string | nu
     .from('cert_awards')
     .update({ expires_at: expiresAt })
     .eq('id', awardId)
+  if (error) throw new Error(error.message)
+}
+
+// Manual grant from the roster. Stamps awarded_by = the granting admin, so
+// admin-granted certs stay distinguishable from earned-by-passing (which
+// always has awarded_by null). Everywhere else it behaves like a real pass.
+export async function grantCertAward(input: {
+  userId: string
+  programId: string
+  earnedAt: string
+  expiresAt: string | null
+}) {
+  const { user } = await requireAdmin()
+
+  if (isNaN(Date.parse(input.earnedAt))) throw new Error('Invalid earned date')
+  if (input.expiresAt !== null && isNaN(Date.parse(input.expiresAt))) {
+    throw new Error('Invalid expiration date')
+  }
+
+  const admin = createAdminClient()
+  const { error } = await admin.from('cert_awards').insert({
+    program_id: input.programId,
+    user_id: input.userId,
+    awarded_by: user.id,
+    earned_at: input.earnedAt,
+    expires_at: input.expiresAt,
+  })
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('This employee already holds that certification.')
+    }
+    throw new Error(error.message)
+  }
+}
+
+// Revoke: keeps the record (stamped with who revoked and when). A revoked
+// cert never resurrects automatically — re-certifying a revoked employee
+// requires deleting the record first.
+export async function revokeCertAward(awardId: string) {
+  const { user } = await requireAdmin()
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('cert_awards')
+    .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
+    .eq('id', awardId)
+  if (error) throw new Error(error.message)
+}
+
+// Delete: removes the award record entirely (mistaken grants). Notification
+// rows cascade; attempt/lesson history is untouched.
+export async function deleteCertAward(awardId: string) {
+  await requireAdmin()
+  const admin = createAdminClient()
+  const { error } = await admin.from('cert_awards').delete().eq('id', awardId)
   if (error) throw new Error(error.message)
 }
 
