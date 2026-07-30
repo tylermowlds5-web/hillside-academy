@@ -293,19 +293,22 @@ function CertQuizCard({
           </p>
         </div>
 
-        {/* One card per plant: photo beside (desktop) / above (mobile) its
-            linked questions, visually a single bordered unit. Presentation
-            only — answers still key by flat question index and each part is
-            scored separately by the shared scorer. */}
+        {/* One card per drawn unit. Photo groups: photo beside (desktop) /
+            above (mobile) the linked questions as one bordered plant card.
+            Standalone questions (no image): a plain question card.
+            Presentation only — answers still key by flat question index and
+            every part is scored separately by the shared scorer. */}
         <div className="space-y-5">
           {served.groups.map((group, gi) => (
             <div key={gi} className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900/60">
-              <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-900 px-4 py-2.5">
-                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  Plant {gi + 1} of {served.groups.length}
-                </p>
-                <p className="text-[11px] text-zinc-500">each part scored separately</p>
-              </div>
+              {group.imageUrl && (
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-900 px-4 py-2.5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                    Plant {gi + 1} of {served.groups.length}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">each part scored separately</p>
+                </div>
+              )}
               <div className="sm:flex sm:items-stretch">
                 {group.imageUrl && (
                   <div className="shrink-0 bg-zinc-950 sm:w-60 md:w-72">

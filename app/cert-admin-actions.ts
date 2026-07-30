@@ -219,6 +219,28 @@ export async function saveCertGroupQuestions(groupId: string, questions: QuizQue
   if (error) throw new Error(error.message)
 }
 
+// Replaces a module's STANDALONE questions (rows attached directly to the
+// requirement, no photo group — each is its own drawable unit). Same
+// wholesale-replace approach as groups; attempt snapshots keep history safe.
+export async function saveCertStandaloneQuestions(
+  requirementId: string,
+  questions: QuizQuestion[]
+) {
+  const { supabase } = await requireAdmin()
+
+  const { error: delError } = await supabase
+    .from('cert_questions')
+    .delete()
+    .eq('requirement_id', requirementId)
+  if (delError) throw new Error(delError.message)
+
+  if (questions.length === 0) return
+
+  const rows = questions.map((q, i) => ({ requirement_id: requirementId, question: q, sort_order: i }))
+  const { error } = await supabase.from('cert_questions').insert(rows)
+  if (error) throw new Error(error.message)
+}
+
 // ── Enrollment ────────────────────────────────────────────────────────────
 
 // Syncs assignments to exactly the given employee set.

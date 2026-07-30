@@ -415,19 +415,24 @@ export type CertQuestionGroup = {
   created_at: string
 }
 
+// A bank question belongs EITHER to a photo group (group_id) OR directly to
+// the module (requirement_id) as a standalone question — exactly one is set
+// (DB CHECK cert_questions_one_parent).
 export type CertQuestionRow = {
   id: string
-  group_id: string
+  group_id: string | null
+  requirement_id: string | null
   question: QuizQuestion
   sort_order: number
   created_at: string
 }
 
-// Snapshot of one served group inside an attempt: the exact questions and
-// shuffled option order the employee saw. Includes the answer key — attempt
-// rows are admin/service-role readable only.
+// Snapshot of one served UNIT inside an attempt: a photo group (all its
+// linked questions) or a standalone question (group_id null, one question).
+// Records the exact questions and shuffled option order the employee saw.
+// Includes the answer key — attempt rows are admin/service-role readable only.
 export type CertServedGroup = {
-  group_id: string
+  group_id: string | null
   image_url: string | null
   questions: QuizQuestion[]
 }

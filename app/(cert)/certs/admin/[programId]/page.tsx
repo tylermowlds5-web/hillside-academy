@@ -35,6 +35,7 @@ export default async function EditCertProgramPage(props: {
     { data: userRoles },
     { data: assignments },
     { data: groups },
+    { data: standaloneQs },
   ] = await Promise.all([
     supabase
       .from('cert_requirements')
@@ -61,6 +62,11 @@ export default async function EditCertProgramPage(props: {
       .from('cert_question_groups')
       .select('id, requirement_id, cert_questions ( id )')
       .returns<{ id: string; requirement_id: string; cert_questions: { id: string }[] }[]>(),
+    supabase
+      .from('cert_questions')
+      .select('requirement_id')
+      .not('requirement_id', 'is', null)
+      .returns<{ requirement_id: string }[]>(),
   ])
 
   const videoById = new Map((allVideos ?? []).map((v) => [v.id, v]))
@@ -70,6 +76,12 @@ export default async function EditCertProgramPage(props: {
     entry.groups++
     entry.questions += g.cert_questions.length
     groupCountByReq.set(g.requirement_id, entry)
+  }
+  // Standalone questions count toward the module's question total too.
+  for (const q of standaloneQs ?? []) {
+    const entry = groupCountByReq.get(q.requirement_id) ?? { groups: 0, questions: 0 }
+    entry.questions++
+    groupCountByReq.set(q.requirement_id, entry)
   }
 
   const modules: EditorModule[] = (requirements ?? []).map((r) => {

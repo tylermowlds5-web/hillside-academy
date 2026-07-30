@@ -646,3 +646,21 @@ CREATE POLICY "cert_assignments_read" ON public.cert_assignments
 DROP POLICY IF EXISTS "cert_assignments_admin" ON public.cert_assignments;
 CREATE POLICY "cert_assignments_admin" ON public.cert_assignments
   FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ── Step 6: Standalone bank questions ─────────────────────────────────────
+-- A cert question now belongs EITHER to a photo group (group_id) OR directly
+-- to the module (requirement_id) as a standalone question of any type. A
+-- drawable unit in startCertQuizAttempt is one group (all its linked
+-- questions) or one standalone question; quiz_draw_count counts units.
+-- RLS is unchanged — the table stays admin-only.
+ALTER TABLE public.cert_questions
+  ADD COLUMN IF NOT EXISTS requirement_id uuid references public.cert_requirements(id) on delete cascade;
+
+ALTER TABLE public.cert_questions ALTER COLUMN group_id DROP NOT NULL;
+
+ALTER TABLE public.cert_questions DROP CONSTRAINT IF EXISTS cert_questions_one_parent;
+ALTER TABLE public.cert_questions ADD CONSTRAINT cert_questions_one_parent CHECK (
+  (group_id IS NOT NULL)::int + (requirement_id IS NOT NULL)::int = 1
+);
+
+CREATE INDEX IF NOT EXISTS cert_questions_req_idx ON public.cert_questions (requirement_id);

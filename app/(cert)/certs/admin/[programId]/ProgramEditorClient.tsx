@@ -183,7 +183,9 @@ function ModuleRow({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-plum/60 mb-1">Groups drawn per attempt</label>
+              <label className="block text-xs font-medium text-plum/60 mb-1">
+                Units drawn per attempt <span className="text-plum/40">(unit = photo group or standalone question)</span>
+              </label>
               <input
                 type="number" min={1} value={drawCount}
                 onChange={(e) => setDrawCount(e.target.value)}

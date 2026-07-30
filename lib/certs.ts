@@ -137,7 +137,7 @@ export async function loadCertStates(
 
   const pathVideoIds = [...new Set((pathItems ?? []).map((i) => i.video_id))]
 
-  const [videosRes, quizzesRes, pathsRes, pathProgressRes, passedAttemptsRes, lessonsRes, certAttemptsRes, bankRes] =
+  const [videosRes, quizzesRes, pathsRes, pathProgressRes, passedAttemptsRes, lessonsRes, certAttemptsRes, bankRes, standaloneBankRes] =
     await Promise.all([
       directVideoIds.length
         ? supabase
@@ -198,6 +198,14 @@ export async function loadCertStates(
             .in('requirement_id', reqIds)
             .returns<{ requirement_id: string }[]>()
         : Promise.resolve({ data: [] as { requirement_id: string }[] }),
+      // Standalone bank questions also make a module "have a quiz".
+      reqIds.length
+        ? admin
+            .from('cert_questions')
+            .select('requirement_id')
+            .in('requirement_id', reqIds)
+            .returns<{ requirement_id: string }[]>()
+        : Promise.resolve({ data: [] as { requirement_id: string }[] }),
     ])
 
   const videoById = new Map((videosRes.data ?? []).map((v) => [v.id, v]))
@@ -210,7 +218,10 @@ export async function loadCertStates(
   const lessonByReq = new Map((lessonsRes.data ?? []).map((l) => [l.requirement_id, l]))
   const awardByProgram = new Map((awards ?? []).map((a) => [a.program_id, a]))
   const assignedPrograms = new Set((assignments ?? []).map((a) => a.program_id))
-  const bankReqIds = new Set((bankRes.data ?? []).map((b) => b.requirement_id))
+  const bankReqIds = new Set([
+    ...(bankRes.data ?? []).map((b) => b.requirement_id),
+    ...(standaloneBankRes.data ?? []).map((b) => b.requirement_id),
+  ])
 
   const attemptsByReq = new Map<string, AttemptLite[]>()
   for (const a of certAttemptsRes.data ?? []) {

@@ -42,7 +42,7 @@ export default async function CertResultsPage(props: {
   const reqs = requirements ?? []
   const reqIds = reqs.map((r) => r.id)
 
-  const [{ data: assignments }, lessonsRes, attemptsRes, banksRes] = await Promise.all([
+  const [{ data: assignments }, lessonsRes, attemptsRes, banksRes, standaloneBankRes] = await Promise.all([
     supabase
       .from('cert_assignments')
       .select('user_id')
@@ -69,11 +69,21 @@ export default async function CertResultsPage(props: {
           .in('requirement_id', reqIds)
           .returns<{ requirement_id: string }[]>()
       : Promise.resolve({ data: [] as { requirement_id: string }[] }),
+    reqIds.length
+      ? supabase
+          .from('cert_questions')
+          .select('requirement_id')
+          .in('requirement_id', reqIds)
+          .returns<{ requirement_id: string }[]>()
+      : Promise.resolve({ data: [] as { requirement_id: string }[] }),
   ])
 
   const lessons = lessonsRes.data ?? []
   const attempts = (attemptsRes.data ?? []).filter((a) => a.submitted_at)
-  const bankReqIds = new Set((banksRes.data ?? []).map((b) => b.requirement_id))
+  const bankReqIds = new Set([
+    ...(banksRes.data ?? []).map((b) => b.requirement_id),
+    ...(standaloneBankRes.data ?? []).map((b) => b.requirement_id),
+  ])
 
   // Roster: everyone assigned plus anyone with activity.
   const userIds = new Set<string>([

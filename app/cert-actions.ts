@@ -157,29 +157,47 @@ export async function startCertQuizAttempt(
     }
   }
 
+  // A drawable UNIT is either a photo group (all its linked questions travel
+  // together) or a single standalone question. quiz_draw_count counts units.
   const admin = createAdminClient()
-  const { data: groups } = await admin
-    .from('cert_question_groups')
-    .select('id, image_url, cert_questions ( id, question, sort_order )')
-    .eq('requirement_id', requirementId)
-    .returns<
-      { id: string; image_url: string | null; cert_questions: { id: string; question: QuizQuestion; sort_order: number }[] }[]
-    >()
+  const [{ data: groups }, { data: standalone }] = await Promise.all([
+    admin
+      .from('cert_question_groups')
+      .select('id, image_url, cert_questions ( id, question, sort_order )')
+      .eq('requirement_id', requirementId)
+      .returns<
+        { id: string; image_url: string | null; cert_questions: { id: string; question: QuizQuestion; sort_order: number }[] }[]
+      >(),
+    admin
+      .from('cert_questions')
+      .select('id, question, sort_order')
+      .eq('requirement_id', requirementId)
+      .returns<{ id: string; question: QuizQuestion; sort_order: number }[]>(),
+  ])
 
-  const usable = (groups ?? []).filter((g) => g.cert_questions.length > 0)
-  if (usable.length === 0) return { error: 'This quiz has no questions yet.' }
+  const units: CertServedGroup[] = [
+    ...(groups ?? [])
+      .filter((g) => g.cert_questions.length > 0)
+      .map((g) => ({
+        group_id: g.id,
+        image_url: g.image_url,
+        questions: g.cert_questions
+          .slice()
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((q) => q.question),
+      })),
+    ...(standalone ?? []).map((q) => ({
+      group_id: null,
+      image_url: null,
+      questions: [q.question],
+    })),
+  ]
+  if (units.length === 0) return { error: 'This quiz has no questions yet.' }
 
-  const drawCount = Math.min(Math.max(1, gate.module.quizDrawCount), usable.length)
-  const drawn = shuffle(usable).slice(0, drawCount)
-
-  const served: CertServedGroup[] = drawn.map((g) => ({
-    group_id: g.id,
-    image_url: g.image_url,
-    questions: g.cert_questions
-      .slice()
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((q) => shuffleQuestionOptions(q.question)),
-  }))
+  const drawCount = Math.min(Math.max(1, gate.module.quizDrawCount), units.length)
+  const served: CertServedGroup[] = shuffle(units)
+    .slice(0, drawCount)
+    .map((u) => ({ ...u, questions: u.questions.map(shuffleQuestionOptions) }))
 
   const { data: attempt, error } = await admin
     .from('cert_quiz_attempts')

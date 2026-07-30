@@ -11,7 +11,12 @@ import {
   validateQuestionDrafts,
   type QuestionDraft,
 } from '@/app/(app)/admin/QuestionEditor'
-import { saveCertGroup, deleteCertGroup, saveCertGroupQuestions } from '@/app/cert-admin-actions'
+import {
+  saveCertGroup,
+  deleteCertGroup,
+  saveCertGroupQuestions,
+  saveCertStandaloneQuestions,
+} from '@/app/cert-admin-actions'
 
 // Question-bank editor: one card per group (photo + label + linked
 // questions). Groups save individually; questions reuse the shared
@@ -217,12 +222,123 @@ function GroupCard({
   )
 }
 
+// ── Standalone questions ──────────────────────────────────────────────────
+// Questions of any type attached directly to the module — each one is its
+// own drawable unit alongside the photo groups.
+
+function StandaloneSection({
+  requirementId,
+  initialQuestions,
+}: {
+  requirementId: string
+  initialQuestions: QuizQuestion[]
+}) {
+  const [questions, setQuestions] = useState<QuestionDraft[]>(() =>
+    initialQuestions.map(questionToDraft)
+  )
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    setError(null)
+    setSaved(false)
+    const validationError = validateQuestionDrafts(questions)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+    setSaving(true)
+    try {
+      await saveCertStandaloneQuestions(requirementId, questions.map(draftToQuestion))
+      setSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
+          Standalone questions
+        </h2>
+        <span className="text-xs text-plum/50">
+          {questions.length} question{questions.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      <p className="mb-4 text-xs text-plum/50">
+        Any question type, no photo group — each standalone question is its own drawable
+        unit in the quiz.
+      </p>
+
+      {error && (
+        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
+      {questions.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-plum/20 px-4 py-6 text-center">
+          <p className="text-sm text-plum/50">No standalone questions yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {questions.map((q, i) => (
+            <QuestionEditor
+              key={i}
+              q={q}
+              index={i}
+              light
+              onChange={(next) => {
+                setQuestions((prev) => prev.map((x, xi) => (xi === i ? next : x)))
+                setSaved(false)
+              }}
+              onRemove={() => {
+                setQuestions((prev) => prev.filter((_, xi) => xi !== i))
+                setSaved(false)
+              }}
+              canRemove
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setQuestions((prev) => [...prev, defaultQuestion('multiple_choice')])
+            setSaved(false)
+          }}
+          className="px-4 py-2 rounded-lg border border-plum/20 hover:border-plum/40 text-plum/80 text-sm font-medium transition-colors"
+        >
+          + Add question
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+        >
+          {saving ? 'Saving…' : 'Save standalone questions'}
+        </button>
+        {saved && <span className="text-sm text-emerald-700">Saved</span>}
+      </div>
+    </section>
+  )
+}
+
 export default function BankEditorClient({
   requirementId,
   initialGroups,
+  initialStandalone,
 }: {
   requirementId: string
   initialGroups: BankGroup[]
+  initialStandalone: QuizQuestion[]
 }) {
   const router = useRouter()
   const [groups, setGroups] = useState(initialGroups)
@@ -249,6 +365,18 @@ export default function BankEditorClient({
           {error}
         </div>
       )}
+
+      <StandaloneSection requirementId={requirementId} initialQuestions={initialStandalone} />
+
+      <div className="pt-2">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
+          Photo groups
+        </h2>
+        <p className="mt-1 text-xs text-plum/50">
+          One shared photo with linked questions beneath it (the Plant ID format). The whole
+          group is one drawable unit; each linked question is still scored separately.
+        </p>
+      </div>
 
       {groups.length === 0 && (
         <div className="rounded-xl border border-dashed border-plum/10 px-4 py-8 text-center">

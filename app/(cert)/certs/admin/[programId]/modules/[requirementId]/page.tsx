@@ -19,7 +19,7 @@ export default async function CertBankEditorPage(props: {
     .single<{ role: string }>()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  const [{ data: program }, { data: requirement }, { data: groups }, { data: videoRow }] =
+  const [{ data: program }, { data: requirement }, { data: groups }, { data: videoRow }, { data: standalone }] =
     await Promise.all([
       supabase.from('cert_programs').select('*').eq('id', programId).single<CertProgram>(),
       supabase
@@ -47,6 +47,12 @@ export default async function CertBankEditorPage(props: {
         .select('video_id, videos ( title )')
         .eq('id', requirementId)
         .maybeSingle<{ video_id: string | null; videos: { title: string } | null }>(),
+      supabase
+        .from('cert_questions')
+        .select('question, sort_order')
+        .eq('requirement_id', requirementId)
+        .order('sort_order')
+        .returns<{ question: QuizQuestion; sort_order: number }[]>(),
     ])
 
   if (!program || !requirement) notFound()
@@ -78,13 +84,17 @@ export default async function CertBankEditorPage(props: {
 
       <h1 className="font-serif text-2xl sm:text-3xl font-semibold text-plum mb-1">Question Bank</h1>
       <p className="text-sm text-plum/50 mb-6">
-        {moduleTitle} — each attempt draws {requirement.quiz_draw_count} random group
-        {requirement.quiz_draw_count === 1 ? '' : 's'}, pass mark {requirement.quiz_pass_score}%.
-        A group is one photo with its linked questions beneath it (e.g. plant name / when we
-        trim / how we trim), each scored separately.
+        {moduleTitle} — each attempt draws {requirement.quiz_draw_count} random unit
+        {requirement.quiz_draw_count === 1 ? '' : 's'} at pass mark {requirement.quiz_pass_score}%.
+        A unit is either a standalone question (any type) or a photo group (one shared photo
+        with linked questions beneath it, each scored separately).
       </p>
 
-      <BankEditorClient requirementId={requirementId} initialGroups={bankGroups} />
+      <BankEditorClient
+        requirementId={requirementId}
+        initialGroups={bankGroups}
+        initialStandalone={(standalone ?? []).map((q) => q.question)}
+      />
     </div>
   )
 }
