@@ -700,3 +700,69 @@ ALTER TABLE public.cert_notifications ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "cert_notifications_admin" ON public.cert_notifications;
 CREATE POLICY "cert_notifications_admin" ON public.cert_notifications
   FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ── Step 9: Multi-page lessons ────────────────────────────────────────────
+-- A LESSON module can now hold ordered pages, each a library video or a
+-- rich-text page (with optional positioned image). A lesson with pages
+-- completes when every page completes (in order, server-enforced); a lesson
+-- with zero pages keeps the legacy single-body mark-as-read behavior.
+
+CREATE TABLE IF NOT EXISTS public.cert_pages (
+  id uuid default gen_random_uuid() primary key,
+  requirement_id uuid not null references public.cert_requirements(id) on delete cascade,
+  kind text not null check (kind in ('video', 'text')),
+  video_id uuid references public.videos(id) on delete cascade,
+  title text,
+  -- Sanitized rich HTML (bold/italic/headings/lists), admin-authored.
+  body text,
+  image_url text,
+  image_position text not null default 'top' check (image_position in ('top', 'bottom', 'left', 'right')),
+  sort_order integer not null default 0,
+  created_at timestamp with time zone default now(),
+  CONSTRAINT cert_pages_video_target CHECK ((kind = 'video') = (video_id IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS cert_pages_req_idx ON public.cert_pages (requirement_id);
+
+-- Per-user page progress. Mirrors cert_lesson_progress; wiped on renewal.
+CREATE TABLE IF NOT EXISTS public.cert_page_progress (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  page_id uuid not null references public.cert_pages(id) on delete cascade,
+  percent_watched integer not null default 0,
+  actual_seconds_watched integer not null default 0,
+  completed boolean not null default false,
+  last_watched_at timestamp with time zone default now(),
+  UNIQUE (user_id, page_id)
+);
+
+CREATE INDEX IF NOT EXISTS cert_page_progress_page_idx ON public.cert_page_progress (page_id);
+
+ALTER TABLE public.cert_pages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cert_page_progress ENABLE ROW LEVEL SECURITY;
+
+-- Pages are course CONTENT (no answer keys) — readable by anyone signed in,
+-- managed by admins.
+DROP POLICY IF EXISTS "cert_pages_read" ON public.cert_pages;
+CREATE POLICY "cert_pages_read" ON public.cert_pages
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "cert_pages_admin" ON public.cert_pages;
+CREATE POLICY "cert_pages_admin" ON public.cert_pages
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "cert_page_progress_read" ON public.cert_page_progress;
+CREATE POLICY "cert_page_progress_read" ON public.cert_page_progress
+  FOR SELECT TO authenticated USING (auth.uid() = user_id OR public.is_admin());
+
+DROP POLICY IF EXISTS "cert_page_progress_insert" ON public.cert_page_progress;
+CREATE POLICY "cert_page_progress_insert" ON public.cert_page_progress
+  FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "cert_page_progress_update" ON public.cert_page_progress;
+CREATE POLICY "cert_page_progress_update" ON public.cert_page_progress
+  FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "cert_page_progress_admin" ON public.cert_page_progress;
+CREATE POLICY "cert_page_progress_admin" ON public.cert_page_progress
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());

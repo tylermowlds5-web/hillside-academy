@@ -81,6 +81,121 @@ export async function updateCertLessonProgress(
   }
 }
 
+// ── Lesson pages ──────────────────────────────────────────────────────────
+// Pages advance IN ORDER within a module: progress on page N is only
+// accepted when pages 1..N-1 are complete, re-derived from the DB on every
+// call — on top of the usual module gate.
+
+async function pageOrderGate(
+  userId: string,
+  requirementId: string,
+  pageId: string
+): Promise<{ ok: boolean; kind: 'video' | 'text' | null }> {
+  const admin = createAdminClient()
+  const [{ data: pages }, { data: progress }] = await Promise.all([
+    admin
+      .from('cert_pages')
+      .select('id, kind')
+      .eq('requirement_id', requirementId)
+      .order('sort_order')
+      .returns<{ id: string; kind: 'video' | 'text' }[]>(),
+    admin
+      .from('cert_page_progress')
+      .select('page_id, completed')
+      .eq('user_id', userId)
+      .returns<{ page_id: string; completed: boolean }[]>(),
+  ])
+  const ordered = pages ?? []
+  const idx = ordered.findIndex((p) => p.id === pageId)
+  if (idx === -1) return { ok: false, kind: null }
+  const done = new Set((progress ?? []).filter((p) => p.completed).map((p) => p.page_id))
+  for (let i = 0; i < idx; i++) {
+    if (!done.has(ordered[i].id)) return { ok: false, kind: ordered[idx].kind }
+  }
+  return { ok: true, kind: ordered[idx].kind }
+}
+
+// Video page watch progress — same 95%/anti-skip mirror as module videos,
+// recorded per page.
+export async function updateCertPageProgress(
+  programId: string,
+  requirementId: string,
+  pageId: string,
+  percentWatched: number,
+  actualSecondsWatched: number,
+  durationSeconds: number
+) {
+  const { supabase, user } = await getUser()
+  if (!user) return
+
+  const gate = await requireUnlockedModule(supabase, user.id, programId, requirementId)
+  if (!gate || gate.module.kind !== 'lesson') return
+  if (!(await pageOrderGate(user.id, requirementId, pageId)).ok) return
+
+  const pct = Math.min(100, Math.max(0, percentWatched))
+  const wasCompleted = gate.module.pages?.find((p) => p.id === pageId)?.completed ?? false
+  const reachedBySeconds =
+    durationSeconds > 0 && actualSecondsWatched >= WATCH_COMPLETION_RATIO * durationSeconds
+  const reachedByPercent = pct >= WATCH_COMPLETION_RATIO * 100
+  const completed = wasCompleted || reachedBySeconds || reachedByPercent
+
+  const { error } = await supabase.from('cert_page_progress').upsert(
+    {
+      user_id: user.id,
+      page_id: pageId,
+      percent_watched: Math.round(pct),
+      actual_seconds_watched: Math.max(0, Math.round(actualSecondsWatched)),
+      completed,
+      last_watched_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,page_id' }
+  )
+  if (error) {
+    console.error('[updateCertPageProgress] upsert error:', error.message)
+    return
+  }
+
+  // Completing the final page of the final module can finish the program.
+  if (completed && !wasCompleted) {
+    await maybeAwardCert(supabase, user.id, programId)
+  }
+}
+
+// Text page completion (reached the bottom / mark as read).
+export async function markCertPageRead(
+  programId: string,
+  requirementId: string,
+  pageId: string
+): Promise<{ error?: string }> {
+  const { supabase, user } = await getUser()
+  if (!user) return { error: 'Not signed in.' }
+
+  const gate = await requireUnlockedModule(supabase, user.id, programId, requirementId)
+  if (!gate || gate.module.kind !== 'lesson') return { error: 'This module is locked.' }
+  const order = await pageOrderGate(user.id, requirementId, pageId)
+  if (!order.ok) return { error: 'Finish the earlier pages first.' }
+  // Mark-as-read is for TEXT pages only — video pages must be watched.
+  if (order.kind !== 'text') return { error: 'This page requires watching the video.' }
+
+  const { error } = await supabase.from('cert_page_progress').upsert(
+    {
+      user_id: user.id,
+      page_id: pageId,
+      percent_watched: 100,
+      completed: true,
+      last_watched_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,page_id' }
+  )
+  if (error) {
+    console.error('[markCertPageRead] upsert error:', error.message)
+    return { error: 'Could not save. Try again.' }
+  }
+
+  await maybeAwardCert(supabase, user.id, programId)
+  return {}
+}
+
 // ── Text/image lessons ────────────────────────────────────────────────────
 // "Mark as read" for a text lesson module. Same gate + same table as video
 // watch completion, so the unlock chain works identically.
@@ -139,6 +254,25 @@ export async function startCertRenewal(programId: string): Promise<{ error?: str
     if (wipeError) {
       console.error('[startCertRenewal] wipe error:', wipeError.message)
       return { error: 'Could not start the renewal. Try again.' }
+    }
+
+    // Page progress resets too — renewal re-takes every page of every module.
+    const { data: pageRows } = await admin
+      .from('cert_pages')
+      .select('id')
+      .in('requirement_id', reqIds)
+      .returns<{ id: string }[]>()
+    const pageIds = (pageRows ?? []).map((p) => p.id)
+    if (pageIds.length > 0) {
+      const { error: pageWipeError } = await admin
+        .from('cert_page_progress')
+        .delete()
+        .eq('user_id', user.id)
+        .in('page_id', pageIds)
+      if (pageWipeError) {
+        console.error('[startCertRenewal] page wipe error:', pageWipeError.message)
+        return { error: 'Could not start the renewal. Try again.' }
+      }
     }
   }
 

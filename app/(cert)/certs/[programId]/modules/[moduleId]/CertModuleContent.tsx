@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import VideoPlayer from '@/app/(app)/watch/[videoId]/VideoPlayer'
 import { QuestionBlock, isAnswered } from '@/components/quiz/QuestionBlock'
@@ -8,10 +8,26 @@ import { AnswerReview } from '@/components/quiz/AnswerReview'
 import {
   updateCertLessonProgress,
   markCertLessonRead,
+  updateCertPageProgress,
+  markCertPageRead,
   startCertQuizAttempt,
   submitCertQuizAttempt,
 } from '@/app/cert-actions'
 import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult } from '@/lib/types'
+
+// One page of a paged lesson module, with this user's progress.
+export type LearnerPage = {
+  id: string
+  kind: 'video' | 'text'
+  title: string | null
+  body: string | null
+  imageUrl: string | null
+  imagePosition: 'top' | 'bottom' | 'left' | 'right'
+  video: Video | null
+  completed: boolean
+  percent_watched: number
+  actual_seconds_watched: number
+}
 
 // Client orchestration for a cert VIDEO or TEXT-LESSON module: the real
 // VideoPlayer (same anti-skip + 95% completion behavior as everyday HU) or a
@@ -35,6 +51,7 @@ export default function CertModuleContent({
   video,
   lessonBody,
   lessonImageUrl,
+  pages,
   initialLesson,
   quiz,
 }: {
@@ -44,6 +61,8 @@ export default function CertModuleContent({
   video?: Video | null
   lessonBody?: string | null
   lessonImageUrl?: string | null
+  // Non-empty = paged lesson: pages replace the single-body lesson view.
+  pages?: LearnerPage[] | null
   initialLesson: { percent_watched: number; actual_seconds_watched: number; completed: boolean }
   quiz: QuizMeta
 }) {
@@ -92,7 +111,19 @@ export default function CertModuleContent({
         </div>
       )}
 
-      {kind === 'lesson' && (
+      {kind === 'lesson' && pages && pages.length > 0 && (
+        <PagedLesson
+          programId={programId}
+          requirementId={requirementId}
+          pages={pages}
+          onAllComplete={() => {
+            setLessonDone(true)
+            router.refresh()
+          }}
+        />
+      )}
+
+      {kind === 'lesson' && (!pages || pages.length === 0) && (
         <div className="rounded-2xl border border-plum/10 bg-white p-6 shadow-sm sm:p-8">
           {lessonImageUrl && (
             /* eslint-disable-next-line @next/next/no-img-element */
@@ -378,6 +409,261 @@ function CertQuizCard({
       >
         {busy ? 'Preparing…' : attemptCount > 0 ? 'Retake quiz' : 'Start quiz'}
       </button>
+    </div>
+  )
+}
+
+// ── Paged lesson flow ─────────────────────────────────────────────────────
+// Stepper over the module's pages: completed pages are revisitable, forward
+// navigation stops at the first incomplete page. Video pages use the real
+// VideoPlayer (95% rule); text pages complete on reaching the bottom
+// (IntersectionObserver) with a Mark-as-read fallback button. All of it is
+// re-verified server-side by the page actions.
+
+const RICH_TEXT_CLASSES =
+  'text-sm leading-relaxed text-plum/80 sm:text-base [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-plum [&_h3]:mb-1.5 [&_h3]:mt-4 [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-plum [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6'
+
+function TextPageView({
+  page,
+  completed,
+  onRead,
+}: {
+  page: LearnerPage
+  completed: boolean
+  onRead: () => Promise<void>
+}) {
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const firedRef = useRef(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const trigger = useCallback(async () => {
+    if (firedRef.current || completed) return
+    firedRef.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      await onRead()
+    } catch (err) {
+      firedRef.current = false
+      setError(err instanceof Error ? err.message : 'Could not save — use the button below.')
+    } finally {
+      setBusy(false)
+    }
+  }, [completed, onRead])
+
+  // Auto-complete when the reader reaches the bottom of the page.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || completed) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) trigger()
+      },
+      { threshold: 0.9 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [completed, trigger])
+
+  const img = page.imageUrl && (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={page.imageUrl}
+      alt=""
+      className={
+        page.imagePosition === 'left'
+          ? 'float-left mr-4 mb-2 w-1/2 max-w-xs rounded-xl border border-plum/10'
+          : page.imagePosition === 'right'
+            ? 'float-right ml-4 mb-2 w-1/2 max-w-xs rounded-xl border border-plum/10'
+            : 'mb-4 mt-1 max-h-96 w-full rounded-xl border border-plum/10 object-cover'
+      }
+    />
+  )
+
+  return (
+    <div className="rounded-2xl border border-plum/10 bg-white p-6 shadow-sm sm:p-8">
+      {page.title && (
+        <h2 className="mb-4 font-serif text-xl font-semibold text-plum">{page.title}</h2>
+      )}
+      <div className="flow-root">
+        {page.imagePosition !== 'bottom' && img}
+        {page.body ? (
+          <div className={RICH_TEXT_CLASSES} dangerouslySetInnerHTML={{ __html: page.body }} />
+        ) : (
+          <p className="text-sm text-plum/50">This page has no content yet.</p>
+        )}
+        {page.imagePosition === 'bottom' && img}
+      </div>
+
+      <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+
+      <div className="mt-6 border-t border-plum/10 pt-5">
+        {completed ? (
+          <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Page complete
+          </p>
+        ) : (
+          <>
+            {error && <p className="mb-2 text-sm font-medium text-red-600">{error}</p>}
+            <button
+              type="button"
+              onClick={() => { firedRef.current = false; trigger() }}
+              disabled={busy}
+              className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {busy ? 'Saving…' : 'Mark as read'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PagedLesson({
+  programId,
+  requirementId,
+  pages,
+  onAllComplete,
+}: {
+  programId: string
+  requirementId: string
+  pages: LearnerPage[]
+  onAllComplete: () => void
+}) {
+  const [done, setDone] = useState<Set<string>>(
+    () => new Set(pages.filter((p) => p.completed).map((p) => p.id))
+  )
+  const firstIncomplete = pages.findIndex((p) => !done.has(p.id))
+  const [current, setCurrent] = useState(() =>
+    firstIncomplete === -1 ? Math.max(0, pages.length - 1) : firstIncomplete
+  )
+
+  const markDone = useCallback(
+    (pageId: string) => {
+      setDone((prev) => {
+        const next = new Set(prev)
+        next.add(pageId)
+        if (next.size === pages.length) onAllComplete()
+        return next
+      })
+    },
+    [pages.length, onAllComplete]
+  )
+
+  const page = pages[current]
+  const maxReachable = firstIncomplete === -1 ? pages.length - 1 : firstIncomplete
+
+  return (
+    <div className="space-y-4">
+      {/* Page stepper */}
+      <div className="flex flex-wrap items-center gap-2">
+        {pages.map((p, i) => {
+          const isDone = done.has(p.id)
+          const reachable = i <= maxReachable
+          return (
+            <button
+              key={p.id}
+              type="button"
+              disabled={!reachable}
+              onClick={() => reachable && setCurrent(i)}
+              title={p.kind === 'video' ? (p.video?.title ?? 'Video') : (p.title ?? 'Page')}
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                i === current
+                  ? 'bg-emerald-600 text-white'
+                  : isDone
+                    ? 'bg-emerald-600/15 text-emerald-700 hover:bg-emerald-600/25'
+                    : reachable
+                      ? 'border-2 border-emerald-600 bg-white text-emerald-700'
+                      : 'bg-plum/10 text-plum/40'
+              }`}
+            >
+              {isDone && i !== current ? '✓' : i + 1}
+            </button>
+          )
+        })}
+        <span className="ml-1 text-xs font-medium text-plum/50">
+          Page {current + 1} of {pages.length}
+          {page.kind === 'video' ? ' · video' : ' · reading'}
+        </span>
+      </div>
+
+      {/* Current page */}
+      {page.kind === 'video' ? (
+        page.video ? (
+          <div key={page.id} className="overflow-hidden rounded-2xl shadow-md">
+            <VideoPlayer
+              video={page.video}
+              initialProgress={{
+                percent_watched: page.percent_watched,
+                actual_seconds_watched: page.actual_seconds_watched,
+                completed: done.has(page.id),
+              }}
+              persist={(percent, seconds, duration) =>
+                updateCertPageProgress(programId, requirementId, page.id, percent, seconds, duration)
+              }
+              onComplete={() => {
+                // Record completion server-side immediately (100% by percent)
+                // so the next page's order gate sees it without waiting for
+                // the debounced persist tick.
+                updateCertPageProgress(programId, requirementId, page.id, 100, page.actual_seconds_watched, 0)
+                markDone(page.id)
+              }}
+            />
+          </div>
+        ) : (
+          <p className="rounded-xl border border-plum/10 bg-white p-6 text-sm text-plum/60">
+            This page&apos;s video is no longer available. Let an admin know.
+          </p>
+        )
+      ) : (
+        <TextPageView
+          key={page.id}
+          page={page}
+          completed={done.has(page.id)}
+          onRead={async () => {
+            const res = await markCertPageRead(programId, requirementId, page.id)
+            if (res.error) throw new Error(res.error)
+            markDone(page.id)
+          }}
+        />
+      )}
+
+      {/* Prev / next within the module */}
+      <div className="flex items-center justify-between">
+        {current > 0 ? (
+          <button
+            type="button"
+            onClick={() => setCurrent(current - 1)}
+            className="inline-flex items-center gap-2 rounded-full border border-plum/15 px-4 py-2 text-sm font-semibold text-plum/70 transition-colors hover:border-plum/30 hover:text-plum"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Previous page
+          </button>
+        ) : (
+          <span />
+        )}
+        {current < pages.length - 1 && (
+          <button
+            type="button"
+            disabled={!done.has(page.id)}
+            onClick={() => setCurrent(current + 1)}
+            title={done.has(page.id) ? undefined : 'Finish this page first'}
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next page
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
     </div>
   )
 }

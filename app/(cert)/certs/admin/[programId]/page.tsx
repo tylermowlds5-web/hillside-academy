@@ -36,6 +36,7 @@ export default async function EditCertProgramPage(props: {
     { data: assignments },
     { data: groups },
     { data: standaloneQs },
+    { data: pageRows },
   ] = await Promise.all([
     supabase
       .from('cert_requirements')
@@ -67,6 +68,10 @@ export default async function EditCertProgramPage(props: {
       .select('requirement_id')
       .not('requirement_id', 'is', null)
       .returns<{ requirement_id: string }[]>(),
+    supabase
+      .from('cert_pages')
+      .select('requirement_id')
+      .returns<{ requirement_id: string }[]>(),
   ])
 
   const videoById = new Map((allVideos ?? []).map((v) => [v.id, v]))
@@ -83,6 +88,10 @@ export default async function EditCertProgramPage(props: {
     entry.questions++
     groupCountByReq.set(q.requirement_id, entry)
   }
+  const pageCountByReq = new Map<string, number>()
+  for (const p of pageRows ?? []) {
+    pageCountByReq.set(p.requirement_id, (pageCountByReq.get(p.requirement_id) ?? 0) + 1)
+  }
 
   const modules: EditorModule[] = (requirements ?? []).map((r) => {
     const counts = groupCountByReq.get(r.id) ?? { groups: 0, questions: 0 }
@@ -92,6 +101,7 @@ export default async function EditCertProgramPage(props: {
       drawCount: r.quiz_draw_count,
       groupCount: counts.groups,
       questionCount: counts.questions,
+      pageCount: pageCountByReq.get(r.id) ?? 0,
     }
     if (r.lesson_title) {
       return {

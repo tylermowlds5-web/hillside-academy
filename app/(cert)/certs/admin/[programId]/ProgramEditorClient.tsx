@@ -35,6 +35,7 @@ export type EditorModule = {
   drawCount: number
   groupCount: number
   questionCount: number
+  pageCount: number
   videoId?: string
   lessonBody?: string
   lessonImageUrl?: string | null
@@ -147,6 +148,14 @@ function ModuleRow({
         </span>
         <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">{mod.title}</p>
 
+        {mod.kind === 'lesson' && (
+          <Link
+            href={`/certs/admin/${programId}/modules/${mod.id}/pages`}
+            className="flex-shrink-0 text-xs text-plum/70 hover:text-plum px-2.5 py-1.5 rounded bg-plum/10 hover:bg-plum/15"
+          >
+            Pages ({mod.pageCount})
+          </Link>
+        )}
         <Link
           href={`/certs/admin/${programId}/modules/${mod.id}`}
           className="flex-shrink-0 text-xs text-emerald-700 hover:text-emerald-800 px-2.5 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15"
@@ -303,7 +312,7 @@ export default function ProgramEditorClient({
       const { id } = await addCertModule(programId, { kind: 'video', videoId: video.id })
       setModules((prev) => [
         ...prev,
-        { id, kind: 'video', title: video.title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, videoId: video.id },
+        { id, kind: 'video', title: video.title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, videoId: video.id },
       ])
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : 'Add failed')
@@ -321,7 +330,7 @@ export default function ProgramEditorClient({
       const { id } = await addCertModule(programId, { kind: 'lesson', title })
       setModules((prev) => [
         ...prev,
-        { id, kind: 'lesson', title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, lessonBody: '', lessonImageUrl: null },
+        { id, kind: 'lesson', title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, lessonBody: '', lessonImageUrl: null },
       ])
       setLessonTitle('')
     } catch (err) {

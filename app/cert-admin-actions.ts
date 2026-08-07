@@ -152,6 +152,90 @@ export async function updateCertModule(
   if (error) throw new Error(error.message)
 }
 
+// ── Lesson pages ──────────────────────────────────────────────────────────
+
+// Conservative server-side scrub of admin-authored rich HTML before storage:
+// strips script/style/iframe-type blocks, inline event handlers, and
+// javascript: URLs. Authors are admins (RLS), so this is defense in depth,
+// not a hostile-input boundary.
+function sanitizeRichText(html: string): string {
+  return html
+    .replace(/<(script|style|iframe|object|embed|form)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|form)[^>]*\/?>/gi, '')
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src)\s*=\s*(["']?)\s*javascript:[^"'>\s]*\2/gi, '')
+}
+
+export async function addCertPage(
+  requirementId: string,
+  target: { kind: 'video'; videoId: string } | { kind: 'text'; title: string }
+): Promise<{ id: string }> {
+  const { supabase } = await requireAdmin()
+
+  const { data: maxRow } = await supabase
+    .from('cert_pages')
+    .select('sort_order')
+    .eq('requirement_id', requirementId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ sort_order: number }>()
+  const nextOrder = (maxRow?.sort_order ?? -1) + 1
+
+  const row =
+    target.kind === 'video'
+      ? { requirement_id: requirementId, kind: 'video', video_id: target.videoId, sort_order: nextOrder }
+      : { requirement_id: requirementId, kind: 'text', title: target.title.trim() || 'New page', sort_order: nextOrder }
+
+  const { data, error } = await supabase
+    .from('cert_pages')
+    .insert(row)
+    .select('id')
+    .single<{ id: string }>()
+  if (error || !data) throw new Error(error?.message ?? 'Add page failed')
+  return { id: data.id }
+}
+
+export async function updateCertTextPage(
+  pageId: string,
+  input: {
+    title: string
+    body: string
+    imageUrl: string | null
+    imagePosition: 'top' | 'bottom' | 'left' | 'right'
+  }
+) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase
+    .from('cert_pages')
+    .update({
+      title: input.title.trim() || null,
+      body: sanitizeRichText(input.body),
+      image_url: input.imageUrl,
+      image_position: input.imagePosition,
+    })
+    .eq('id', pageId)
+    .eq('kind', 'text')
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteCertPage(pageId: string) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase.from('cert_pages').delete().eq('id', pageId)
+  if (error) throw new Error(error.message)
+}
+
+export async function reorderCertPages(requirementId: string, orderedIds: string[]) {
+  const { supabase } = await requireAdmin()
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await supabase
+      .from('cert_pages')
+      .update({ sort_order: i })
+      .eq('id', orderedIds[i])
+      .eq('requirement_id', requirementId)
+    if (error) throw new Error(error.message)
+  }
+}
+
 // ── Question bank ─────────────────────────────────────────────────────────
 
 export async function saveCertGroup(input: {

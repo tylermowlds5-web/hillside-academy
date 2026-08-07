@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import CertTopBar from '../../../../CertTopBar'
 import CertModuleContent from './CertModuleContent'
 import { loadProgramState, requireUnlockedModule, topBarProgress } from '@/lib/certs'
-import type { Video } from '@/lib/types'
+import type { CertPage, Video } from '@/lib/types'
+import type { LearnerPage } from './CertModuleContent'
 
 // Module page. The gate lives in requireUnlockedModule (lib/certs.ts):
 // a module renders ONLY if every prior requirement is genuinely complete for
@@ -43,6 +44,52 @@ export default async function ModulePage(props: {
       .eq('id', mod.videoId)
       .single<Video>()
     video = data
+  }
+
+  // Paged lesson modules need the full page content + this user's page
+  // progress (per-page state; completion itself is server-derived in the
+  // loader and re-checked by the page actions).
+  let learnerPages: LearnerPage[] | null = null
+  if (mod.kind === 'lesson' && (mod.pages?.length ?? 0) > 0) {
+    const { data: pageRows } = await supabase
+      .from('cert_pages')
+      .select('*')
+      .eq('requirement_id', mod.requirementId)
+      .order('sort_order')
+      .returns<CertPage[]>()
+
+    const videoIds = (pageRows ?? []).map((p) => p.video_id).filter(Boolean) as string[]
+    const [videosRes, progressRes] = await Promise.all([
+      videoIds.length
+        ? supabase.from('videos').select('*').in('id', videoIds).returns<Video[]>()
+        : Promise.resolve({ data: [] as Video[] }),
+      (pageRows ?? []).length
+        ? supabase
+            .from('cert_page_progress')
+            .select('page_id, percent_watched, actual_seconds_watched, completed')
+            .eq('user_id', user.id)
+            .in('page_id', (pageRows ?? []).map((p) => p.id))
+            .returns<{ page_id: string; percent_watched: number; actual_seconds_watched: number; completed: boolean }[]>()
+        : Promise.resolve({ data: [] as { page_id: string; percent_watched: number; actual_seconds_watched: number; completed: boolean }[] }),
+    ])
+    const videoById = new Map((videosRes.data ?? []).map((v) => [v.id, v]))
+    const progressByPage = new Map((progressRes.data ?? []).map((p) => [p.page_id, p]))
+
+    learnerPages = (pageRows ?? []).map((p) => {
+      const prog = progressByPage.get(p.id)
+      return {
+        id: p.id,
+        kind: p.kind,
+        title: p.title,
+        body: p.body,
+        imageUrl: p.image_url,
+        imagePosition: p.image_position,
+        video: p.video_id ? (videoById.get(p.video_id) ?? null) : null,
+        completed: prog?.completed ?? false,
+        percent_watched: prog?.percent_watched ?? 0,
+        actual_seconds_watched: prog?.actual_seconds_watched ?? 0,
+      }
+    })
   }
 
   return (
@@ -86,6 +133,7 @@ export default async function ModulePage(props: {
             video={video}
             lessonBody={mod.lessonBody}
             lessonImageUrl={mod.lessonImageUrl}
+            pages={learnerPages}
             initialLesson={{
               percent_watched: mod.lessonPercent,
               actual_seconds_watched: mod.lessonSeconds,

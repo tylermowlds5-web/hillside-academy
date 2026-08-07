@@ -61,6 +61,9 @@ export type CertModule = {
   // Text/image lesson content
   lessonBody?: string | null
   lessonImageUrl?: string | null
+  // Ordered pages (lesson modules). Present and non-empty = paged lesson:
+  // the module's content completes when every page completes, in order.
+  pages?: { id: string; kind: 'video' | 'text'; title: string | null; videoId: string | null; completed: boolean }[]
 }
 
 export type CertProgramStatus = 'not_started' | 'in_progress' | 'certified' | 'expired'
@@ -139,7 +142,7 @@ export async function loadCertStates(
 
   const pathVideoIds = [...new Set((pathItems ?? []).map((i) => i.video_id))]
 
-  const [videosRes, quizzesRes, pathsRes, pathProgressRes, passedAttemptsRes, lessonsRes, certAttemptsRes, bankRes, standaloneBankRes] =
+  const [videosRes, quizzesRes, pathsRes, pathProgressRes, passedAttemptsRes, lessonsRes, certAttemptsRes, bankRes, standaloneBankRes, pagesRes, pageProgressRes] =
     await Promise.all([
       directVideoIds.length
         ? supabase
@@ -208,6 +211,22 @@ export async function loadCertStates(
             .in('requirement_id', reqIds)
             .returns<{ requirement_id: string }[]>()
         : Promise.resolve({ data: [] as { requirement_id: string }[] }),
+      // Lesson pages (metadata only — full content is fetched by the module page).
+      reqIds.length
+        ? supabase
+            .from('cert_pages')
+            .select('id, requirement_id, kind, video_id, title, sort_order')
+            .in('requirement_id', reqIds)
+            .order('sort_order')
+            .returns<{ id: string; requirement_id: string; kind: 'video' | 'text'; video_id: string | null; title: string | null; sort_order: number }[]>()
+        : Promise.resolve({ data: [] as { id: string; requirement_id: string; kind: 'video' | 'text'; video_id: string | null; title: string | null; sort_order: number }[] }),
+      reqIds.length
+        ? admin
+            .from('cert_page_progress')
+            .select('page_id, completed')
+            .eq('user_id', userId)
+            .returns<{ page_id: string; completed: boolean }[]>()
+        : Promise.resolve({ data: [] as { page_id: string; completed: boolean }[] }),
     ])
 
   const videoById = new Map((videosRes.data ?? []).map((v) => [v.id, v]))
@@ -224,6 +243,15 @@ export async function loadCertStates(
     ...(bankRes.data ?? []).map((b) => b.requirement_id),
     ...(standaloneBankRes.data ?? []).map((b) => b.requirement_id),
   ])
+  const donePageIds = new Set(
+    (pageProgressRes.data ?? []).filter((p) => p.completed).map((p) => p.page_id)
+  )
+  const pagesByReq = new Map<string, { id: string; kind: 'video' | 'text'; video_id: string | null; title: string | null }[]>()
+  for (const pg of pagesRes.data ?? []) {
+    const list = pagesByReq.get(pg.requirement_id) ?? []
+    list.push(pg)
+    pagesByReq.set(pg.requirement_id, list)
+  }
 
   const attemptsByReq = new Map<string, AttemptLite[]>()
   for (const a of certAttemptsRes.data ?? []) {
@@ -274,16 +302,28 @@ export async function loadCertStates(
 
       let mod: CertModule
       if (r.lesson_title) {
-        // Text/image lesson — completes like a video module: mark-as-read
-        // (cert_lesson_progress) plus its question bank if it has one.
+        // Lesson module. With pages, the content completes when EVERY page
+        // completes (page progress is wiped on renewal like lesson
+        // progress); without pages, legacy single-body mark-as-read.
+        const modPages = (pagesByReq.get(r.id) ?? []).map((pg) => ({
+          id: pg.id,
+          kind: pg.kind,
+          title: pg.title,
+          videoId: pg.video_id,
+          completed: donePageIds.has(pg.id),
+        }))
+        const contentDone =
+          modPages.length > 0 ? modPages.every((pg) => pg.completed) : base.lessonCompleted
         mod = {
           ...base,
+          lessonCompleted: contentDone,
           kind: 'lesson',
           title: r.lesson_title,
           minutes: null,
-          completed: base.lessonCompleted && (!hasQuizBank || quizPassed),
+          completed: contentDone && (!hasQuizBank || quizPassed),
           lessonBody: r.lesson_body,
           lessonImageUrl: r.lesson_image_url,
+          pages: modPages,
         }
       } else if (r.video_id) {
         const video = videoById.get(r.video_id)

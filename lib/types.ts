@@ -391,6 +391,31 @@ export type CertAssignment = {
   assigned_at: string
 }
 
+// One page inside a lesson module: a library video or a rich-text page with
+// an optional positioned image. kind='video' iff video_id set (DB CHECK).
+export type CertPage = {
+  id: string
+  requirement_id: string
+  kind: 'video' | 'text'
+  video_id: string | null
+  title: string | null
+  body: string | null           // sanitized rich HTML
+  image_url: string | null
+  image_position: 'top' | 'bottom' | 'left' | 'right'
+  sort_order: number
+  created_at: string
+}
+
+export type CertPageProgress = {
+  id: string
+  user_id: string
+  page_id: string
+  percent_watched: number
+  actual_seconds_watched: number
+  completed: boolean
+  last_watched_at: string
+}
+
 // Cert watch state — deliberately SEPARATE from the everyday `progress`
 // table. Watching a video in regular HU never counts toward a cert.
 export type CertLessonProgress = {
