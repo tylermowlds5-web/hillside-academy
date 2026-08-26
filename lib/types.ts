@@ -443,6 +443,20 @@ export type PlantData = {
   mistakes?: string[]
 }
 
+// ── Block-based text pages ────────────────────────────────────────────────
+// A text page's content as an ordered list of typed blocks, rendered by
+// components/cert/PageBlocks in the plant-page visual style. `html` blocks
+// carry sanitized rich HTML (same scrub as the legacy body); every other
+// body string is plain text where only **bold** is honored.
+
+export type PageBlock =
+  | { type: 'heading'; text: string; sub?: string }
+  | { type: 'richtext'; html: string }
+  | { type: 'card'; title?: string; body: string }
+  | { type: 'callout'; label?: string; body: string }
+  | { type: 'bullets'; items: string[] }
+  | { type: 'photos'; photos: PlantPhoto[] }
+
 export type CertPageKind = 'video' | 'text' | 'plant'
 
 // One page inside a lesson module: a library video, a rich-text page with
@@ -461,6 +475,8 @@ export type CertPage = {
   created_at: string
   category_id: string | null
   plant_data: PlantData | null
+  // Block content for text pages; null/empty = legacy body/image rendering.
+  blocks: PageBlock[] | null
 }
 
 // Admin-defined sub-category within a module, used purely to organize pages

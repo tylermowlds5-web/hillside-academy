@@ -4,15 +4,14 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   addCertPage,
-  updateCertTextPage,
   deleteCertPage,
   reorderCertPages,
   setCertPageCategory,
 } from '@/app/cert-admin-actions'
-import RichTextEditor from '../../../../RichTextEditor'
 import CategoryManagerClient, { type EditorCategory } from '../CategoryManagerClient'
 import PlantPageForm from './PlantPageForm'
-import type { PlantData } from '@/lib/types'
+import PageBlocksEditor from './PageBlocksEditor'
+import type { PageBlock, PlantData } from '@/lib/types'
 import {
   DndContext,
   PointerSensor,
@@ -43,6 +42,7 @@ export type AdminPage = {
   imagePosition: 'top' | 'bottom' | 'left' | 'right'
   categoryId: string | null
   plantData: PlantData | null
+  blocks: PageBlock[] | null
 }
 
 // Stable re-sort into canonical flat order; a page whose category no longer
@@ -61,30 +61,13 @@ function flattenPages(pages: AdminPage[], categories: EditorCategory[]): AdminPa
 
 export type PickerVideo = { id: string; title: string; thumbnail_url: string | null }
 
-async function uploadCertImage(file: File): Promise<string> {
-  const fd = new FormData()
-  fd.set('file', file)
-  fd.set('prefix', 'cert-images')
-  const res = await fetch('/api/upload-thumbnail', { method: 'POST', body: fd })
-  const json = await res.json()
-  if (!res.ok || !json.url) throw new Error(json.error ?? 'Upload failed')
-  return json.url
-}
-
-const POSITION_LABEL: Record<AdminPage['imagePosition'], string> = {
-  top: 'Above the text',
-  bottom: 'Below the text',
-  left: 'Left of the text',
-  right: 'Right of the text',
-}
-
 function PageRow({
   page,
   position,
   categories,
   onSetCategory,
   onRemove,
-  onSaved,
+  onTextSaved,
   onPlantSaved,
 }: {
   page: AdminPage
@@ -92,50 +75,15 @@ function PageRow({
   categories: EditorCategory[]
   onSetCategory: (categoryId: string | null) => void
   onRemove: () => void
-  onSaved: () => void
-  // Plant saves must patch the parent's pages state (not just refresh):
-  // the plant form remounts from that state on reopen.
+  // Saves must patch the parent's pages state (not just refresh): the
+  // editors remount from that state on reopen.
+  onTextSaved: (title: string, blocks: PageBlock[]) => void
   onPlantSaved: (commonName: string, data: PlantData) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
 
   const [expanded, setExpanded] = useState(false)
   const [title, setTitle] = useState(page.title)
-  const [body, setBody] = useState(page.body)
-  const [imageUrl, setImageUrl] = useState(page.imageUrl)
-  const [imagePosition, setImagePosition] = useState(page.imagePosition)
-  const [uploading, setUploading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    setError(null)
-    try {
-      setImageUrl(await uploadCertImage(file))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
-    } finally {
-      setUploading(false)
-      e.target.value = ''
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    setError(null)
-    try {
-      await updateCertTextPage(page.id, { title, body, imageUrl, imagePosition })
-      setExpanded(false)
-      onSaved()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   return (
     <div
@@ -194,74 +142,19 @@ function PageRow({
       </div>
 
       {expanded && page.kind === 'text' && (
-        <div className="border-t border-plum/10 p-4 space-y-4">
-          {error && <p className="text-sm text-red-600">{error}</p>}
-
-          <div>
-            <label className="block text-xs font-medium text-plum/60 mb-1">Page title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. How we prune hydrangeas"
-              className="w-full px-3 py-2 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-plum/60 mb-1">Page content</label>
-            <RichTextEditor initialHtml={body} onChange={setBody} />
-          </div>
-
-          <div className="flex flex-wrap items-end gap-4">
-            <div>
-              <label className="block text-xs font-medium text-plum/60 mb-1">Photo (optional)</label>
-              <div className="flex items-center gap-3">
-                {imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={imageUrl} alt="" className="h-16 w-24 object-cover rounded-lg border border-plum/20" />
-                ) : (
-                  <div className="h-16 w-24 rounded-lg border border-dashed border-plum/25 flex items-center justify-center text-[11px] text-plum/40">
-                    No photo
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <label className="block text-xs text-emerald-700 hover:text-emerald-800 px-3 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15 cursor-pointer text-center">
-                    {uploading ? 'Uploading…' : imageUrl ? 'Replace' : 'Upload'}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleImage} disabled={uploading} />
-                  </label>
-                  {imageUrl && (
-                    <button type="button" onClick={() => setImageUrl(null)} className="block w-full text-xs text-plum/50 hover:text-plum/70">
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-            {imageUrl && (
-              <div>
-                <label className="block text-xs font-medium text-plum/60 mb-1">Photo position</label>
-                <select
-                  value={imagePosition}
-                  onChange={(e) => setImagePosition(e.target.value as AdminPage['imagePosition'])}
-                  className="rounded-lg border border-plum/20 bg-white px-3 py-2 text-sm text-plum focus:outline-none focus:border-emerald-600"
-                >
-                  {(Object.keys(POSITION_LABEL) as AdminPage['imagePosition'][]).map((p) => (
-                    <option key={p} value={p}>{POSITION_LABEL[p]}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || uploading}
-            className="px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-          >
-            {saving ? 'Saving…' : 'Save page'}
-          </button>
+        <div className="border-t border-plum/10 p-4">
+          <PageBlocksEditor
+            pageId={page.id}
+            initialTitle={title}
+            legacyBody={page.body}
+            legacyImageUrl={page.imageUrl}
+            initialBlocks={page.blocks}
+            onSaved={(newTitle, blocks) => {
+              setTitle(newTitle)
+              onTextSaved(newTitle, blocks)
+            }}
+            onClose={() => setExpanded(false)}
+          />
         </div>
       )}
 
@@ -324,7 +217,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'video', videoId: video.id })
-      await appendPage({ id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null })
+      await appendPage({ id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null, blocks: null })
       setVideoSearch('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -340,7 +233,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'text', title })
-      await appendPage({ id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null })
+      await appendPage({ id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null, blocks: null })
       setTextTitle('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -356,7 +249,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'plant', commonName: name })
-      await appendPage({ id, kind: 'plant', videoId: null, videoTitle: null, title: name, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: { common_name: name } })
+      await appendPage({ id, kind: 'plant', videoId: null, videoTitle: null, title: name, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: { common_name: name }, blocks: null })
       setPlantName('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -365,10 +258,15 @@ export default function PagesEditorClient({
     }
   }
 
-  // Patch local pages state with a saved plant payload — the plant form
-  // remounts from this state on reopen, so a refresh alone leaves it stale.
+  // Patch local pages state with saved payloads — the editors remount from
+  // this state on reopen, so a refresh alone leaves them stale.
   function handlePlantSaved(pageId: string, name: string, data: PlantData) {
     setPages((prev) => prev.map((x) => (x.id === pageId ? { ...x, title: name, plantData: data } : x)))
+    router.refresh()
+  }
+
+  function handleTextSaved(pageId: string, title: string, blocks: PageBlock[]) {
+    setPages((prev) => prev.map((x) => (x.id === pageId ? { ...x, title, blocks } : x)))
     router.refresh()
   }
 
@@ -493,7 +391,7 @@ export default function PagesEditorClient({
                   categories={categories}
                   onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
                   onRemove={() => handleRemove(p.id)}
-                  onSaved={() => router.refresh()}
+                  onTextSaved={(title, blocks) => handleTextSaved(p.id, title, blocks)}
                   onPlantSaved={(name, data) => handlePlantSaved(p.id, name, data)}
                 />
               ))}
@@ -520,7 +418,7 @@ export default function PagesEditorClient({
                         categories={categories}
                         onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
                         onRemove={() => handleRemove(p.id)}
-                        onSaved={() => router.refresh()}
+                        onTextSaved={(title, blocks) => handleTextSaved(p.id, title, blocks)}
                         onPlantSaved={(name, data) => handlePlantSaved(p.id, name, data)}
                       />
                     ))}

@@ -13,8 +13,9 @@ import {
   startCertQuizAttempt,
   submitCertQuizAttempt,
 } from '@/app/cert-actions'
-import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult, PlantData } from '@/lib/types'
+import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult, PageBlock, PlantData } from '@/lib/types'
 import PlantPage from '@/components/cert/PlantPage'
+import PageBlocks from '@/components/cert/PageBlocks'
 
 // One page of a paged lesson module, with this user's progress.
 export type LearnerPage = {
@@ -30,6 +31,9 @@ export type LearnerPage = {
   // Structured plant reference (kind='plant'); completes on mark-as-read
   // like a text page, never the video watch rule.
   plantData: PlantData | null
+  // Block content (text pages); non-empty = block rendering, else legacy
+  // body/image. Completion unchanged either way.
+  blocks: PageBlock[] | null
   video: Video | null
   completed: boolean
   percent_watched: number
@@ -569,6 +573,40 @@ function TextPageView({
   )
 }
 
+// Block-based text page: like the plant view, blocks render their own
+// cards on the tan background (no white wrapper), followed by the same
+// read-to-complete footer.
+function BlocksPageView({
+  page,
+  completed,
+  onRead,
+}: {
+  page: LearnerPage
+  completed: boolean
+  onRead: () => Promise<void>
+}) {
+  const { sentinelRef, busy, error, retry } = useReadCompletion(completed, onRead)
+
+  return (
+    <div>
+      {page.title && (
+        <h2 className="mb-4 font-serif text-xl font-semibold text-plum sm:text-2xl">{page.title}</h2>
+      )}
+      <PageBlocks blocks={page.blocks ?? []} alt={page.title ?? 'Page'} />
+
+      <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+
+      <ReadFooter
+        completed={completed}
+        busy={busy}
+        error={error}
+        onMark={retry}
+        className="mt-6 border-t border-plum/10 pt-5"
+      />
+    </div>
+  )
+}
+
 // Plant reference page: the PlantPage component renders its own card stack
 // on the tan background (no white wrapper card), followed by the same
 // read-to-complete footer as text pages.
@@ -719,6 +757,17 @@ function PagedLesson({
         )
       ) : page.kind === 'plant' ? (
         <PlantPageView
+          key={page.id}
+          page={page}
+          completed={done.has(page.id)}
+          onRead={async () => {
+            const res = await markCertPageRead(programId, requirementId, page.id)
+            if (res.error) throw new Error(res.error)
+            markDone(page.id)
+          }}
+        />
+      ) : (page.blocks?.length ?? 0) > 0 ? (
+        <BlocksPageView
           key={page.id}
           page={page}
           completed={done.has(page.id)}

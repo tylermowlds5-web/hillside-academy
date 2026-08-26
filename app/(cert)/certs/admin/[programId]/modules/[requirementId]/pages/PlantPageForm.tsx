@@ -1,19 +1,10 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import type { PlantData, PlantFactField } from '@/lib/types'
 import PlantPage from '@/components/cert/PlantPage'
 import { updateCertPlantPage } from '@/app/cert-admin-actions'
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { newKey, SortableList, SortableRow } from './sortable'
 
 // ── Plant page form ───────────────────────────────────────────────────────
 // Structured editor for a kind='plant' cert page, saved wholesale to
@@ -26,9 +17,6 @@ import { CSS } from '@dnd-kit/utilities'
 // that failed instead of silently dropping it. "Export JSON" copies the
 // current form as that same shape. The live preview renders the real
 // PlantPage component on a tan swatch.
-
-let keySeq = 0
-const newKey = () => `row-${Date.now()}-${keySeq++}`
 
 type FactDraft = { value: string; note: string }
 type LineDraft = { key: string; text: string }
@@ -301,75 +289,6 @@ const LBL = 'block text-xs font-medium text-plum/60 mb-1'
 const SECTION_LBL = 'text-xs font-semibold uppercase tracking-[0.25em] text-plum/50'
 const ADD_LINK = 'text-xs text-plum/50 hover:text-emerald-700 transition-colors'
 const REMOVE_BTN = 'flex-shrink-0 text-xs text-red-600 hover:text-red-500 px-2 py-1 rounded hover:bg-red-500/10'
-
-// ── Drag-and-drop plumbing (same pattern as the pages editor) ─────────────
-
-function SortableRow({
-  id,
-  className,
-  children,
-}: {
-  id: string
-  className: string
-  // Render prop: receives the drag handle so each row places it in its own
-  // layout (inline for line rows, in the header strip for cards).
-  children: (handle: ReactNode) => ReactNode
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
-  const handle = (
-    <div
-      {...attributes}
-      {...listeners}
-      className="cursor-grab active:cursor-grabbing text-plum/40 hover:text-plum/60 px-1 touch-none select-none flex-shrink-0"
-    >
-      <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">
-        <circle cx="3" cy="3" r="1.5" /><circle cx="9" cy="3" r="1.5" />
-        <circle cx="3" cy="8" r="1.5" /><circle cx="9" cy="8" r="1.5" />
-        <circle cx="3" cy="13" r="1.5" /><circle cx="9" cy="13" r="1.5" />
-      </svg>
-    </div>
-  )
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className={className}
-    >
-      {children(handle)}
-    </div>
-  )
-}
-
-function SortableList<T extends { key: string }>({
-  items,
-  onReorder,
-  className,
-  children,
-}: {
-  items: T[]
-  onReorder: (next: T[]) => void
-  className: string
-  children: ReactNode
-}) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = items.findIndex((x) => x.key === active.id)
-    const newIndex = items.findIndex((x) => x.key === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    onReorder(arrayMove(items, oldIndex, newIndex))
-  }
-
-  return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={items.map((x) => x.key)} strategy={verticalListSortingStrategy}>
-        <div className={className}>{children}</div>
-      </SortableContext>
-    </DndContext>
-  )
-}
 
 function StringListEditor({
   label,

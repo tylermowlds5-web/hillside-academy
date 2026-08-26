@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
 import type { PlantData } from '@/lib/types'
 import PhotoLightbox from './PhotoLightbox'
+import { has, renderBold } from './renderBold'
 
 export type { PlantData, PlantStep, PlantTipSection } from '@/lib/types'
 
@@ -17,22 +18,6 @@ export type { PlantData, PlantStep, PlantTipSection } from '@/lib/types'
 // entirely — no empty boxes or orphan headings. The only markup honored in
 // body strings is **bold** (rendered as <strong>); everything else is
 // plain text.
-
-const has = (s: string | undefined | null): s is string => !!s && s.trim() !== ''
-
-// **bold** → <strong>; no other markup. React escapes everything else, so
-// stray HTML in the data renders as literal text.
-function renderBold(text: string, strongClass = 'font-semibold text-plum'): ReactNode[] {
-  return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
-    i % 2 === 1 ? (
-      <strong key={i} className={strongClass}>
-        {part}
-      </strong>
-    ) : (
-      part
-    )
-  )
-}
 
 const LABEL = 'font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-plum/50'
 

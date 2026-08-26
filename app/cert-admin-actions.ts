@@ -6,7 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { PlantData, QuizQuestion } from '@/lib/types'
+import type { PageBlock, PlantData, QuizQuestion } from '@/lib/types'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -207,23 +207,25 @@ export async function addCertPage(
   return { id: data.id }
 }
 
-export async function updateCertTextPage(
+// Saves a text page's block content (Step 12). Rich-HTML blocks get the
+// same server-side scrub as the legacy body; all other block strings render
+// as plain text (only **bold** honored), so they need no scrub. The legacy
+// body/image columns are left untouched — a page with blocks ignores them.
+export async function saveCertTextPage(
   pageId: string,
-  input: {
-    title: string
-    body: string
-    imageUrl: string | null
-    imagePosition: 'top' | 'bottom' | 'left' | 'right'
-  }
+  input: { title: string; blocks: PageBlock[] }
 ) {
   const { supabase } = await requireAdmin()
+
+  const blocks: PageBlock[] = input.blocks.map((b) =>
+    b.type === 'richtext' ? { ...b, html: sanitizeRichText(b.html) } : b
+  )
+
   const { error } = await supabase
     .from('cert_pages')
     .update({
       title: input.title.trim() || null,
-      body: sanitizeRichText(input.body),
-      image_url: input.imageUrl,
-      image_position: input.imagePosition,
+      blocks,
     })
     .eq('id', pageId)
     .eq('kind', 'text')

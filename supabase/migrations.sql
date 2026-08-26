@@ -829,3 +829,13 @@ ALTER TABLE public.cert_pages ADD COLUMN IF NOT EXISTS plant_data jsonb;
 ALTER TABLE public.cert_pages DROP CONSTRAINT IF EXISTS cert_pages_kind_check;
 ALTER TABLE public.cert_pages ADD CONSTRAINT cert_pages_kind_check
   CHECK (kind in ('video', 'text', 'plant'));
+
+-- ── Step 12: Block-based text pages ───────────────────────────────────────
+-- Text pages upgrade from a single rich-text body to an ordered list of
+-- content BLOCKS (serif section headings, rich text, cards, callouts,
+-- bullet lists, photo groups) rendered in the plant-page visual style.
+-- blocks is an array of typed block objects (see PageBlock in lib/types).
+-- Backward compat: a text page with NULL/empty blocks renders its legacy
+-- body/image exactly as before. Completion (mark-as-read) is unchanged.
+
+ALTER TABLE public.cert_pages ADD COLUMN IF NOT EXISTS blocks jsonb;

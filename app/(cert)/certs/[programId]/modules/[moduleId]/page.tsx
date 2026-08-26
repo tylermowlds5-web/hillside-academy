@@ -94,6 +94,7 @@ export default async function ModulePage(props: {
         imagePosition: p.image_position,
         categoryLabel: p.category_id ? (categoryName.get(p.category_id) ?? null) : null,
         plantData: p.plant_data,
+        blocks: p.blocks,
         video: p.video_id ? (videoById.get(p.video_id) ?? null) : null,
         completed: prog?.completed ?? false,
         percent_watched: prog?.percent_watched ?? 0,

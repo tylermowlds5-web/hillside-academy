@@ -59,6 +59,7 @@ export default async function CertPagesEditorPage(props: {
     imagePosition: p.image_position,
     categoryId: p.category_id,
     plantData: p.plant_data,
+    blocks: p.blocks,
   }))
 
   return (
