@@ -402,6 +402,11 @@ export type PlantFactField = {
   note?: string
 }
 
+export type PlantPhoto = {
+  url: string
+  caption?: string
+}
+
 export type PlantStep = {
   title: string
   body: string
@@ -420,6 +425,11 @@ export type PlantData = {
   pronunciation?: string
   botanical_name?: string
   plant_type?: string
+  // First photo is the primary in the top card; the rest render as a
+  // captioned gallery strip below it.
+  photos?: PlantPhoto[]
+  // Legacy single photo — read fallback when photos is empty. New saves
+  // write photos only.
   photo_url?: string
   spot_it?: string[]
   also_called?: PlantFactField

@@ -33,6 +33,15 @@ function renderBold(text: string, strongClass = 'font-semibold text-plum'): Reac
 const LABEL = 'font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-plum/50'
 
 export default function PlantPage({ plant }: { plant: PlantData }) {
+  // Backward compat: legacy single photo_url counts as the one primary
+  // photo when the photos array is empty.
+  const photos = (plant.photos ?? []).filter((p) => has(p.url))
+  if (photos.length === 0 && has(plant.photo_url)) {
+    photos.push({ url: plant.photo_url })
+  }
+  const primary = photos[0] ?? null
+  const gallery = photos.slice(1)
+
   const spotIt = (plant.spot_it ?? []).filter(has)
   const facts = [
     { label: 'Also called', field: plant.also_called, full: false },
@@ -44,12 +53,13 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
   const tipSections = (plant.tip_sections ?? []).filter((s) => s.cards.length > 0)
   const mistakes = (plant.mistakes ?? []).filter(has)
 
-  const hasMedia = has(plant.photo_url) || spotIt.length > 0
+  const hasMedia = primary !== null || spotIt.length > 0
   const hasTrimSection = has(plant.trim_summary) || has(plant.know_this_first) || steps.length > 0
 
   return (
     <div className="space-y-10">
-      {/* ── Top card: name, ID marks, quick facts ── */}
+      {/* ── Top card: name, ID marks, quick facts (+ gallery strip) ── */}
+      <div className="space-y-3">
       <div className="overflow-hidden rounded-2xl border border-plum/10 bg-white shadow-sm">
         <div className="border-b border-plum/5 px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
           <h1 className="font-serif text-3xl font-semibold text-plum sm:text-4xl">
@@ -72,16 +82,16 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
           <div className={`grid ${hasMedia ? 'sm:grid-cols-[260px_1fr]' : ''}`}>
             {hasMedia && (
               <div className="px-5 pt-5 sm:pb-5 sm:pl-6 sm:pr-0">
-                {has(plant.photo_url) && (
+                {primary && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={plant.photo_url}
-                    alt={plant.common_name}
+                    src={primary.url}
+                    alt={has(primary.caption) ? primary.caption : plant.common_name}
                     className="aspect-[4/3] w-full rounded-lg border border-plum/10 object-cover"
                   />
                 )}
                 {spotIt.length > 0 && (
-                  <div className={has(plant.photo_url) ? 'mt-3.5' : ''}>
+                  <div className={primary ? 'mt-3.5' : ''}>
                     <p className={`${LABEL} mb-2`}>How to spot it</p>
                     <ul className="space-y-1.5">
                       {spotIt.map((line, i) => (
@@ -120,6 +130,29 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
             )}
           </div>
         )}
+      </div>
+
+      {/* Additional photos: captioned gallery strip, hidden with 0–1 photos */}
+      {gallery.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {gallery.map((photo, i) => (
+            <figure
+              key={i}
+              className="overflow-hidden rounded-xl border border-plum/10 bg-white shadow-sm"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.url}
+                alt={has(photo.caption) ? photo.caption : plant.common_name}
+                className="aspect-[4/3] w-full object-cover"
+              />
+              {has(photo.caption) && (
+                <figcaption className="px-3 py-2 text-xs text-plum/60">{photo.caption}</figcaption>
+              )}
+            </figure>
+          ))}
+        </div>
+      )}
       </div>
 
       {/* ── How we trim it ── */}

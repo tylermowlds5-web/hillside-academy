@@ -18,6 +18,7 @@ import { updateCertPlantPage } from '@/app/cert-admin-actions'
 // Draft mirrors PlantData with every field present (empty-string defaults)
 // so inputs are always controlled.
 type FactDraft = { value: string; note: string }
+type PhotoDraft = { url: string; caption: string }
 type StepDraft = { title: string; body: string; why_label: string; why: string }
 type CardDraft = { title: string; body: string }
 type TipSectionDraft = { heading: string; sub: string; cards: CardDraft[] }
@@ -27,7 +28,7 @@ type Draft = {
   pronunciation: string
   botanical_name: string
   plant_type: string
-  photo_url: string
+  photos: PhotoDraft[]
   spot_it: string[]
   also_called: FactDraft
   mature_size: FactDraft
@@ -55,12 +56,20 @@ function normalizeFact(f: PlantFactField | undefined): FactDraft {
 }
 
 function normalize(data: PlantData | null): Draft {
+  // Backward compat: a legacy photo_url becomes the single primary photo
+  // when the photos array is empty. Saving/exporting writes photos only.
+  const photos: PhotoDraft[] = (data?.photos ?? [])
+    .filter((p) => !!p.url)
+    .map((p) => ({ url: p.url, caption: p.caption ?? '' }))
+  if (photos.length === 0 && data?.photo_url) {
+    photos.push({ url: data.photo_url, caption: '' })
+  }
   return {
     common_name: data?.common_name ?? '',
     pronunciation: data?.pronunciation ?? '',
     botanical_name: data?.botanical_name ?? '',
     plant_type: data?.plant_type ?? '',
-    photo_url: data?.photo_url ?? '',
+    photos,
     spot_it: data?.spot_it ?? [],
     also_called: normalizeFact(data?.also_called),
     mature_size: normalizeFact(data?.mature_size),
@@ -123,7 +132,29 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
     if (isStr(v)) (draft[key] as string) = v
     else problems.push(`${key}: expected text`)
   }
-  ;(['common_name', 'pronunciation', 'botanical_name', 'plant_type', 'photo_url', 'trim_summary', 'know_this_first'] as const).forEach(takeStr)
+  ;(['common_name', 'pronunciation', 'botanical_name', 'plant_type', 'trim_summary', 'know_this_first'] as const).forEach(takeStr)
+
+  if ('photos' in raw) {
+    if (!Array.isArray(raw.photos)) {
+      problems.push('photos: expected a list of { url, caption }')
+    } else {
+      draft.photos = []
+      raw.photos.forEach((p, i) => {
+        if (!isObj(p) || !isStr(p.url) || !p.url) {
+          problems.push(`photos[${i + 1}]: expected { url } as text (photo skipped)`)
+          return
+        }
+        if ('caption' in p && !isStr(p.caption)) problems.push(`photos[${i + 1}].caption: expected text`)
+        draft.photos.push({ url: p.url, caption: isStr(p.caption) ? p.caption : '' })
+      })
+    }
+  }
+  // Legacy shape: a bare photo_url becomes the primary photo when no photos
+  // list was given.
+  if ('photo_url' in raw) {
+    if (!isStr(raw.photo_url)) problems.push('photo_url: expected text')
+    else if (raw.photo_url && draft.photos.length === 0) draft.photos = [{ url: raw.photo_url, caption: '' }]
+  }
 
   const takeStrList = (key: 'spot_it' | 'mistakes') => {
     if (!(key in raw)) return
@@ -208,7 +239,7 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
   }
 
   const known = new Set<string>([
-    'common_name', 'pronunciation', 'botanical_name', 'plant_type', 'photo_url',
+    'common_name', 'pronunciation', 'botanical_name', 'plant_type', 'photos', 'photo_url',
     'spot_it', 'mistakes', 'trim_summary', 'know_this_first', 'steps', 'tip_sections',
     ...FACT_KEYS,
   ])
@@ -322,13 +353,19 @@ export default function PlantPageForm({
     setDraft((prev) => ({ ...prev, ...p }))
   }
 
-  async function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function handlePhotos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
     setUploading(true)
     setError(null)
     try {
-      patch({ photo_url: await uploadCertImage(file) })
+      // Sequential so a failure reports cleanly; successful uploads before
+      // the failure are kept.
+      for (const file of files) {
+        const url = await uploadCertImage(file)
+        setDraft((prev) => ({ ...prev, photos: [...prev.photos, { url, caption: '' }] }))
+        setSaved(false)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -342,9 +379,9 @@ export default function PlantPageForm({
     setImportProblems(null)
     try {
       const { draft: imported, problems } = importPlantJson(pasteText)
-      // Imported copy never carries our uploaded photo — keep the current one
-      // unless the JSON explicitly provides a URL.
-      if (!imported.photo_url && draft.photo_url) imported.photo_url = draft.photo_url
+      // Imported copy usually carries no photo URLs — keep the current
+      // uploads unless the JSON explicitly provides photos.
+      if (imported.photos.length === 0 && draft.photos.length > 0) imported.photos = draft.photos
       setSaved(false)
       setDraft(imported)
       setImportProblems(problems)
@@ -475,30 +512,41 @@ export default function PlantPageForm({
         </div>
       </div>
 
-      {/* Photo */}
+      {/* Photos: first = primary in the top card, the rest = gallery strip */}
       <div>
-        <p className={`${SECTION_LBL} mb-2`}>Photo</p>
-        <div className="flex items-center gap-3">
-          {draft.photo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={draft.photo_url} alt="" className="h-24 w-32 rounded-lg border border-plum/20 object-cover" />
-          ) : (
-            <div className="flex h-24 w-32 items-center justify-center rounded-lg border border-dashed border-plum/25 text-xs text-plum/40">
-              No photo
-            </div>
-          )}
-          <div className="space-y-1.5">
-            <label className="block cursor-pointer rounded bg-emerald-600/10 px-3 py-2 text-center text-xs text-emerald-700 hover:bg-emerald-600/15 hover:text-emerald-800">
-              {uploading ? 'Uploading…' : draft.photo_url ? 'Replace photo' : 'Upload photo'}
-              <input type="file" accept="image/*" className="hidden" onChange={handlePhoto} disabled={uploading} />
-            </label>
-            {draft.photo_url && (
-              <button type="button" onClick={() => patch({ photo_url: '' })} className="block w-full text-xs text-plum/50 hover:text-plum/70">
-                Remove photo
+        <p className={`${SECTION_LBL} mb-2`}>Photos</p>
+        <p className="mb-2 text-xs text-plum/40">
+          The first photo is the primary shown in the top card; additional photos appear as a
+          captioned gallery below it. Captions are optional.
+        </p>
+        <div className="space-y-2">
+          {draft.photos.map((photo, i) => (
+            <div key={`${photo.url}-${i}`} className="flex items-center gap-2 rounded-xl border border-plum/10 bg-plum/5 p-2">
+              <MoveButtons index={i} length={draft.photos.length} onMove={(d) => patch({ photos: move(draft.photos, i, d) })} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photo.url} alt="" className="h-16 w-24 flex-shrink-0 rounded-lg border border-plum/20 object-cover" />
+              {i === 0 && (
+                <span className="flex-shrink-0 rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                  Primary
+                </span>
+              )}
+              <input
+                type="text"
+                value={photo.caption}
+                onChange={(e) => patch({ photos: draft.photos.map((x, xi) => (xi === i ? { ...x, caption: e.target.value } : x)) })}
+                placeholder="Caption (optional)"
+                className={INPUT}
+              />
+              <button type="button" onClick={() => patch({ photos: draft.photos.filter((_, xi) => xi !== i) })} className={REMOVE_BTN}>
+                Remove
               </button>
-            )}
-          </div>
+            </div>
+          ))}
         </div>
+        <label className="mt-2 inline-block cursor-pointer rounded bg-emerald-600/10 px-3 py-2 text-center text-xs text-emerald-700 hover:bg-emerald-600/15 hover:text-emerald-800">
+          {uploading ? 'Uploading…' : draft.photos.length > 0 ? 'Add photos' : 'Upload photos'}
+          <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotos} disabled={uploading} />
+        </label>
       </div>
 
       {/* Spot it */}
