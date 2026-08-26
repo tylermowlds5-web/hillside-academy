@@ -427,14 +427,17 @@ export default function PlantPageForm({
   pageId,
   initial,
   onSaved,
+  onClose,
 }: {
   pageId: string
   initial: PlantData | null
   onSaved: (commonName: string) => void
+  onClose: () => void
 }) {
   const [draft, setDraft] = useState<Draft>(() => normalize(initial))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -445,6 +448,7 @@ export default function PlantPageForm({
 
   function patch(p: Partial<Draft>) {
     setSaved(false)
+    setDirty(true)
     setDraft((prev) => ({ ...prev, ...p }))
   }
 
@@ -460,6 +464,7 @@ export default function PlantPageForm({
         const url = await uploadCertImage(file)
         setDraft((prev) => ({ ...prev, photos: [...prev.photos, { key: newKey(), url, caption: '' }] }))
         setSaved(false)
+        setDirty(true)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -478,6 +483,7 @@ export default function PlantPageForm({
       // uploads unless the JSON explicitly provides photos.
       if (imported.photos.length === 0 && draft.photos.length > 0) imported.photos = draft.photos
       setSaved(false)
+      setDirty(true)
       setDraft(imported)
       setImportProblems(problems)
       if (problems.length === 0) {
@@ -501,26 +507,72 @@ export default function PlantPageForm({
     }
   }
 
-  async function handleSave() {
+  async function save(): Promise<boolean> {
     if (!draft.common_name.trim()) {
       setError('Plant name is required')
-      return
+      return false
     }
     setSaving(true)
     setError(null)
     try {
       await updateCertPlantPage(pageId, toPlantData(draft))
       setSaved(true)
+      setDirty(false)
       onSaved(draft.common_name.trim())
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
+      return false
     } finally {
       setSaving(false)
     }
   }
 
+  async function handleSaveAndClose() {
+    if (await save()) onClose()
+  }
+
+  function handleClose() {
+    if (dirty && !confirm('Close without saving? Your unsaved changes will be lost.')) return
+    onClose()
+  }
+
+  // Duplicated at the top and bottom of the (long) form so saving or
+  // closing never requires scrolling to the other end.
+  const actionBar = (
+    <div className="flex flex-wrap items-center gap-2.5">
+      <button
+        type="button"
+        onClick={handleSaveAndClose}
+        disabled={saving || uploading}
+        className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+      >
+        {saving ? 'Saving…' : 'Save & close'}
+      </button>
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving || uploading}
+        className="rounded-full border border-emerald-600/50 px-5 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-600/10 disabled:opacity-60"
+      >
+        Save
+      </button>
+      <button
+        type="button"
+        onClick={handleClose}
+        disabled={saving}
+        className="rounded-full border border-plum/15 px-5 py-2 text-sm font-semibold text-plum/70 transition-colors hover:border-plum/30 hover:text-plum disabled:opacity-60"
+      >
+        Close
+      </button>
+      {saved && <span className="text-sm text-emerald-700">Saved</span>}
+    </div>
+  )
+
   return (
     <div className="space-y-6">
+      {actionBar}
+
       {/* Import / export toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -907,18 +959,7 @@ export default function PlantPageForm({
         onChange={(mistakes) => patch({ mistakes })}
       />
 
-      {/* Save */}
-      <div className="flex items-center gap-3 border-t border-plum/10 pt-4">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || uploading}
-          className="rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {saving ? 'Saving…' : 'Save plant page'}
-        </button>
-        {saved && <span className="text-sm text-emerald-700">Saved</span>}
-      </div>
+      <div className="border-t border-plum/10 pt-4">{actionBar}</div>
     </div>
   )
 }

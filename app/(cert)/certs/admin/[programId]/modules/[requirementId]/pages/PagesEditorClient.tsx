@@ -270,6 +270,7 @@ function PageRow({
               setTitle(name)
               onSaved()
             }}
+            onClose={() => setExpanded(false)}
           />
         </div>
       )}
