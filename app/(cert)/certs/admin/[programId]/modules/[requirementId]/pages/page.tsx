@@ -19,7 +19,7 @@ export default async function CertPagesEditorPage(props: {
     .single<{ role: string }>()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  const [{ data: program }, { data: requirement }, { data: pages }, { data: allVideos }] =
+  const [{ data: program }, { data: requirement }, { data: pages }, { data: allVideos }, { data: categories }] =
     await Promise.all([
       supabase.from('cert_programs').select('*').eq('id', programId).single<CertProgram>(),
       supabase
@@ -35,6 +35,12 @@ export default async function CertPagesEditorPage(props: {
         .order('sort_order')
         .returns<CertPage[]>(),
       supabase.from('videos').select('id, title, thumbnail_url').order('title').returns<PickerVideo[]>(),
+      supabase
+        .from('cert_categories')
+        .select('id, name, sort_order')
+        .eq('requirement_id', requirementId)
+        .order('sort_order')
+        .returns<{ id: string; name: string; sort_order: number }[]>(),
     ])
 
   if (!program || !requirement) notFound()
@@ -51,6 +57,7 @@ export default async function CertPagesEditorPage(props: {
     body: p.body ?? '',
     imageUrl: p.image_url,
     imagePosition: p.image_position,
+    categoryId: p.category_id,
   }))
 
   return (
@@ -76,6 +83,7 @@ export default async function CertPagesEditorPage(props: {
         requirementId={requirementId}
         initialPages={adminPages}
         allVideos={allVideos ?? []}
+        initialCategories={(categories ?? []).map((c) => ({ id: c.id, name: c.name }))}
       />
     </main>
   )

@@ -18,6 +18,7 @@ import {
   saveCertGroupQuestions,
   saveCertStandaloneQuestions,
 } from '@/app/cert-admin-actions'
+import CategoryManagerClient, { type EditorCategory } from './CategoryManagerClient'
 
 // ── Unified question bank editor ─────────────────────────────────────────
 // ONE list of units, one "+ Add question" action. A unit is a standalone
@@ -31,15 +32,19 @@ export type BankGroup = {
   id: string
   label: string
   imageUrl: string | null
+  categoryId: string | null
   questions: QuizQuestion[]
 }
 
+// categoryId is ORGANIZATION only — the draw always shuffles the whole bank
+// and category names never reach quiz takers.
 type Unit =
-  | { kind: 'question'; key: string; draft: QuestionDraft }
+  | { kind: 'question'; key: string; categoryId: string | null; draft: QuestionDraft }
   | {
       kind: 'group'
       key: string
       id: string | null // null until first save creates the DB row
+      categoryId: string | null
       label: string
       imageUrl: string | null
       drafts: QuestionDraft[]
@@ -167,27 +172,57 @@ function GroupUnitBody({
 const GROUP_CHOICE = 'photo_group' as const
 type AddChoice = QuizQuestionType | typeof GROUP_CHOICE
 
+// Stable re-sort of units into display order: uncategorized first, then
+// each category in its sort order, relative order preserved within buckets.
+// Kept as the PHYSICAL array order so the index-based unit callbacks and
+// "Unit N" numbering stay flat and simple.
+function bucketSort(units: Unit[], categories: EditorCategory[]): Unit[] {
+  const bucketOf = (u: Unit) => {
+    if (!u.categoryId) return 0
+    const idx = categories.findIndex((c) => c.id === u.categoryId)
+    return idx === -1 ? 0 : idx + 1 // unknown (just-deleted) category → uncategorized
+  }
+  return units
+    .map((u, i) => ({ u, i }))
+    .sort((a, b) => bucketOf(a.u) - bucketOf(b.u) || a.i - b.i)
+    .map(({ u }) => u)
+}
+
 export default function BankEditorClient({
   requirementId,
   initialGroups,
   initialStandalone,
+  initialCategories,
 }: {
   requirementId: string
   initialGroups: BankGroup[]
-  initialStandalone: QuizQuestion[]
+  initialStandalone: { question: QuizQuestion; categoryId: string | null }[]
+  initialCategories: EditorCategory[]
 }) {
   const router = useRouter()
-  const [units, setUnits] = useState<Unit[]>(() => [
-    ...initialStandalone.map<Unit>((q) => ({ kind: 'question', key: newKey(), draft: questionToDraft(q) })),
-    ...initialGroups.map<Unit>((g) => ({
-      kind: 'group',
-      key: newKey(),
-      id: g.id,
-      label: g.label,
-      imageUrl: g.imageUrl,
-      drafts: g.questions.length > 0 ? g.questions.map(questionToDraft) : [defaultQuestion('multiple_choice')],
-    })),
-  ])
+  const [categories, setCategories] = useState(initialCategories)
+  const [units, setUnits] = useState<Unit[]>(() =>
+    bucketSort(
+      [
+        ...initialStandalone.map<Unit>((q) => ({
+          kind: 'question',
+          key: newKey(),
+          categoryId: q.categoryId,
+          draft: questionToDraft(q.question),
+        })),
+        ...initialGroups.map<Unit>((g) => ({
+          kind: 'group',
+          key: newKey(),
+          id: g.id,
+          categoryId: g.categoryId,
+          label: g.label,
+          imageUrl: g.imageUrl,
+          drafts: g.questions.length > 0 ? g.questions.map(questionToDraft) : [defaultQuestion('multiple_choice')],
+        })),
+      ],
+      initialCategories
+    )
+  )
   // Existing groups removed from the list — deleted from the DB on save,
   // so removals and edits commit together.
   const deletedGroupIds = useRef<string[]>([])
@@ -200,11 +235,13 @@ export default function BankEditorClient({
   function addUnit(choice: AddChoice) {
     setChooserOpen(false)
     setSaved(false)
+    // Appended at the end (not re-bucketed) so the new unit stays next to
+    // the add button; it slots into its section on assignment or reload.
     setUnits((prev) => [
       ...prev,
       choice === GROUP_CHOICE
-        ? { kind: 'group', key: newKey(), id: null, label: '', imageUrl: null, drafts: [defaultQuestion('multiple_choice')] }
-        : { kind: 'question', key: newKey(), draft: defaultQuestion(choice) },
+        ? { kind: 'group', key: newKey(), id: null, categoryId: null, label: '', imageUrl: null, drafts: [defaultQuestion('multiple_choice')] }
+        : { kind: 'question', key: newKey(), categoryId: null, draft: defaultQuestion(choice) },
     ])
   }
 
@@ -221,6 +258,29 @@ export default function BankEditorClient({
   function updateUnit(idx: number, next: Unit) {
     setSaved(false)
     setUnits((prev) => prev.map((u, i) => (i === idx ? next : u)))
+  }
+
+  // Committed by "Save bank" like every other unit edit; re-bucketed so the
+  // unit moves into its section immediately.
+  function setUnitCategory(idx: number, categoryId: string | null) {
+    setSaved(false)
+    setUnits((prev) =>
+      bucketSort(prev.map((u, i) => (i === idx ? { ...u, categoryId } : u)), categories)
+    )
+  }
+
+  // Category list changes (from the manager). On delete, mirror the DB's
+  // ON DELETE SET NULL in local state so unsaved units don't resurrect a
+  // dead category id on save.
+  function handleCategoriesChange(next: EditorCategory[]) {
+    const valid = new Set(next.map((c) => c.id))
+    setCategories(next)
+    setUnits((prev) =>
+      bucketSort(
+        prev.map((u) => (u.categoryId && !valid.has(u.categoryId) ? { ...u, categoryId: null } : u)),
+        next
+      )
+    )
   }
 
   function validate(): string | null {
@@ -247,7 +307,7 @@ export default function BankEditorClient({
       // Standalone questions: wholesale replace in list order.
       const standalone = units
         .filter((u): u is Extract<Unit, { kind: 'question' }> => u.kind === 'question')
-        .map((u) => draftToQuestion(u.draft))
+        .map((u) => ({ question: draftToQuestion(u.draft), categoryId: u.categoryId }))
       await saveCertStandaloneQuestions(requirementId, standalone)
 
       // Groups: create missing rows, update the rest, replace their questions.
@@ -259,6 +319,7 @@ export default function BankEditorClient({
           requirementId,
           label: u.label,
           imageUrl: u.imageUrl,
+          categoryId: u.categoryId,
         })
         idByKey.set(u.key, id)
         await saveCertGroupQuestions(id, u.drafts.map(draftToQuestion))
@@ -285,8 +346,26 @@ export default function BankEditorClient({
     }
   }
 
+  // Section label for the unit at index i, or null when no header is due.
+  // A header renders wherever the bucket differs from the previous unit's —
+  // graceful for any transient non-contiguity (e.g. a just-added unit).
+  function sectionLabelAt(i: number): string | null {
+    if (categories.length === 0) return null
+    const nameOf = (u: Unit) =>
+      (u.categoryId && categories.find((c) => c.id === u.categoryId)?.name) ?? 'Uncategorized'
+    const name = nameOf(units[i])
+    if (i > 0 && nameOf(units[i - 1]) === name) return null
+    return name
+  }
+
   return (
     <div className="space-y-5">
+      <CategoryManagerClient
+        requirementId={requirementId}
+        categories={categories}
+        onChange={handleCategoriesChange}
+      />
+
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
           {error}
@@ -302,9 +381,17 @@ export default function BankEditorClient({
         </div>
       )}
 
-      {/* One unified unit list */}
-      {units.map((unit, i) => (
-        <section key={unit.key} className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
+      {/* One unified unit list, visually grouped by category */}
+      {units.map((unit, i) => {
+        const sectionLabel = sectionLabelAt(i)
+        return (
+        <div key={unit.key} className="space-y-2">
+          {sectionLabel && (
+            <p className="pt-1 text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
+              {sectionLabel}
+            </p>
+          )}
+        <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50 whitespace-nowrap">
@@ -314,13 +401,28 @@ export default function BankEditorClient({
                 {unit.kind === 'group' ? 'Photo group' : TYPE_LABEL[unit.draft.type]}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => removeUnit(i)}
-              className="flex-shrink-0 text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
-            >
-              Remove
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {categories.length > 0 && (
+                <select
+                  value={unit.categoryId ?? ''}
+                  onChange={(e) => setUnitCategory(i, e.target.value || null)}
+                  title="Category (organization only — the quiz draws from the whole bank)"
+                  className="max-w-36 rounded-lg border border-plum/20 bg-white px-2 py-1.5 text-xs text-plum/70 focus:outline-none focus:border-emerald-600"
+                >
+                  <option value="">No category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={() => removeUnit(i)}
+                className="text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
+              >
+                Remove
+              </button>
+            </div>
           </div>
 
           {unit.kind === 'question' ? (
@@ -339,7 +441,9 @@ export default function BankEditorClient({
             />
           )}
         </section>
-      ))}
+        </div>
+        )
+      })}
 
       {/* One add action: pick a type, photo group included */}
       {chooserOpen ? (

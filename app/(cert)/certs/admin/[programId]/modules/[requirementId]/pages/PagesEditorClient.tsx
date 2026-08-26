@@ -7,8 +7,10 @@ import {
   updateCertTextPage,
   deleteCertPage,
   reorderCertPages,
+  setCertPageCategory,
 } from '@/app/cert-admin-actions'
 import RichTextEditor from '../../../../RichTextEditor'
+import CategoryManagerClient, { type EditorCategory } from '../CategoryManagerClient'
 import {
   DndContext,
   PointerSensor,
@@ -21,7 +23,12 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities'
 
 // Pages editor for a lesson module: dnd reorder, add video/text pages,
-// inline rich-text editing with an optional positioned image.
+// inline rich-text editing with an optional positioned image. Pages can be
+// grouped into module categories — display only. The learner order stays
+// the single flat cert_pages.sort_order: this editor keeps the pages array
+// in canonical order (uncategorized first, then each category in category
+// order) and rewrites the full flat order on every grouping change, so the
+// visual grouping and the gated learner order can never disagree.
 
 export type AdminPage = {
   id: string
@@ -32,6 +39,21 @@ export type AdminPage = {
   body: string
   imageUrl: string | null
   imagePosition: 'top' | 'bottom' | 'left' | 'right'
+  categoryId: string | null
+}
+
+// Stable re-sort into canonical flat order; a page whose category no longer
+// exists falls back into the uncategorized bucket.
+function flattenPages(pages: AdminPage[], categories: EditorCategory[]): AdminPage[] {
+  const bucketOf = (p: AdminPage) => {
+    if (!p.categoryId) return 0
+    const idx = categories.findIndex((c) => c.id === p.categoryId)
+    return idx === -1 ? 0 : idx + 1
+  }
+  return pages
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => bucketOf(a.p) - bucketOf(b.p) || a.i - b.i)
+    .map(({ p }) => p)
 }
 
 export type PickerVideo = { id: string; title: string; thumbnail_url: string | null }
@@ -56,11 +78,15 @@ const POSITION_LABEL: Record<AdminPage['imagePosition'], string> = {
 function PageRow({
   page,
   position,
+  categories,
+  onSetCategory,
   onRemove,
   onSaved,
 }: {
   page: AdminPage
   position: number
+  categories: EditorCategory[]
+  onSetCategory: (categoryId: string | null) => void
   onRemove: () => void
   onSaved: () => void
 }) {
@@ -129,6 +155,19 @@ function PageRow({
         <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">
           {page.kind === 'video' ? page.videoTitle : title || 'Untitled page'}
         </p>
+        {categories.length > 0 && (
+          <select
+            value={page.categoryId ?? ''}
+            onChange={(e) => onSetCategory(e.target.value || null)}
+            title="Category (organizes the lesson into sections)"
+            className="flex-shrink-0 max-w-32 rounded-lg border border-plum/20 bg-white px-2 py-1.5 text-xs text-plum/70 focus:outline-none focus:border-emerald-600"
+          >
+            <option value="">No category</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        )}
         {page.kind === 'text' && (
           <button
             type="button"
@@ -226,13 +265,16 @@ export default function PagesEditorClient({
   requirementId,
   initialPages,
   allVideos,
+  initialCategories,
 }: {
   requirementId: string
   initialPages: AdminPage[]
   allVideos: PickerVideo[]
+  initialCategories: EditorCategory[]
 }) {
   const router = useRouter()
-  const [pages, setPages] = useState(initialPages)
+  const [categories, setCategories] = useState(initialCategories)
+  const [pages, setPages] = useState(() => flattenPages(initialPages, initialCategories))
   const [videoSearch, setVideoSearch] = useState('')
   const [textTitle, setTextTitle] = useState('')
   const [adding, setAdding] = useState(false)
@@ -244,15 +286,23 @@ export default function PagesEditorClient({
     v.title.toLowerCase().includes(videoSearch.toLowerCase())
   )
 
+  // addCertPage appends at the global end; re-flatten moves the new
+  // (uncategorized) page into its bucket and persists the matching flat
+  // order so the DB never disagrees with the visual grouping.
+  async function appendPage(page: AdminPage) {
+    const next = flattenPages([...pages, page], categories)
+    setPages(next)
+    if (categories.length > 0) {
+      await reorderCertPages(requirementId, next.map((p) => p.id))
+    }
+  }
+
   async function handleAddVideo(video: PickerVideo) {
     setAdding(true)
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'video', videoId: video.id })
-      setPages((prev) => [
-        ...prev,
-        { id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top' },
-      ])
+      await appendPage({ id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top', categoryId: null })
       setVideoSearch('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -268,10 +318,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'text', title })
-      setPages((prev) => [
-        ...prev,
-        { id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top' },
-      ])
+      await appendPage({ id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top', categoryId: null })
       setTextTitle('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -293,6 +340,9 @@ export default function PagesEditorClient({
     }
   }
 
+  // Works unchanged with per-category sections: each section's DndContext
+  // only drags within its own bucket, and buckets are contiguous slices of
+  // the canonical array, so arrayMove on the full array stays in-bucket.
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -308,8 +358,71 @@ export default function PagesEditorClient({
     }
   }
 
+  // Move a page to another category: persist the assignment, then rewrite
+  // the flat order to match the new grouping. Optimistic with rollback.
+  async function handleSetCategory(pageId: string, categoryId: string | null) {
+    const prev = pages
+    const next = flattenPages(
+      pages.map((p) => (p.id === pageId ? { ...p, categoryId } : p)),
+      categories
+    )
+    setPages(next)
+    setError(null)
+    try {
+      await setCertPageCategory(pageId, categoryId)
+      await reorderCertPages(requirementId, next.map((p) => p.id))
+      router.refresh()
+    } catch (err) {
+      setPages(prev)
+      setError(err instanceof Error ? err.message : 'Category change failed')
+    }
+  }
+
+  // Category list changes from the manager. On delete, mirror the DB's
+  // ON DELETE SET NULL locally; after reorder/delete, persist the re-bucketed
+  // flat order so grouping and learner order stay in lockstep.
+  async function handleCategoriesChange(next: EditorCategory[]) {
+    const valid = new Set(next.map((c) => c.id))
+    const nextPages = flattenPages(
+      pages.map((p) => (p.categoryId && !valid.has(p.categoryId) ? { ...p, categoryId: null } : p)),
+      next
+    )
+    setCategories(next)
+    setPages(nextPages)
+    if (nextPages.some((p, i) => p.id !== pages[i]?.id)) {
+      try {
+        await reorderCertPages(requirementId, nextPages.map((p) => p.id))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Reorder failed — refresh and try again')
+      }
+    }
+  }
+
+  // Contiguous buckets of the canonical array, in display order. Sections
+  // render only when categories exist; empty buckets are skipped.
+  const buckets: { categoryId: string | null; name: string; startIndex: number; pages: AdminPage[] }[] = []
+  if (categories.length > 0) {
+    for (const b of [null, ...categories.map((c) => c.id)]) {
+      const name = b === null ? 'Uncategorized' : categories.find((c) => c.id === b)!.name
+      const bucketPages = pages.filter((p) =>
+        b === null
+          ? !p.categoryId || !categories.some((c) => c.id === p.categoryId)
+          : p.categoryId === b
+      )
+      if (bucketPages.length > 0) {
+        buckets.push({ categoryId: b, name, startIndex: pages.indexOf(bucketPages[0]), pages: bucketPages })
+      }
+    }
+  }
+
   return (
     <div className="space-y-5">
+      <CategoryManagerClient
+        requirementId={requirementId}
+        categories={categories}
+        onChange={handleCategoriesChange}
+      />
+
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
           {error}
@@ -323,7 +436,7 @@ export default function PagesEditorClient({
             will work through them in order.
           </p>
         </div>
-      ) : (
+      ) : categories.length === 0 ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={pages.map((p) => p.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
@@ -332,6 +445,8 @@ export default function PagesEditorClient({
                   key={p.id}
                   page={p}
                   position={i + 1}
+                  categories={categories}
+                  onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
                   onRemove={() => handleRemove(p.id)}
                   onSaved={() => router.refresh()}
                 />
@@ -339,6 +454,35 @@ export default function PagesEditorClient({
             </div>
           </SortableContext>
         </DndContext>
+      ) : (
+        // One section per non-empty bucket, each its own drag context —
+        // pages reorder within their section; the dropdown moves them across.
+        <div className="space-y-4">
+          {buckets.map((bucket) => (
+            <div key={bucket.categoryId ?? 'uncategorized'} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
+                {bucket.name}
+              </p>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={bucket.pages.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-2">
+                    {bucket.pages.map((p, i) => (
+                      <PageRow
+                        key={p.id}
+                        page={p}
+                        position={bucket.startIndex + i + 1}
+                        categories={categories}
+                        onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
+                        onRemove={() => handleRemove(p.id)}
+                        onSaved={() => router.refresh()}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Add pages */}

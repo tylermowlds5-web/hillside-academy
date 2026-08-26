@@ -766,3 +766,50 @@ CREATE POLICY "cert_page_progress_update" ON public.cert_page_progress
 DROP POLICY IF EXISTS "cert_page_progress_admin" ON public.cert_page_progress;
 CREATE POLICY "cert_page_progress_admin" ON public.cert_page_progress
   FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ── Step 10: Module content categories ────────────────────────────────────
+-- Admin-defined sub-categories WITHIN a module (e.g. Plant ID: Evergreens /
+-- Perennials / Annuals) used purely to ORGANIZE content. Pages, photo
+-- groups, and standalone questions may carry a category. Organization only:
+-- quiz attempts still draw shuffled units from the WHOLE bank, page
+-- order/gating still follows cert_pages.sort_order alone, and category
+-- names are NEVER shown on quiz questions (a label like "Evergreens" would
+-- give the answer away). Names DO appear as section headers in the learner
+-- lesson view, so the table is readable by anyone signed in (like
+-- cert_pages). Deleting a category uncategorizes its content (SET NULL) —
+-- content is never deleted with it.
+
+CREATE TABLE IF NOT EXISTS public.cert_categories (
+  id uuid default gen_random_uuid() primary key,
+  requirement_id uuid not null references public.cert_requirements(id) on delete cascade,
+  name text not null,
+  sort_order integer not null default 0,
+  created_at timestamp with time zone default now(),
+  UNIQUE (requirement_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS cert_categories_req_idx ON public.cert_categories (requirement_id);
+
+ALTER TABLE public.cert_pages
+  ADD COLUMN IF NOT EXISTS category_id uuid references public.cert_categories(id) on delete set null;
+ALTER TABLE public.cert_question_groups
+  ADD COLUMN IF NOT EXISTS category_id uuid references public.cert_categories(id) on delete set null;
+-- Meaningful on STANDALONE questions only; grouped questions inherit their
+-- group's category.
+ALTER TABLE public.cert_questions
+  ADD COLUMN IF NOT EXISTS category_id uuid references public.cert_categories(id) on delete set null;
+
+-- Support the SET NULL referencing scans on category delete.
+CREATE INDEX IF NOT EXISTS cert_pages_category_idx ON public.cert_pages (category_id);
+CREATE INDEX IF NOT EXISTS cert_question_groups_category_idx ON public.cert_question_groups (category_id);
+CREATE INDEX IF NOT EXISTS cert_questions_category_idx ON public.cert_questions (category_id);
+
+ALTER TABLE public.cert_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "cert_categories_read" ON public.cert_categories;
+CREATE POLICY "cert_categories_read" ON public.cert_categories
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "cert_categories_admin" ON public.cert_categories;
+CREATE POLICY "cert_categories_admin" ON public.cert_categories
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());

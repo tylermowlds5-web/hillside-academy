@@ -236,6 +236,87 @@ export async function reorderCertPages(requirementId: string, orderedIds: string
   }
 }
 
+// ── Module categories ─────────────────────────────────────────────────────
+// Sub-categories WITHIN a module, purely for organizing pages and bank
+// units. They never affect page gating (flat cert_pages.sort_order stays
+// the source of truth) or the quiz draw (always the whole bank).
+
+export async function createCertCategory(
+  requirementId: string,
+  name: string
+): Promise<{ id: string }> {
+  const { supabase } = await requireAdmin()
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error('Category name is required')
+
+  const { data: maxRow } = await supabase
+    .from('cert_categories')
+    .select('sort_order')
+    .eq('requirement_id', requirementId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ sort_order: number }>()
+
+  const { data, error } = await supabase
+    .from('cert_categories')
+    .insert({
+      requirement_id: requirementId,
+      name: trimmed,
+      sort_order: (maxRow?.sort_order ?? -1) + 1,
+    })
+    .select('id')
+    .single<{ id: string }>()
+  if (error || !data) {
+    if (error?.code === '23505') throw new Error('A category with that name already exists.')
+    throw new Error(error?.message ?? 'Create category failed')
+  }
+  return { id: data.id }
+}
+
+export async function renameCertCategory(categoryId: string, name: string) {
+  const { supabase } = await requireAdmin()
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error('Category name is required')
+
+  const { error } = await supabase
+    .from('cert_categories')
+    .update({ name: trimmed })
+    .eq('id', categoryId)
+  if (error) {
+    if (error.code === '23505') throw new Error('A category with that name already exists.')
+    throw new Error(error.message)
+  }
+}
+
+export async function reorderCertCategories(requirementId: string, orderedIds: string[]) {
+  const { supabase } = await requireAdmin()
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await supabase
+      .from('cert_categories')
+      .update({ sort_order: i })
+      .eq('id', orderedIds[i])
+      .eq('requirement_id', requirementId)
+    if (error) throw new Error(error.message)
+  }
+}
+
+// Deleting a category only uncategorizes its pages/groups/questions (FK
+// ON DELETE SET NULL) — no content is ever deleted with it.
+export async function deleteCertCategory(categoryId: string) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase.from('cert_categories').delete().eq('id', categoryId)
+  if (error) throw new Error(error.message)
+}
+
+export async function setCertPageCategory(pageId: string, categoryId: string | null) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase
+    .from('cert_pages')
+    .update({ category_id: categoryId })
+    .eq('id', pageId)
+  if (error) throw new Error(error.message)
+}
+
 // ── Question bank ─────────────────────────────────────────────────────────
 
 export async function saveCertGroup(input: {
@@ -243,11 +324,13 @@ export async function saveCertGroup(input: {
   requirementId: string
   label: string
   imageUrl: string | null
+  categoryId: string | null
 }): Promise<{ id: string }> {
   const { supabase } = await requireAdmin()
   const row = {
     label: input.label.trim() || null,
     image_url: input.imageUrl,
+    category_id: input.categoryId,
   }
 
   if (input.groupId) {
@@ -309,9 +392,19 @@ export async function saveCertGroupQuestions(groupId: string, questions: QuizQue
 // wholesale-replace approach as groups; attempt snapshots keep history safe.
 export async function saveCertStandaloneQuestions(
   requirementId: string,
-  questions: QuizQuestion[]
+  questions: { question: QuizQuestion; categoryId: string | null }[]
 ) {
   const { supabase } = await requireAdmin()
+
+  // The delete below runs before the insert, so a stale categoryId (category
+  // deleted in another tab since the editor loaded) must not FK-fail the
+  // insert — that would lose the bank. Null out any id that no longer exists.
+  const { data: validCategories } = await supabase
+    .from('cert_categories')
+    .select('id')
+    .eq('requirement_id', requirementId)
+    .returns<{ id: string }[]>()
+  const validIds = new Set((validCategories ?? []).map((c) => c.id))
 
   const { error: delError } = await supabase
     .from('cert_questions')
@@ -321,7 +414,12 @@ export async function saveCertStandaloneQuestions(
 
   if (questions.length === 0) return
 
-  const rows = questions.map((q, i) => ({ requirement_id: requirementId, question: q, sort_order: i }))
+  const rows = questions.map((q, i) => ({
+    requirement_id: requirementId,
+    question: q.question,
+    category_id: q.categoryId && validIds.has(q.categoryId) ? q.categoryId : null,
+    sort_order: i,
+  }))
   const { error } = await supabase.from('cert_questions').insert(rows)
   if (error) throw new Error(error.message)
 }

@@ -59,7 +59,7 @@ export default async function ModulePage(props: {
       .returns<CertPage[]>()
 
     const videoIds = (pageRows ?? []).map((p) => p.video_id).filter(Boolean) as string[]
-    const [videosRes, progressRes] = await Promise.all([
+    const [videosRes, progressRes, categoriesRes] = await Promise.all([
       videoIds.length
         ? supabase.from('videos').select('*').in('id', videoIds).returns<Video[]>()
         : Promise.resolve({ data: [] as Video[] }),
@@ -71,9 +71,17 @@ export default async function ModulePage(props: {
             .in('page_id', (pageRows ?? []).map((p) => p.id))
             .returns<{ page_id: string; percent_watched: number; actual_seconds_watched: number; completed: boolean }[]>()
         : Promise.resolve({ data: [] as { page_id: string; percent_watched: number; actual_seconds_watched: number; completed: boolean }[] }),
+      // Category names label the lesson sections (display only — page order
+      // and gating still follow sort_order alone).
+      supabase
+        .from('cert_categories')
+        .select('id, name')
+        .eq('requirement_id', mod.requirementId)
+        .returns<{ id: string; name: string }[]>(),
     ])
     const videoById = new Map((videosRes.data ?? []).map((v) => [v.id, v]))
     const progressByPage = new Map((progressRes.data ?? []).map((p) => [p.page_id, p]))
+    const categoryName = new Map((categoriesRes.data ?? []).map((c) => [c.id, c.name]))
 
     learnerPages = (pageRows ?? []).map((p) => {
       const prog = progressByPage.get(p.id)
@@ -84,6 +92,7 @@ export default async function ModulePage(props: {
         body: p.body,
         imageUrl: p.image_url,
         imagePosition: p.image_position,
+        categoryLabel: p.category_id ? (categoryName.get(p.category_id) ?? null) : null,
         video: p.video_id ? (videoById.get(p.video_id) ?? null) : null,
         completed: prog?.completed ?? false,
         percent_watched: prog?.percent_watched ?? 0,

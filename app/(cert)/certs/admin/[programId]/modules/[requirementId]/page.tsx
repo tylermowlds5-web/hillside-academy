@@ -19,41 +19,54 @@ export default async function CertBankEditorPage(props: {
     .single<{ role: string }>()
   if (profile?.role !== 'admin') redirect('/dashboard')
 
-  const [{ data: program }, { data: requirement }, { data: groups }, { data: videoRow }, { data: standalone }] =
-    await Promise.all([
-      supabase.from('cert_programs').select('*').eq('id', programId).single<CertProgram>(),
-      supabase
-        .from('cert_requirements')
-        .select('*')
-        .eq('id', requirementId)
-        .eq('program_id', programId)
-        .single<CertRequirement>(),
-      supabase
-        .from('cert_question_groups')
-        .select('id, label, image_url, sort_order, cert_questions ( id, question, sort_order )')
-        .eq('requirement_id', requirementId)
-        .order('sort_order')
-        .returns<
-          {
-            id: string
-            label: string | null
-            image_url: string | null
-            sort_order: number
-            cert_questions: { id: string; question: QuizQuestion; sort_order: number }[]
-          }[]
-        >(),
-      supabase
-        .from('cert_requirements')
-        .select('video_id, videos ( title )')
-        .eq('id', requirementId)
-        .maybeSingle<{ video_id: string | null; videos: { title: string } | null }>(),
-      supabase
-        .from('cert_questions')
-        .select('question, sort_order')
-        .eq('requirement_id', requirementId)
-        .order('sort_order')
-        .returns<{ question: QuizQuestion; sort_order: number }[]>(),
-    ])
+  const [
+    { data: program },
+    { data: requirement },
+    { data: groups },
+    { data: videoRow },
+    { data: standalone },
+    { data: categories },
+  ] = await Promise.all([
+    supabase.from('cert_programs').select('*').eq('id', programId).single<CertProgram>(),
+    supabase
+      .from('cert_requirements')
+      .select('*')
+      .eq('id', requirementId)
+      .eq('program_id', programId)
+      .single<CertRequirement>(),
+    supabase
+      .from('cert_question_groups')
+      .select('id, label, image_url, sort_order, category_id, cert_questions ( id, question, sort_order )')
+      .eq('requirement_id', requirementId)
+      .order('sort_order')
+      .returns<
+        {
+          id: string
+          label: string | null
+          image_url: string | null
+          sort_order: number
+          category_id: string | null
+          cert_questions: { id: string; question: QuizQuestion; sort_order: number }[]
+        }[]
+      >(),
+    supabase
+      .from('cert_requirements')
+      .select('video_id, videos ( title )')
+      .eq('id', requirementId)
+      .maybeSingle<{ video_id: string | null; videos: { title: string } | null }>(),
+    supabase
+      .from('cert_questions')
+      .select('question, sort_order, category_id')
+      .eq('requirement_id', requirementId)
+      .order('sort_order')
+      .returns<{ question: QuizQuestion; sort_order: number; category_id: string | null }[]>(),
+    supabase
+      .from('cert_categories')
+      .select('id, name, sort_order')
+      .eq('requirement_id', requirementId)
+      .order('sort_order')
+      .returns<{ id: string; name: string; sort_order: number }[]>(),
+  ])
 
   if (!program || !requirement) notFound()
 
@@ -64,6 +77,7 @@ export default async function CertBankEditorPage(props: {
     id: g.id,
     label: g.label ?? '',
     imageUrl: g.image_url,
+    categoryId: g.category_id,
     questions: g.cert_questions
       .slice()
       .sort((a, b) => a.sort_order - b.sort_order)
@@ -93,7 +107,11 @@ export default async function CertBankEditorPage(props: {
       <BankEditorClient
         requirementId={requirementId}
         initialGroups={bankGroups}
-        initialStandalone={(standalone ?? []).map((q) => q.question)}
+        initialStandalone={(standalone ?? []).map((q) => ({
+          question: q.question,
+          categoryId: q.category_id,
+        }))}
+        initialCategories={(categories ?? []).map((c) => ({ id: c.id, name: c.name }))}
       />
     </div>
   )

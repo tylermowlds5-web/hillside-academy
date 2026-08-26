@@ -23,6 +23,9 @@ export type LearnerPage = {
   body: string | null
   imageUrl: string | null
   imagePosition: 'top' | 'bottom' | 'left' | 'right'
+  // Module category name, shown as a section label. Display only — never
+  // affects order, gating, or the quiz.
+  categoryLabel: string | null
   video: Video | null
   completed: boolean
   percent_watched: number
@@ -560,30 +563,40 @@ function PagedLesson({
 
   return (
     <div className="space-y-4">
-      {/* Page stepper */}
+      {/* Page stepper, with a category label at the start of each section */}
       <div className="flex flex-wrap items-center gap-2">
         {pages.map((p, i) => {
           const isDone = done.has(p.id)
           const reachable = i <= maxReachable
+          const sectionLabel =
+            p.categoryLabel && p.categoryLabel !== pages[i - 1]?.categoryLabel
+              ? p.categoryLabel
+              : null
           return (
-            <button
-              key={p.id}
-              type="button"
-              disabled={!reachable}
-              onClick={() => reachable && setCurrent(i)}
-              title={p.kind === 'video' ? (p.video?.title ?? 'Video') : (p.title ?? 'Page')}
-              className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
-                i === current
-                  ? 'bg-emerald-600 text-white'
-                  : isDone
-                    ? 'bg-emerald-600/15 text-emerald-700 hover:bg-emerald-600/25'
-                    : reachable
-                      ? 'border-2 border-emerald-600 bg-white text-emerald-700'
-                      : 'bg-plum/10 text-plum/40'
-              }`}
-            >
-              {isDone && i !== current ? '✓' : i + 1}
-            </button>
+            <span key={p.id} className="contents">
+              {sectionLabel && (
+                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-plum/40">
+                  {sectionLabel}
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={!reachable}
+                onClick={() => reachable && setCurrent(i)}
+                title={p.kind === 'video' ? (p.video?.title ?? 'Video') : (p.title ?? 'Page')}
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                  i === current
+                    ? 'bg-emerald-600 text-white'
+                    : isDone
+                      ? 'bg-emerald-600/15 text-emerald-700 hover:bg-emerald-600/25'
+                      : reachable
+                        ? 'border-2 border-emerald-600 bg-white text-emerald-700'
+                        : 'bg-plum/10 text-plum/40'
+                }`}
+              >
+                {isDone && i !== current ? '✓' : i + 1}
+              </button>
+            </span>
           )
         })}
         <span className="ml-1 text-xs font-medium text-plum/50">
@@ -593,6 +606,11 @@ function PagedLesson({
       </div>
 
       {/* Current page */}
+      {page.categoryLabel && (
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
+          {page.categoryLabel}
+        </p>
+      )}
       {page.kind === 'video' ? (
         page.video ? (
           <div key={page.id} className="overflow-hidden rounded-2xl shadow-md">

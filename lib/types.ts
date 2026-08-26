@@ -404,6 +404,18 @@ export type CertPage = {
   image_position: 'top' | 'bottom' | 'left' | 'right'
   sort_order: number
   created_at: string
+  category_id: string | null
+}
+
+// Admin-defined sub-category within a module, used purely to organize pages
+// and bank units. Names appear as lesson section headers but are NEVER
+// shown on quiz questions (they'd often give the answer away).
+export type CertCategory = {
+  id: string
+  requirement_id: string
+  name: string
+  sort_order: number
+  created_at: string
 }
 
 export type CertPageProgress = {
@@ -438,6 +450,7 @@ export type CertQuestionGroup = {
   image_url: string | null
   sort_order: number
   created_at: string
+  category_id: string | null
 }
 
 // A bank question belongs EITHER to a photo group (group_id) OR directly to
@@ -450,6 +463,9 @@ export type CertQuestionRow = {
   question: QuizQuestion
   sort_order: number
   created_at: string
+  // Organizational only; set on standalone questions (grouped questions
+  // inherit their group's category).
+  category_id: string | null
 }
 
 // Snapshot of one served UNIT inside an attempt: a photo group (all its
