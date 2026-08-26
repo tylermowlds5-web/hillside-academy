@@ -1,5 +1,9 @@
-import type { ReactNode } from 'react'
+'use client'
+
+import { useState, type ReactNode } from 'react'
+import Image from 'next/image'
 import type { PlantData } from '@/lib/types'
+import PhotoLightbox from './PhotoLightbox'
 
 export type { PlantData, PlantStep, PlantTipSection } from '@/lib/types'
 
@@ -42,6 +46,9 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
   const primary = photos[0] ?? null
   const gallery = photos.slice(1)
 
+  // Lightbox: any photo opens full-size at its index; null = closed.
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+
   const spotIt = (plant.spot_it ?? []).filter(has)
   const facts = [
     { label: 'Also called', field: plant.also_called, full: false },
@@ -83,12 +90,20 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
             {hasMedia && (
               <div className="px-5 pt-5 sm:pb-5 sm:pl-6 sm:pr-0">
                 {primary && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={primary.url}
-                    alt={has(primary.caption) ? primary.caption : plant.common_name}
-                    className="aspect-[4/3] w-full rounded-lg border border-plum/10 object-cover"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setLightboxIndex(0)}
+                    aria-label={`View photo full size: ${has(primary.caption) ? primary.caption : plant.common_name}`}
+                    className="relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-lg border border-plum/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    <Image
+                      src={primary.url}
+                      alt={has(primary.caption) ? primary.caption : plant.common_name}
+                      fill
+                      sizes="(min-width: 640px) 260px, 90vw"
+                      className="object-cover"
+                    />
+                  </button>
                 )}
                 {spotIt.length > 0 && (
                   <div className={primary ? 'mt-3.5' : ''}>
@@ -140,12 +155,20 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
               key={i}
               className="overflow-hidden rounded-xl border border-plum/10 bg-white shadow-sm"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photo.url}
-                alt={has(photo.caption) ? photo.caption : plant.common_name}
-                className="aspect-[4/3] w-full object-cover"
-              />
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(i + 1)}
+                aria-label={`View photo full size: ${has(photo.caption) ? photo.caption : plant.common_name}`}
+                className="relative block aspect-[4/3] w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                <Image
+                  src={photo.url}
+                  alt={has(photo.caption) ? photo.caption : plant.common_name}
+                  fill
+                  sizes="(min-width: 640px) 230px, 45vw"
+                  className="object-cover"
+                />
+              </button>
               {has(photo.caption) && (
                 <figcaption className="px-3 py-2 text-xs text-plum/60">{photo.caption}</figcaption>
               )}
@@ -154,6 +177,16 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
         </div>
       )}
       </div>
+
+      {lightboxIndex !== null && photos[lightboxIndex] && (
+        <PhotoLightbox
+          photos={photos}
+          index={lightboxIndex}
+          alt={plant.common_name}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
+      )}
 
       {/* ── How we trim it ── */}
       {hasTrimSection && (
