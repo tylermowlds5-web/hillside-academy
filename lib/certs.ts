@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { CertProgram, CertRequirement, CertAward } from '@/lib/types'
+import type { CertProgram, CertRequirement, CertAward, CertPageKind } from '@/lib/types'
 
 // ── Certification state loader + server-side gating ──────────────────────
 // Single source of truth for "which modules exist, which are complete, which
@@ -63,7 +63,7 @@ export type CertModule = {
   lessonImageUrl?: string | null
   // Ordered pages (lesson modules). Present and non-empty = paged lesson:
   // the module's content completes when every page completes, in order.
-  pages?: { id: string; kind: 'video' | 'text'; title: string | null; videoId: string | null; completed: boolean }[]
+  pages?: { id: string; kind: CertPageKind; title: string | null; videoId: string | null; completed: boolean }[]
 }
 
 export type CertProgramStatus = 'not_started' | 'in_progress' | 'certified' | 'expired'
@@ -218,8 +218,8 @@ export async function loadCertStates(
             .select('id, requirement_id, kind, video_id, title, sort_order')
             .in('requirement_id', reqIds)
             .order('sort_order')
-            .returns<{ id: string; requirement_id: string; kind: 'video' | 'text'; video_id: string | null; title: string | null; sort_order: number }[]>()
-        : Promise.resolve({ data: [] as { id: string; requirement_id: string; kind: 'video' | 'text'; video_id: string | null; title: string | null; sort_order: number }[] }),
+            .returns<{ id: string; requirement_id: string; kind: CertPageKind; video_id: string | null; title: string | null; sort_order: number }[]>()
+        : Promise.resolve({ data: [] as { id: string; requirement_id: string; kind: CertPageKind; video_id: string | null; title: string | null; sort_order: number }[] }),
       reqIds.length
         ? admin
             .from('cert_page_progress')
@@ -246,7 +246,7 @@ export async function loadCertStates(
   const donePageIds = new Set(
     (pageProgressRes.data ?? []).filter((p) => p.completed).map((p) => p.page_id)
   )
-  const pagesByReq = new Map<string, { id: string; kind: 'video' | 'text'; video_id: string | null; title: string | null }[]>()
+  const pagesByReq = new Map<string, { id: string; kind: CertPageKind; video_id: string | null; title: string | null }[]>()
   for (const pg of pagesRes.data ?? []) {
     const list = pagesByReq.get(pg.requirement_id) ?? []
     list.push(pg)

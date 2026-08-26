@@ -441,7 +441,7 @@ export type CertPageKind = 'video' | 'text' | 'plant'
 export type CertPage = {
   id: string
   requirement_id: string
-  kind: 'video' | 'text'
+  kind: CertPageKind
   video_id: string | null
   title: string | null
   body: string | null           // sanitized rich HTML

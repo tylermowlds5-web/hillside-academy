@@ -13,12 +13,13 @@ import {
   startCertQuizAttempt,
   submitCertQuizAttempt,
 } from '@/app/cert-actions'
-import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult } from '@/lib/types'
+import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult, PlantData } from '@/lib/types'
+import PlantPage from '@/components/cert/PlantPage'
 
 // One page of a paged lesson module, with this user's progress.
 export type LearnerPage = {
   id: string
-  kind: 'video' | 'text'
+  kind: 'video' | 'text' | 'plant'
   title: string | null
   body: string | null
   imageUrl: string | null
@@ -26,6 +27,9 @@ export type LearnerPage = {
   // Module category name, shown as a section label. Display only — never
   // affects order, gating, or the quiz.
   categoryLabel: string | null
+  // Structured plant reference (kind='plant'); completes on mark-as-read
+  // like a text page, never the video watch rule.
+  plantData: PlantData | null
   video: Video | null
   completed: boolean
   percent_watched: number
@@ -426,15 +430,10 @@ function CertQuizCard({
 const RICH_TEXT_CLASSES =
   'text-sm leading-relaxed text-plum/80 sm:text-base [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-plum [&_h3]:mb-1.5 [&_h3]:mt-4 [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-plum [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6'
 
-function TextPageView({
-  page,
-  completed,
-  onRead,
-}: {
-  page: LearnerPage
-  completed: boolean
-  onRead: () => Promise<void>
-}) {
+// Shared read-to-complete mechanics for text and plant pages: auto-complete
+// when a bottom sentinel scrolls into view, with a manual mark-as-read
+// fallback. Video pages never use this — they keep the watch rule.
+function useReadCompletion(completed: boolean, onRead: () => Promise<void>) {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const firedRef = useRef(false)
   const [busy, setBusy] = useState(false)
@@ -469,6 +468,64 @@ function TextPageView({
     return () => observer.disconnect()
   }, [completed, trigger])
 
+  const retry = useCallback(() => {
+    firedRef.current = false
+    trigger()
+  }, [trigger])
+
+  return { sentinelRef, busy, error, retry }
+}
+
+function ReadFooter({
+  completed,
+  busy,
+  error,
+  onMark,
+  className,
+}: {
+  completed: boolean
+  busy: boolean
+  error: string | null
+  onMark: () => void
+  className: string
+}) {
+  return (
+    <div className={className}>
+      {completed ? (
+        <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          Page complete
+        </p>
+      ) : (
+        <>
+          {error && <p className="mb-2 text-sm font-medium text-red-600">{error}</p>}
+          <button
+            type="button"
+            onClick={onMark}
+            disabled={busy}
+            className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {busy ? 'Saving…' : 'Mark as read'}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function TextPageView({
+  page,
+  completed,
+  onRead,
+}: {
+  page: LearnerPage
+  completed: boolean
+  onRead: () => Promise<void>
+}) {
+  const { sentinelRef, busy, error, retry } = useReadCompletion(completed, onRead)
+
   const img = page.imageUrl && (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -501,28 +558,50 @@ function TextPageView({
 
       <div ref={sentinelRef} aria-hidden="true" className="h-px" />
 
-      <div className="mt-6 border-t border-plum/10 pt-5">
-        {completed ? (
-          <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            Page complete
-          </p>
-        ) : (
-          <>
-            {error && <p className="mb-2 text-sm font-medium text-red-600">{error}</p>}
-            <button
-              type="button"
-              onClick={() => { firedRef.current = false; trigger() }}
-              disabled={busy}
-              className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {busy ? 'Saving…' : 'Mark as read'}
-            </button>
-          </>
-        )}
-      </div>
+      <ReadFooter
+        completed={completed}
+        busy={busy}
+        error={error}
+        onMark={retry}
+        className="mt-6 border-t border-plum/10 pt-5"
+      />
+    </div>
+  )
+}
+
+// Plant reference page: the PlantPage component renders its own card stack
+// on the tan background (no white wrapper card), followed by the same
+// read-to-complete footer as text pages.
+function PlantPageView({
+  page,
+  completed,
+  onRead,
+}: {
+  page: LearnerPage
+  completed: boolean
+  onRead: () => Promise<void>
+}) {
+  const { sentinelRef, busy, error, retry } = useReadCompletion(completed, onRead)
+
+  return (
+    <div>
+      {page.plantData ? (
+        <PlantPage plant={page.plantData} />
+      ) : (
+        <p className="rounded-xl border border-plum/10 bg-white p-6 text-sm text-plum/60">
+          This plant page has no content yet. Let an admin know.
+        </p>
+      )}
+
+      <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+
+      <ReadFooter
+        completed={completed}
+        busy={busy}
+        error={error}
+        onMark={retry}
+        className="mt-6 border-t border-plum/10 pt-5"
+      />
     </div>
   )
 }
@@ -638,6 +717,17 @@ function PagedLesson({
             This page&apos;s video is no longer available. Let an admin know.
           </p>
         )
+      ) : page.kind === 'plant' ? (
+        <PlantPageView
+          key={page.id}
+          page={page}
+          completed={done.has(page.id)}
+          onRead={async () => {
+            const res = await markCertPageRead(programId, requirementId, page.id)
+            if (res.error) throw new Error(res.error)
+            markDone(page.id)
+          }}
+        />
       ) : (
         <TextPageView
           key={page.id}

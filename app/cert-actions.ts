@@ -19,6 +19,7 @@ import type {
   CertServedGroup,
   ServedCertQuiz,
   CertQuizResult,
+  CertPageKind,
 } from '@/lib/types'
 
 // Must match VideoPlayer / updateVideoProgress.
@@ -90,7 +91,7 @@ async function pageOrderGate(
   userId: string,
   requirementId: string,
   pageId: string
-): Promise<{ ok: boolean; kind: 'video' | 'text' | null }> {
+): Promise<{ ok: boolean; kind: CertPageKind | null }> {
   const admin = createAdminClient()
   const [{ data: pages }, { data: progress }] = await Promise.all([
     admin
@@ -98,7 +99,7 @@ async function pageOrderGate(
       .select('id, kind')
       .eq('requirement_id', requirementId)
       .order('sort_order')
-      .returns<{ id: string; kind: 'video' | 'text' }[]>(),
+      .returns<{ id: string; kind: CertPageKind }[]>(),
     admin
       .from('cert_page_progress')
       .select('page_id, completed')
@@ -161,7 +162,7 @@ export async function updateCertPageProgress(
   }
 }
 
-// Text page completion (reached the bottom / mark as read).
+// Text and plant page completion (reached the bottom / mark as read).
 export async function markCertPageRead(
   programId: string,
   requirementId: string,
@@ -174,8 +175,10 @@ export async function markCertPageRead(
   if (!gate || gate.module.kind !== 'lesson') return { error: 'This module is locked.' }
   const order = await pageOrderGate(user.id, requirementId, pageId)
   if (!order.ok) return { error: 'Finish the earlier pages first.' }
-  // Mark-as-read is for TEXT pages only — video pages must be watched.
-  if (order.kind !== 'text') return { error: 'This page requires watching the video.' }
+  // Mark-as-read is for TEXT and PLANT pages — video pages must be watched.
+  if (order.kind !== 'text' && order.kind !== 'plant') {
+    return { error: 'This page requires watching the video.' }
+  }
 
   const { error } = await supabase.from('cert_page_progress').upsert(
     {
