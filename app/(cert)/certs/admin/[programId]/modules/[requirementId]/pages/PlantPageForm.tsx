@@ -431,7 +431,10 @@ export default function PlantPageForm({
 }: {
   pageId: string
   initial: PlantData | null
-  onSaved: (commonName: string) => void
+  // Receives the exact payload that was saved so the host list can update
+  // its local state — the form remounts from that state on reopen, and
+  // without this a close-and-reopen showed the stale pre-save version.
+  onSaved: (commonName: string, data: PlantData) => void
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<Draft>(() => normalize(initial))
@@ -515,10 +518,12 @@ export default function PlantPageForm({
     setSaving(true)
     setError(null)
     try {
-      await updateCertPlantPage(pageId, toPlantData(draft))
+      // Mirror the server's trim so local state matches what was stored.
+      const data = { ...toPlantData(draft), common_name: draft.common_name.trim() }
+      await updateCertPlantPage(pageId, data)
       setSaved(true)
       setDirty(false)
-      onSaved(draft.common_name.trim())
+      onSaved(data.common_name, data)
       return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')

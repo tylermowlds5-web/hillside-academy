@@ -85,6 +85,7 @@ function PageRow({
   onSetCategory,
   onRemove,
   onSaved,
+  onPlantSaved,
 }: {
   page: AdminPage
   position: number
@@ -92,6 +93,9 @@ function PageRow({
   onSetCategory: (categoryId: string | null) => void
   onRemove: () => void
   onSaved: () => void
+  // Plant saves must patch the parent's pages state (not just refresh):
+  // the plant form remounts from that state on reopen.
+  onPlantSaved: (commonName: string, data: PlantData) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
 
@@ -266,9 +270,9 @@ function PageRow({
           <PlantPageForm
             pageId={page.id}
             initial={page.plantData}
-            onSaved={(name) => {
+            onSaved={(name, data) => {
               setTitle(name)
-              onSaved()
+              onPlantSaved(name, data)
             }}
             onClose={() => setExpanded(false)}
           />
@@ -359,6 +363,13 @@ export default function PagesEditorClient({
     } finally {
       setAdding(false)
     }
+  }
+
+  // Patch local pages state with a saved plant payload — the plant form
+  // remounts from this state on reopen, so a refresh alone leaves it stale.
+  function handlePlantSaved(pageId: string, name: string, data: PlantData) {
+    setPages((prev) => prev.map((x) => (x.id === pageId ? { ...x, title: name, plantData: data } : x)))
+    router.refresh()
   }
 
   async function handleRemove(id: string) {
@@ -483,6 +494,7 @@ export default function PagesEditorClient({
                   onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
                   onRemove={() => handleRemove(p.id)}
                   onSaved={() => router.refresh()}
+                  onPlantSaved={(name, data) => handlePlantSaved(p.id, name, data)}
                 />
               ))}
             </div>
@@ -509,6 +521,7 @@ export default function PagesEditorClient({
                         onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
                         onRemove={() => handleRemove(p.id)}
                         onSaved={() => router.refresh()}
+                        onPlantSaved={(name, data) => handlePlantSaved(p.id, name, data)}
                       />
                     ))}
                   </div>
