@@ -11,6 +11,8 @@ import {
 } from '@/app/cert-admin-actions'
 import RichTextEditor from '../../../../RichTextEditor'
 import CategoryManagerClient, { type EditorCategory } from '../CategoryManagerClient'
+import PlantPageForm from './PlantPageForm'
+import type { PlantData } from '@/lib/types'
 import {
   DndContext,
   PointerSensor,
@@ -32,7 +34,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 export type AdminPage = {
   id: string
-  kind: 'video' | 'text'
+  kind: 'video' | 'text' | 'plant'
   videoId: string | null
   videoTitle: string | null
   title: string
@@ -40,6 +42,7 @@ export type AdminPage = {
   imageUrl: string | null
   imagePosition: 'top' | 'bottom' | 'left' | 'right'
   categoryId: string | null
+  plantData: PlantData | null
 }
 
 // Stable re-sort into canonical flat order; a page whose category no longer
@@ -150,7 +153,7 @@ function PageRow({
         </div>
         <span className="flex-shrink-0 w-6 text-sm font-semibold text-plum/50 text-center">{position}</span>
         <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider bg-plum/10 text-plum/60 px-2 py-0.5 rounded-full">
-          {page.kind === 'video' ? 'Video' : 'Text'}
+          {page.kind === 'video' ? 'Video' : page.kind === 'plant' ? 'Plant' : 'Text'}
         </span>
         <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">
           {page.kind === 'video' ? page.videoTitle : title || 'Untitled page'}
@@ -168,7 +171,7 @@ function PageRow({
             ))}
           </select>
         )}
-        {page.kind === 'text' && (
+        {(page.kind === 'text' || page.kind === 'plant') && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -257,6 +260,19 @@ function PageRow({
           </button>
         </div>
       )}
+
+      {expanded && page.kind === 'plant' && (
+        <div className="border-t border-plum/10 p-4">
+          <PlantPageForm
+            pageId={page.id}
+            initial={page.plantData}
+            onSaved={(name) => {
+              setTitle(name)
+              onSaved()
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -277,6 +293,7 @@ export default function PagesEditorClient({
   const [pages, setPages] = useState(() => flattenPages(initialPages, initialCategories))
   const [videoSearch, setVideoSearch] = useState('')
   const [textTitle, setTextTitle] = useState('')
+  const [plantName, setPlantName] = useState('')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -302,7 +319,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'video', videoId: video.id })
-      await appendPage({ id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top', categoryId: null })
+      await appendPage({ id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null })
       setVideoSearch('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -318,8 +335,24 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'text', title })
-      await appendPage({ id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top', categoryId: null })
+      await appendPage({ id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null })
       setTextTitle('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Add failed')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  async function handleAddPlant() {
+    const name = plantName.trim()
+    if (!name) { setError('Enter a plant name first'); return }
+    setAdding(true)
+    setError(null)
+    try {
+      const { id } = await addCertPage(requirementId, { kind: 'plant', commonName: name })
+      await appendPage({ id, kind: 'plant', videoId: null, videoTitle: null, title: name, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: { common_name: name } })
+      setPlantName('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
     } finally {
@@ -546,6 +579,33 @@ export default function PagesEditorClient({
               className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
             >
               Add page
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50 mb-2">
+            Add a plant page
+          </p>
+          <p className="text-xs text-plum/40 mb-2">
+            A structured plant reference — ID marks, quick facts, trim steps, tips, and common
+            mistakes. Completes on mark-as-read like a text page.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={plantName}
+              onChange={(e) => setPlantName(e.target.value)}
+              placeholder="Plant name, e.g. Arborvitae"
+              className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600"
+            />
+            <button
+              type="button"
+              onClick={handleAddPlant}
+              disabled={adding}
+              className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
+            >
+              Add plant
             </button>
           </div>
         </div>

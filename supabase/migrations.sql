@@ -813,3 +813,19 @@ CREATE POLICY "cert_categories_read" ON public.cert_categories
 DROP POLICY IF EXISTS "cert_categories_admin" ON public.cert_categories;
 CREATE POLICY "cert_categories_admin" ON public.cert_categories
   FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ── Step 11: Plant reference pages ────────────────────────────────────────
+-- A lesson page can now be a structured PLANT page (kind = 'plant'):
+-- plant_data holds the plant reference JSON (identification, quick facts,
+-- trim steps, tip sections, mistakes) rendered by components/cert/PlantPage.
+-- Plant pages complete on mark-as-read exactly like text pages — never the
+-- video watch rule. plant_data is course content (no answer keys), covered
+-- by the existing cert_pages read policy.
+
+ALTER TABLE public.cert_pages ADD COLUMN IF NOT EXISTS plant_data jsonb;
+
+-- Widen the page-kind CHECK (inline check from Step 9 is auto-named
+-- cert_pages_kind_check).
+ALTER TABLE public.cert_pages DROP CONSTRAINT IF EXISTS cert_pages_kind_check;
+ALTER TABLE public.cert_pages ADD CONSTRAINT cert_pages_kind_check
+  CHECK (kind in ('video', 'text', 'plant'));

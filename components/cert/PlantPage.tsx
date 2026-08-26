@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react'
+import type { PlantData } from '@/lib/types'
+
+export type { PlantData, PlantStep, PlantTipSection } from '@/lib/types'
 
 // ── Plant reference page ──────────────────────────────────────────────────
 // Renders one plant's ID-and-trimming reference (the arborvitae mock,
@@ -10,42 +13,6 @@ import type { ReactNode } from 'react'
 // entirely — no empty boxes or orphan headings. The only markup honored in
 // body strings is **bold** (rendered as <strong>); everything else is
 // plain text.
-
-type FactField = {
-  value?: string
-  note?: string
-}
-
-export type PlantStep = {
-  title: string
-  body: string
-  why_label?: string
-  why?: string
-}
-
-export type PlantTipSection = {
-  heading: string
-  sub?: string
-  cards: { title: string; body: string }[]
-}
-
-export type PlantData = {
-  common_name: string
-  pronunciation?: string
-  botanical_name?: string
-  plant_type?: string
-  photo_url?: string
-  spot_it?: string[]
-  also_called?: FactField
-  mature_size?: FactField
-  tools?: FactField
-  when_we_trim?: FactField
-  trim_summary?: string
-  know_this_first?: string
-  steps?: PlantStep[]
-  tip_sections?: PlantTipSection[]
-  mistakes?: string[]
-}
 
 const has = (s: string | undefined | null): s is string => !!s && s.trim() !== ''
 

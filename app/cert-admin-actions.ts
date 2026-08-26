@@ -6,7 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { QuizQuestion } from '@/lib/types'
+import type { PlantData, QuizQuestion } from '@/lib/types'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -168,7 +168,10 @@ function sanitizeRichText(html: string): string {
 
 export async function addCertPage(
   requirementId: string,
-  target: { kind: 'video'; videoId: string } | { kind: 'text'; title: string }
+  target:
+    | { kind: 'video'; videoId: string }
+    | { kind: 'text'; title: string }
+    | { kind: 'plant'; commonName: string }
 ): Promise<{ id: string }> {
   const { supabase } = await requireAdmin()
 
@@ -184,7 +187,16 @@ export async function addCertPage(
   const row =
     target.kind === 'video'
       ? { requirement_id: requirementId, kind: 'video', video_id: target.videoId, sort_order: nextOrder }
-      : { requirement_id: requirementId, kind: 'text', title: target.title.trim() || 'New page', sort_order: nextOrder }
+      : target.kind === 'plant'
+        ? {
+            requirement_id: requirementId,
+            kind: 'plant',
+            // title mirrors common_name so listings/tooltips work everywhere.
+            title: target.commonName.trim() || 'New plant',
+            plant_data: { common_name: target.commonName.trim() || 'New plant' },
+            sort_order: nextOrder,
+          }
+        : { requirement_id: requirementId, kind: 'text', title: target.title.trim() || 'New page', sort_order: nextOrder }
 
   const { data, error } = await supabase
     .from('cert_pages')
@@ -215,6 +227,26 @@ export async function updateCertTextPage(
     })
     .eq('id', pageId)
     .eq('kind', 'text')
+  if (error) throw new Error(error.message)
+}
+
+// Saves a plant page's structured content. plant_data strings render as
+// plain text (only **bold** is honored, and React escapes the rest), so no
+// HTML scrub is needed here.
+export async function updateCertPlantPage(pageId: string, data: PlantData) {
+  const { supabase } = await requireAdmin()
+  const commonName = data.common_name?.trim()
+  if (!commonName) throw new Error('Plant name is required')
+
+  const { error } = await supabase
+    .from('cert_pages')
+    .update({
+      plant_data: { ...data, common_name: commonName },
+      // title mirrors common_name so listings/tooltips work everywhere.
+      title: commonName,
+    })
+    .eq('id', pageId)
+    .eq('kind', 'plant')
   if (error) throw new Error(error.message)
 }
 

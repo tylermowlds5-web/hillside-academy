@@ -391,8 +391,53 @@ export type CertAssignment = {
   assigned_at: string
 }
 
-// One page inside a lesson module: a library video or a rich-text page with
-// an optional positioned image. kind='video' iff video_id set (DB CHECK).
+// ── Plant reference pages ─────────────────────────────────────────────────
+// Structured content of a kind='plant' cert page, rendered by
+// components/cert/PlantPage. Every field is optional display data — empty
+// strings/arrays simply hide their row. Body strings may use **bold**;
+// no other markup is honored.
+
+export type PlantFactField = {
+  value?: string
+  note?: string
+}
+
+export type PlantStep = {
+  title: string
+  body: string
+  why_label?: string
+  why?: string
+}
+
+export type PlantTipSection = {
+  heading: string
+  sub?: string
+  cards: { title: string; body: string }[]
+}
+
+export type PlantData = {
+  common_name: string
+  pronunciation?: string
+  botanical_name?: string
+  plant_type?: string
+  photo_url?: string
+  spot_it?: string[]
+  also_called?: PlantFactField
+  mature_size?: PlantFactField
+  tools?: PlantFactField
+  when_we_trim?: PlantFactField
+  trim_summary?: string
+  know_this_first?: string
+  steps?: PlantStep[]
+  tip_sections?: PlantTipSection[]
+  mistakes?: string[]
+}
+
+export type CertPageKind = 'video' | 'text' | 'plant'
+
+// One page inside a lesson module: a library video, a rich-text page with
+// an optional positioned image, or a structured plant reference page.
+// kind='video' iff video_id set (DB CHECK); plant_data on kind='plant'.
 export type CertPage = {
   id: string
   requirement_id: string
@@ -405,6 +450,7 @@ export type CertPage = {
   sort_order: number
   created_at: string
   category_id: string | null
+  plant_data: PlantData | null
 }
 
 // Admin-defined sub-category within a module, used purely to organize pages
