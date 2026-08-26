@@ -452,6 +452,17 @@ export default function PlantPageForm({
         </button>
       </div>
 
+      {/* Live preview on a tan swatch, exactly what the learner sees.
+          Rendered directly under the toolbar — putting it after the (long)
+          form meant it opened entirely below the viewport and looked like
+          the button did nothing. */}
+      {showPreview && (
+        <div className="rounded-2xl border border-plum/15 bg-tan p-4 sm:p-6">
+          <p className={`${SECTION_LBL} mb-4`}>Preview</p>
+          <PlantPage plant={toPlantData(draft)} />
+        </div>
+      )}
+
       {pasteOpen && (
         <div className="space-y-2 rounded-xl border border-plum/15 bg-plum/5 p-3">
           <p className="text-xs text-plum/60">
@@ -769,14 +780,6 @@ export default function PlantPageForm({
         </button>
         {saved && <span className="text-sm text-emerald-700">Saved</span>}
       </div>
-
-      {/* Live preview on a tan swatch, exactly what the learner sees */}
-      {showPreview && (
-        <div className="rounded-2xl border border-plum/15 bg-tan p-4 sm:p-6">
-          <p className={`${SECTION_LBL} mb-4`}>Preview</p>
-          <PlantPage plant={toPlantData(draft)} />
-        </div>
-      )}
     </div>
   )
 }
