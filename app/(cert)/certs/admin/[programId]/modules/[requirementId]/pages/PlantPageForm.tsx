@@ -1,27 +1,41 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { PlantData, PlantFactField } from '@/lib/types'
 import PlantPage from '@/components/cert/PlantPage'
 import { updateCertPlantPage } from '@/app/cert-admin-actions'
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 // ── Plant page form ───────────────────────────────────────────────────────
 // Structured editor for a kind='plant' cert page, saved wholesale to
-// cert_pages.plant_data. Every repeatable (spot-it lines, steps, tip
-// sections, tip cards, mistakes) supports add / remove / reorder.
-// "Paste plant copy" imports the PlantData JSON shape into the form
-// WITHOUT saving, validating field-by-field and listing everything that
-// failed instead of silently dropping it. "Export JSON" copies the current
-// form as that same shape. The live preview renders the real PlantPage
-// component on a tan swatch.
+// cert_pages.plant_data. Every repeatable (photos, spot-it lines, steps,
+// tip sections, tip cards, mistakes) supports add / remove and drag-handle
+// reorder (same @dnd-kit pattern as the pages editor). Draft rows carry a
+// client-only `key` so dnd has stable ids; keys are stripped on save and
+// export. "Paste plant copy" imports the PlantData JSON shape into the
+// form WITHOUT saving, validating field-by-field and listing everything
+// that failed instead of silently dropping it. "Export JSON" copies the
+// current form as that same shape. The live preview renders the real
+// PlantPage component on a tan swatch.
 
-// Draft mirrors PlantData with every field present (empty-string defaults)
-// so inputs are always controlled.
+let keySeq = 0
+const newKey = () => `row-${Date.now()}-${keySeq++}`
+
 type FactDraft = { value: string; note: string }
-type PhotoDraft = { url: string; caption: string }
-type StepDraft = { title: string; body: string; why_label: string; why: string }
-type CardDraft = { title: string; body: string }
-type TipSectionDraft = { heading: string; sub: string; cards: CardDraft[] }
+type LineDraft = { key: string; text: string }
+type PhotoDraft = { key: string; url: string; caption: string }
+type StepDraft = { key: string; title: string; body: string; why_label: string; why: string }
+type CardDraft = { key: string; title: string; body: string }
+type TipSectionDraft = { key: string; heading: string; sub: string; cards: CardDraft[] }
 
 type Draft = {
   common_name: string
@@ -29,7 +43,7 @@ type Draft = {
   botanical_name: string
   plant_type: string
   photos: PhotoDraft[]
-  spot_it: string[]
+  spot_it: LineDraft[]
   also_called: FactDraft
   mature_size: FactDraft
   tools: FactDraft
@@ -38,7 +52,7 @@ type Draft = {
   know_this_first: string
   steps: StepDraft[]
   tip_sections: TipSectionDraft[]
-  mistakes: string[]
+  mistakes: LineDraft[]
 }
 
 const FACT_KEYS = ['also_called', 'mature_size', 'tools', 'when_we_trim'] as const
@@ -49,20 +63,21 @@ const FACT_LABEL: Record<(typeof FACT_KEYS)[number], string> = {
   when_we_trim: 'When we trim it',
 }
 
-const emptyFact = (): FactDraft => ({ value: '', note: '' })
-
 function normalizeFact(f: PlantFactField | undefined): FactDraft {
   return { value: f?.value ?? '', note: f?.note ?? '' }
 }
+
+const toLines = (list: string[] | undefined): LineDraft[] =>
+  (list ?? []).map((text) => ({ key: newKey(), text }))
 
 function normalize(data: PlantData | null): Draft {
   // Backward compat: a legacy photo_url becomes the single primary photo
   // when the photos array is empty. Saving/exporting writes photos only.
   const photos: PhotoDraft[] = (data?.photos ?? [])
     .filter((p) => !!p.url)
-    .map((p) => ({ url: p.url, caption: p.caption ?? '' }))
+    .map((p) => ({ key: newKey(), url: p.url, caption: p.caption ?? '' }))
   if (photos.length === 0 && data?.photo_url) {
-    photos.push({ url: data.photo_url, caption: '' })
+    photos.push({ key: newKey(), url: data.photo_url, caption: '' })
   }
   return {
     common_name: data?.common_name ?? '',
@@ -70,7 +85,7 @@ function normalize(data: PlantData | null): Draft {
     botanical_name: data?.botanical_name ?? '',
     plant_type: data?.plant_type ?? '',
     photos,
-    spot_it: data?.spot_it ?? [],
+    spot_it: toLines(data?.spot_it),
     also_called: normalizeFact(data?.also_called),
     mature_size: normalizeFact(data?.mature_size),
     tools: normalizeFact(data?.tools),
@@ -78,32 +93,45 @@ function normalize(data: PlantData | null): Draft {
     trim_summary: data?.trim_summary ?? '',
     know_this_first: data?.know_this_first ?? '',
     steps: (data?.steps ?? []).map((s) => ({
+      key: newKey(),
       title: s.title ?? '',
       body: s.body ?? '',
       why_label: s.why_label ?? '',
       why: s.why ?? '',
     })),
     tip_sections: (data?.tip_sections ?? []).map((s) => ({
+      key: newKey(),
       heading: s.heading ?? '',
       sub: s.sub ?? '',
-      cards: (s.cards ?? []).map((c) => ({ title: c.title ?? '', body: c.body ?? '' })),
+      cards: (s.cards ?? []).map((c) => ({ key: newKey(), title: c.title ?? '', body: c.body ?? '' })),
     })),
-    mistakes: data?.mistakes ?? [],
+    mistakes: toLines(data?.mistakes),
   }
 }
 
 // Full JSON shape back out — every key present, matching the paste/export
-// format, so a round trip is lossless.
+// format, so a round trip is lossless. Client-only row keys are stripped.
 function toPlantData(d: Draft): PlantData {
-  return { ...d }
-}
-
-function move<T>(arr: T[], i: number, delta: -1 | 1): T[] {
-  const j = i + delta
-  if (j < 0 || j >= arr.length) return arr
-  const next = [...arr]
-  ;[next[i], next[j]] = [next[j], next[i]]
-  return next
+  return {
+    common_name: d.common_name,
+    pronunciation: d.pronunciation,
+    botanical_name: d.botanical_name,
+    plant_type: d.plant_type,
+    photos: d.photos.map(({ url, caption }) => ({ url, caption })),
+    spot_it: d.spot_it.map((l) => l.text),
+    also_called: d.also_called,
+    mature_size: d.mature_size,
+    tools: d.tools,
+    when_we_trim: d.when_we_trim,
+    trim_summary: d.trim_summary,
+    know_this_first: d.know_this_first,
+    steps: d.steps.map(({ key: _k, ...s }) => s),
+    tip_sections: d.tip_sections.map(({ key: _k, cards, ...s }) => ({
+      ...s,
+      cards: cards.map(({ key: _ck, ...c }) => c),
+    })),
+    mistakes: d.mistakes.map((l) => l.text),
+  }
 }
 
 // ── Paste-import validation ───────────────────────────────────────────────
@@ -126,10 +154,12 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
 
   const draft = normalize(null)
 
-  const takeStr = (key: keyof Draft & keyof PlantData) => {
+  const takeStr = (
+    key: 'common_name' | 'pronunciation' | 'botanical_name' | 'plant_type' | 'trim_summary' | 'know_this_first'
+  ) => {
     if (!(key in raw)) return
     const v = raw[key]
-    if (isStr(v)) (draft[key] as string) = v
+    if (isStr(v)) draft[key] = v
     else problems.push(`${key}: expected text`)
   }
   ;(['common_name', 'pronunciation', 'botanical_name', 'plant_type', 'trim_summary', 'know_this_first'] as const).forEach(takeStr)
@@ -145,7 +175,7 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
           return
         }
         if ('caption' in p && !isStr(p.caption)) problems.push(`photos[${i + 1}].caption: expected text`)
-        draft.photos.push({ url: p.url, caption: isStr(p.caption) ? p.caption : '' })
+        draft.photos.push({ key: newKey(), url: p.url, caption: isStr(p.caption) ? p.caption : '' })
       })
     }
   }
@@ -153,7 +183,9 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
   // list was given.
   if ('photo_url' in raw) {
     if (!isStr(raw.photo_url)) problems.push('photo_url: expected text')
-    else if (raw.photo_url && draft.photos.length === 0) draft.photos = [{ url: raw.photo_url, caption: '' }]
+    else if (raw.photo_url && draft.photos.length === 0) {
+      draft.photos = [{ key: newKey(), url: raw.photo_url, caption: '' }]
+    }
   }
 
   const takeStrList = (key: 'spot_it' | 'mistakes') => {
@@ -163,7 +195,7 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
       problems.push(`${key}: expected a list of text lines`)
       return
     }
-    draft[key] = v.filter(isStr)
+    draft[key] = toLines(v.filter(isStr))
     v.forEach((item, i) => {
       if (!isStr(item)) problems.push(`${key}[${i + 1}]: expected text`)
     })
@@ -199,6 +231,7 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
         if ('why_label' in s && !isStr(s.why_label)) problems.push(`steps[${i + 1}].why_label: expected text`)
         if ('why' in s && !isStr(s.why)) problems.push(`steps[${i + 1}].why: expected text`)
         draft.steps.push({
+          key: newKey(),
           title: s.title,
           body: s.body,
           why_label: isStr(s.why_label) ? s.why_label : '',
@@ -229,11 +262,11 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
                 problems.push(`tip_sections[${i + 1}].cards[${j + 1}]: expected { title, body } as text (card skipped)`)
                 return
               }
-              cards.push({ title: c.title, body: c.body })
+              cards.push({ key: newKey(), title: c.title, body: c.body })
             })
           }
         }
-        draft.tip_sections.push({ heading: s.heading, sub: isStr(s.sub) ? s.sub : '', cards })
+        draft.tip_sections.push({ key: newKey(), heading: s.heading, sub: isStr(s.sub) ? s.sub : '', cards })
       })
     }
   }
@@ -269,24 +302,72 @@ const SECTION_LBL = 'text-xs font-semibold uppercase tracking-[0.25em] text-plum
 const ADD_LINK = 'text-xs text-plum/50 hover:text-emerald-700 transition-colors'
 const REMOVE_BTN = 'flex-shrink-0 text-xs text-red-600 hover:text-red-500 px-2 py-1 rounded hover:bg-red-500/10'
 
-function MoveButtons({
-  index,
-  length,
-  onMove,
+// ── Drag-and-drop plumbing (same pattern as the pages editor) ─────────────
+
+function SortableRow({
+  id,
+  className,
+  children,
 }: {
-  index: number
-  length: number
-  onMove: (delta: -1 | 1) => void
+  id: string
+  className: string
+  // Render prop: receives the drag handle so each row places it in its own
+  // layout (inline for line rows, in the header strip for cards).
+  children: (handle: ReactNode) => ReactNode
 }) {
-  return (
-    <div className="flex flex-shrink-0 flex-col">
-      <button type="button" onClick={() => onMove(-1)} disabled={index === 0} title="Move up" className="px-1 leading-none text-plum/40 hover:text-plum/70 disabled:opacity-30">
-        ▲
-      </button>
-      <button type="button" onClick={() => onMove(1)} disabled={index === length - 1} title="Move down" className="px-1 leading-none text-plum/40 hover:text-plum/70 disabled:opacity-30">
-        ▼
-      </button>
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const handle = (
+    <div
+      {...attributes}
+      {...listeners}
+      className="cursor-grab active:cursor-grabbing text-plum/40 hover:text-plum/60 px-1 touch-none select-none flex-shrink-0"
+    >
+      <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">
+        <circle cx="3" cy="3" r="1.5" /><circle cx="9" cy="3" r="1.5" />
+        <circle cx="3" cy="8" r="1.5" /><circle cx="9" cy="8" r="1.5" />
+        <circle cx="3" cy="13" r="1.5" /><circle cx="9" cy="13" r="1.5" />
+      </svg>
     </div>
+  )
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      className={className}
+    >
+      {children(handle)}
+    </div>
+  )
+}
+
+function SortableList<T extends { key: string }>({
+  items,
+  onReorder,
+  className,
+  children,
+}: {
+  items: T[]
+  onReorder: (next: T[]) => void
+  className: string
+  children: ReactNode
+}) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = items.findIndex((x) => x.key === active.id)
+    const newIndex = items.findIndex((x) => x.key === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    onReorder(arrayMove(items, oldIndex, newIndex))
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={items.map((x) => x.key)} strategy={verticalListSortingStrategy}>
+        <div className={className}>{children}</div>
+      </SortableContext>
+    </DndContext>
   )
 }
 
@@ -298,30 +379,44 @@ function StringListEditor({
 }: {
   label: string
   placeholder: string
-  items: string[]
-  onChange: (next: string[]) => void
+  items: LineDraft[]
+  onChange: (next: LineDraft[]) => void
 }) {
   return (
     <div>
       <p className={`${SECTION_LBL} mb-2`}>{label}</p>
-      <div className="space-y-1.5">
+      <SortableList items={items} onReorder={onChange} className="space-y-1.5">
         {items.map((line, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <MoveButtons index={i} length={items.length} onMove={(d) => onChange(move(items, i, d))} />
-            <input
-              type="text"
-              value={line}
-              onChange={(e) => onChange(items.map((x, xi) => (xi === i ? e.target.value : x)))}
-              placeholder={placeholder}
-              className={INPUT}
-            />
-            <button type="button" onClick={() => onChange(items.filter((_, xi) => xi !== i))} className={REMOVE_BTN}>
-              Remove
-            </button>
-          </div>
+          <SortableRow key={line.key} id={line.key} className="flex items-center gap-2">
+            {(handle) => (
+              <>
+                {handle}
+                <input
+                  type="text"
+                  value={line.text}
+                  onChange={(e) =>
+                    onChange(items.map((x, xi) => (xi === i ? { ...x, text: e.target.value } : x)))
+                  }
+                  placeholder={placeholder}
+                  className={INPUT}
+                />
+                <button
+                  type="button"
+                  onClick={() => onChange(items.filter((_, xi) => xi !== i))}
+                  className={REMOVE_BTN}
+                >
+                  Remove
+                </button>
+              </>
+            )}
+          </SortableRow>
         ))}
-      </div>
-      <button type="button" onClick={() => onChange([...items, ''])} className={`${ADD_LINK} mt-1.5`}>
+      </SortableList>
+      <button
+        type="button"
+        onClick={() => onChange([...items, { key: newKey(), text: '' }])}
+        className={`${ADD_LINK} mt-1.5`}
+      >
         + Add line
       </button>
     </div>
@@ -363,7 +458,7 @@ export default function PlantPageForm({
       // the failure are kept.
       for (const file of files) {
         const url = await uploadCertImage(file)
-        setDraft((prev) => ({ ...prev, photos: [...prev.photos, { url, caption: '' }] }))
+        setDraft((prev) => ({ ...prev, photos: [...prev.photos, { key: newKey(), url, caption: '' }] }))
         setSaved(false)
       }
     } catch (err) {
@@ -527,33 +622,45 @@ export default function PlantPageForm({
       <div>
         <p className={`${SECTION_LBL} mb-2`}>Photos</p>
         <p className="mb-2 text-xs text-plum/40">
-          The first photo is the primary shown in the top card; additional photos appear as a
-          captioned gallery below it. Captions are optional.
+          Drag to reorder — the first photo is the primary shown in the top card; additional
+          photos appear as a captioned gallery below it. Captions are optional.
         </p>
-        <div className="space-y-2">
+        <SortableList
+          items={draft.photos}
+          onReorder={(photos) => patch({ photos })}
+          className="space-y-2"
+        >
           {draft.photos.map((photo, i) => (
-            <div key={`${photo.url}-${i}`} className="flex items-center gap-2 rounded-xl border border-plum/10 bg-plum/5 p-2">
-              <MoveButtons index={i} length={draft.photos.length} onMove={(d) => patch({ photos: move(draft.photos, i, d) })} />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photo.url} alt="" className="h-16 w-24 flex-shrink-0 rounded-lg border border-plum/20 object-cover" />
-              {i === 0 && (
-                <span className="flex-shrink-0 rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                  Primary
-                </span>
+            <SortableRow
+              key={photo.key}
+              id={photo.key}
+              className="flex items-center gap-2 rounded-xl border border-plum/10 bg-plum/5 p-2"
+            >
+              {(handle) => (
+                <>
+                  {handle}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.url} alt="" className="h-16 w-24 flex-shrink-0 rounded-lg border border-plum/20 object-cover" />
+                  {i === 0 && (
+                    <span className="flex-shrink-0 rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                      Primary
+                    </span>
+                  )}
+                  <input
+                    type="text"
+                    value={photo.caption}
+                    onChange={(e) => patch({ photos: draft.photos.map((x, xi) => (xi === i ? { ...x, caption: e.target.value } : x)) })}
+                    placeholder="Caption (optional)"
+                    className={INPUT}
+                  />
+                  <button type="button" onClick={() => patch({ photos: draft.photos.filter((_, xi) => xi !== i) })} className={REMOVE_BTN}>
+                    Remove
+                  </button>
+                </>
               )}
-              <input
-                type="text"
-                value={photo.caption}
-                onChange={(e) => patch({ photos: draft.photos.map((x, xi) => (xi === i ? { ...x, caption: e.target.value } : x)) })}
-                placeholder="Caption (optional)"
-                className={INPUT}
-              />
-              <button type="button" onClick={() => patch({ photos: draft.photos.filter((_, xi) => xi !== i) })} className={REMOVE_BTN}>
-                Remove
-              </button>
-            </div>
+            </SortableRow>
           ))}
-        </div>
+        </SortableList>
         <label className="mt-2 inline-block cursor-pointer rounded bg-emerald-600/10 px-3 py-2 text-center text-xs text-emerald-700 hover:bg-emerald-600/15 hover:text-emerald-800">
           {uploading ? 'Uploading…' : draft.photos.length > 0 ? 'Add photos' : 'Upload photos'}
           <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotos} disabled={uploading} />
@@ -609,52 +716,64 @@ export default function PlantPageForm({
       {/* Steps */}
       <div>
         <p className={`${SECTION_LBL} mb-2`}>Trim steps</p>
-        <div className="space-y-2.5">
+        <SortableList
+          items={draft.steps}
+          onReorder={(steps) => patch({ steps })}
+          className="space-y-2.5"
+        >
           {draft.steps.map((step, i) => (
-            <div key={i} className="rounded-xl border border-plum/10 bg-plum/5 p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <MoveButtons index={i} length={draft.steps.length} onMove={(d) => patch({ steps: move(draft.steps, i, d) })} />
-                <span className="text-xs font-semibold text-plum/50">Step {i + 1}</span>
-                <button type="button" onClick={() => patch({ steps: draft.steps.filter((_, xi) => xi !== i) })} className={`${REMOVE_BTN} ml-auto`}>
-                  Remove
-                </button>
-              </div>
-              <input
-                type="text"
-                value={step.title}
-                onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, title: e.target.value } : x)) })}
-                placeholder="Step title"
-                className={INPUT}
-              />
-              <textarea
-                value={step.body}
-                onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, body: e.target.value } : x)) })}
-                rows={2}
-                placeholder="What to do (**bold** supported)"
-                className={`${INPUT} mt-1.5`}
-              />
-              <div className="mt-1.5 grid gap-1.5 sm:grid-cols-[180px_1fr]">
-                <input
-                  type="text"
-                  value={step.why_label}
-                  onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, why_label: e.target.value } : x)) })}
-                  placeholder="Why label (optional)"
-                  className={INPUT}
-                />
-                <input
-                  type="text"
-                  value={step.why}
-                  onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, why: e.target.value } : x)) })}
-                  placeholder="Why it matters (optional)"
-                  className={INPUT}
-                />
-              </div>
-            </div>
+            <SortableRow
+              key={step.key}
+              id={step.key}
+              className="rounded-xl border border-plum/10 bg-plum/5 p-3"
+            >
+              {(handle) => (
+                <>
+                  <div className="mb-2 flex items-center gap-2">
+                    {handle}
+                    <span className="text-xs font-semibold text-plum/50">Step {i + 1}</span>
+                    <button type="button" onClick={() => patch({ steps: draft.steps.filter((_, xi) => xi !== i) })} className={`${REMOVE_BTN} ml-auto`}>
+                      Remove
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={step.title}
+                    onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, title: e.target.value } : x)) })}
+                    placeholder="Step title"
+                    className={INPUT}
+                  />
+                  <textarea
+                    value={step.body}
+                    onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, body: e.target.value } : x)) })}
+                    rows={2}
+                    placeholder="What to do (**bold** supported)"
+                    className={`${INPUT} mt-1.5`}
+                  />
+                  <div className="mt-1.5 grid gap-1.5 sm:grid-cols-[180px_1fr]">
+                    <input
+                      type="text"
+                      value={step.why_label}
+                      onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, why_label: e.target.value } : x)) })}
+                      placeholder="Why label (optional)"
+                      className={INPUT}
+                    />
+                    <input
+                      type="text"
+                      value={step.why}
+                      onChange={(e) => patch({ steps: draft.steps.map((x, xi) => (xi === i ? { ...x, why: e.target.value } : x)) })}
+                      placeholder="Why it matters (optional)"
+                      className={INPUT}
+                    />
+                  </div>
+                </>
+              )}
+            </SortableRow>
           ))}
-        </div>
+        </SortableList>
         <button
           type="button"
-          onClick={() => patch({ steps: [...draft.steps, { title: '', body: '', why_label: '', why: '' }] })}
+          onClick={() => patch({ steps: [...draft.steps, { key: newKey(), title: '', body: '', why_label: '', why: '' }] })}
           className={`${ADD_LINK} mt-1.5`}
         >
           + Add step
@@ -664,96 +783,116 @@ export default function PlantPageForm({
       {/* Tip sections */}
       <div>
         <p className={`${SECTION_LBL} mb-2`}>Tip sections</p>
-        <div className="space-y-3">
+        <SortableList
+          items={draft.tip_sections}
+          onReorder={(tip_sections) => patch({ tip_sections })}
+          className="space-y-3"
+        >
           {draft.tip_sections.map((section, si) => (
-            <div key={si} className="rounded-xl border border-plum/10 bg-plum/5 p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <MoveButtons index={si} length={draft.tip_sections.length} onMove={(d) => patch({ tip_sections: move(draft.tip_sections, si, d) })} />
-                <span className="text-xs font-semibold text-plum/50">Section {si + 1}</span>
-                <button type="button" onClick={() => patch({ tip_sections: draft.tip_sections.filter((_, xi) => xi !== si) })} className={`${REMOVE_BTN} ml-auto`}>
-                  Remove section
-                </button>
-              </div>
-              <input
-                type="text"
-                value={section.heading}
-                onChange={(e) => patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, heading: e.target.value } : x)) })}
-                placeholder="Section heading, e.g. Good to know"
-                className={INPUT}
-              />
-              <input
-                type="text"
-                value={section.sub}
-                onChange={(e) => patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, sub: e.target.value } : x)) })}
-                placeholder="Subtitle (optional)"
-                className={`${INPUT} mt-1.5`}
-              />
-              <div className="mt-2.5 space-y-2">
-                {section.cards.map((card, ci) => (
-                  <div key={ci} className="rounded-lg border border-plum/10 bg-white p-2.5">
-                    <div className="mb-1.5 flex items-center gap-2">
-                      <MoveButtons
-                        index={ci}
-                        length={section.cards.length}
-                        onMove={(d) =>
-                          patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, cards: move(x.cards, ci, d) } : x)) })
-                        }
-                      />
-                      <span className="text-[11px] font-semibold text-plum/40">Card {ci + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, cards: x.cards.filter((_, ci2) => ci2 !== ci) } : x)) })
-                        }
-                        className={`${REMOVE_BTN} ml-auto`}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={card.title}
-                      onChange={(e) =>
-                        patch({
-                          tip_sections: draft.tip_sections.map((x, xi) =>
-                            xi === si ? { ...x, cards: x.cards.map((c, ci2) => (ci2 === ci ? { ...c, title: e.target.value } : c)) } : x
-                          ),
-                        })
-                      }
-                      placeholder="Card title"
-                      className={INPUT}
-                    />
-                    <textarea
-                      value={card.body}
-                      onChange={(e) =>
-                        patch({
-                          tip_sections: draft.tip_sections.map((x, xi) =>
-                            xi === si ? { ...x, cards: x.cards.map((c, ci2) => (ci2 === ci ? { ...c, body: e.target.value } : c)) } : x
-                          ),
-                        })
-                      }
-                      rows={2}
-                      placeholder="Card body (**bold** supported)"
-                      className={`${INPUT} mt-1.5`}
-                    />
+            <SortableRow
+              key={section.key}
+              id={section.key}
+              className="rounded-xl border border-plum/10 bg-plum/5 p-3"
+            >
+              {(sectionHandle) => (
+                <>
+                  <div className="mb-2 flex items-center gap-2">
+                    {sectionHandle}
+                    <span className="text-xs font-semibold text-plum/50">Section {si + 1}</span>
+                    <button type="button" onClick={() => patch({ tip_sections: draft.tip_sections.filter((_, xi) => xi !== si) })} className={`${REMOVE_BTN} ml-auto`}>
+                      Remove section
+                    </button>
                   </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, cards: [...x.cards, { title: '', body: '' }] } : x)) })
-                }
-                className={`${ADD_LINK} mt-1.5`}
-              >
-                + Add card
-              </button>
-            </div>
+                  <input
+                    type="text"
+                    value={section.heading}
+                    onChange={(e) => patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, heading: e.target.value } : x)) })}
+                    placeholder="Section heading, e.g. Good to know"
+                    className={INPUT}
+                  />
+                  <input
+                    type="text"
+                    value={section.sub}
+                    onChange={(e) => patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, sub: e.target.value } : x)) })}
+                    placeholder="Subtitle (optional)"
+                    className={`${INPUT} mt-1.5`}
+                  />
+                  <SortableList
+                    items={section.cards}
+                    onReorder={(cards) =>
+                      patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, cards } : x)) })
+                    }
+                    className="mt-2.5 space-y-2"
+                  >
+                    {section.cards.map((card, ci) => (
+                      <SortableRow
+                        key={card.key}
+                        id={card.key}
+                        className="rounded-lg border border-plum/10 bg-white p-2.5"
+                      >
+                        {(cardHandle) => (
+                          <>
+                            <div className="mb-1.5 flex items-center gap-2">
+                              {cardHandle}
+                              <span className="text-[11px] font-semibold text-plum/40">Card {ci + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, cards: x.cards.filter((_, ci2) => ci2 !== ci) } : x)) })
+                                }
+                                className={`${REMOVE_BTN} ml-auto`}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              value={card.title}
+                              onChange={(e) =>
+                                patch({
+                                  tip_sections: draft.tip_sections.map((x, xi) =>
+                                    xi === si ? { ...x, cards: x.cards.map((c, ci2) => (ci2 === ci ? { ...c, title: e.target.value } : c)) } : x
+                                  ),
+                                })
+                              }
+                              placeholder="Card title"
+                              className={INPUT}
+                            />
+                            <textarea
+                              value={card.body}
+                              onChange={(e) =>
+                                patch({
+                                  tip_sections: draft.tip_sections.map((x, xi) =>
+                                    xi === si ? { ...x, cards: x.cards.map((c, ci2) => (ci2 === ci ? { ...c, body: e.target.value } : c)) } : x
+                                  ),
+                                })
+                              }
+                              rows={2}
+                              placeholder="Card body (**bold** supported)"
+                              className={`${INPUT} mt-1.5`}
+                            />
+                          </>
+                        )}
+                      </SortableRow>
+                    ))}
+                  </SortableList>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patch({ tip_sections: draft.tip_sections.map((x, xi) => (xi === si ? { ...x, cards: [...x.cards, { key: newKey(), title: '', body: '' }] } : x)) })
+                    }
+                    className={`${ADD_LINK} mt-1.5`}
+                  >
+                    + Add card
+                  </button>
+                </>
+              )}
+            </SortableRow>
           ))}
-        </div>
+        </SortableList>
         <button
           type="button"
-          onClick={() => patch({ tip_sections: [...draft.tip_sections, { heading: '', sub: '', cards: [] }] })}
+          onClick={() => patch({ tip_sections: [...draft.tip_sections, { key: newKey(), heading: '', sub: '', cards: [] }] })}
           className={`${ADD_LINK} mt-1.5`}
         >
           + Add tip section
