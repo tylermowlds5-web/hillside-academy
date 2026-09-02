@@ -1,10 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import type { PageBlock } from '@/lib/types'
+import type { PageBlock, PhotoAspect } from '@/lib/types'
 import PageBlocks from '@/components/cert/PageBlocks'
 import { saveCertTextPage } from '@/app/cert-admin-actions'
+import {
+  compactFraming,
+  DEFAULT_FRAMING,
+  framingOf,
+  PHOTO_ASPECTS,
+  photoAspect,
+  photoFrameStyle,
+  type PhotoFraming,
+} from '@/lib/photo-framing'
 import RichTextEditor from '../../../../RichTextEditor'
+import PhotoFrameEditor from './PhotoFrameEditor'
 import { newKey, SortableList, SortableRow } from './sortable'
 
 // ── Text page block editor ────────────────────────────────────────────────
@@ -17,7 +27,8 @@ import { newKey, SortableList, SortableRow } from './sortable'
 // Draft rows carry client-only keys for dnd, stripped on save.
 
 type LineRow = { key: string; text: string }
-type PhotoRow = { key: string; url: string; caption: string }
+// framing = non-destructive crop (focus point, zoom, fill vs. show whole).
+type PhotoRow = { key: string; url: string; caption: string; framing: PhotoFraming }
 
 type BlockDraft =
   | { key: string; type: 'heading'; text: string; sub: string }
@@ -25,7 +36,15 @@ type BlockDraft =
   | { key: string; type: 'card'; title: string; body: string }
   | { key: string; type: 'callout'; label: string; body: string }
   | { key: string; type: 'bullets'; items: LineRow[] }
-  | { key: string; type: 'photos'; photos: PhotoRow[] }
+  // aspect undefined = auto (wide for one photo, standard for a grid).
+  | { key: string; type: 'photos'; photos: PhotoRow[]; aspect?: PhotoAspect }
+
+const newPhotoRow = (url: string): PhotoRow => ({ key: newKey(), url, caption: '', framing: DEFAULT_FRAMING })
+
+// The frame shape a photos block renders with (mirrors PageBlocks).
+function blockAspect(block: Extract<BlockDraft, { type: 'photos' }>) {
+  return photoAspect(block.aspect, block.photos.length === 1 ? 'wide' : 'standard')
+}
 
 const BLOCK_LABEL: Record<BlockDraft['type'], string> = {
   heading: 'Section heading',
@@ -62,7 +81,13 @@ function normalizeBlocks(
         case 'card': return { key, type: 'card', title: b.title ?? '', body: b.body ?? '' }
         case 'callout': return { key, type: 'callout', label: b.label ?? '', body: b.body ?? '' }
         case 'bullets': return { key, type: 'bullets', items: (b.items ?? []).map((text) => ({ key: newKey(), text })) }
-        case 'photos': return { key, type: 'photos', photos: (b.photos ?? []).map((p) => ({ key: newKey(), url: p.url, caption: p.caption ?? '' })) }
+        case 'photos':
+          return {
+            key,
+            type: 'photos',
+            aspect: b.aspect,
+            photos: (b.photos ?? []).map((p) => ({ key: newKey(), url: p.url, caption: p.caption ?? '', framing: framingOf(p) })),
+          }
       }
     })
   }
@@ -71,7 +96,7 @@ function normalizeBlocks(
   const seeded: BlockDraft[] = []
   if (legacyBody.trim()) seeded.push({ key: newKey(), type: 'richtext', html: legacyBody })
   if (legacyImageUrl) {
-    seeded.push({ key: newKey(), type: 'photos', photos: [{ key: newKey(), url: legacyImageUrl, caption: '' }] })
+    seeded.push({ key: newKey(), type: 'photos', photos: [newPhotoRow(legacyImageUrl)] })
   }
   return seeded
 }
@@ -84,7 +109,12 @@ function toBlocks(drafts: BlockDraft[]): PageBlock[] {
       case 'card': return { type: 'card', title: b.title, body: b.body }
       case 'callout': return { type: 'callout', label: b.label, body: b.body }
       case 'bullets': return { type: 'bullets', items: b.items.map((l) => l.text) }
-      case 'photos': return { type: 'photos', photos: b.photos.map(({ url, caption }) => ({ url, caption })) }
+      case 'photos':
+        return {
+          type: 'photos',
+          ...(b.aspect ? { aspect: b.aspect } : {}),
+          photos: b.photos.map(({ url, caption, framing }) => ({ url, caption, ...compactFraming(framing) })),
+        }
     }
   })
 }
@@ -135,6 +165,25 @@ export default function PageBlocksEditor({
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  // Photo currently open in the framing dialog (block index + photo index).
+  const [adjusting, setAdjusting] = useState<{ block: number; photo: number } | null>(null)
+
+  const adjustingBlock =
+    adjusting !== null && blocks[adjusting.block]?.type === 'photos'
+      ? (blocks[adjusting.block] as Extract<BlockDraft, { type: 'photos' }>)
+      : null
+  const adjustingPhoto = adjustingBlock && adjusting ? adjustingBlock.photos[adjusting.photo] ?? null : null
+
+  function setPhotoFraming(bi: number, pi: number, framing: PhotoFraming) {
+    touch()
+    setBlocks((prev) =>
+      prev.map((b, i) =>
+        i === bi && b.type === 'photos'
+          ? { ...b, photos: b.photos.map((p, j) => (j === pi ? { ...p, framing } : p)) }
+          : b
+      )
+    )
+  }
 
   function touch() {
     setSaved(false)
@@ -168,7 +217,7 @@ export default function PageBlocksEditor({
         setBlocks((prev) =>
           prev.map((b, i) =>
             i === idx && b.type === 'photos'
-              ? { ...b, photos: [...b.photos, { key: newKey(), url, caption: '' }] }
+              ? { ...b, photos: [...b.photos, newPhotoRow(url)] }
               : b
           )
         )
@@ -289,6 +338,30 @@ export default function PageBlocksEditor({
                   <span className="text-[10px] font-bold uppercase tracking-wider bg-plum/10 text-plum/60 px-2 py-0.5 rounded-full">
                     {BLOCK_LABEL[block.type]}
                   </span>
+                  {block.type === 'photos' && (
+                    <label className="ml-2 flex items-center gap-1.5 text-[11px] text-plum/60">
+                      Frame
+                      <select
+                        value={block.aspect ?? 'auto'}
+                        onChange={(e) =>
+                          updateBlock(bi, {
+                            ...block,
+                            aspect: e.target.value === 'auto' ? undefined : (e.target.value as PhotoAspect),
+                          })
+                        }
+                        className="rounded-md border border-plum/20 bg-white px-1.5 py-0.5 text-[11px] text-plum focus:border-emerald-600 focus:outline-none"
+                      >
+                        <option value="auto">
+                          Auto ({block.photos.length === 1 ? 'wide' : 'standard'})
+                        </option>
+                        {PHOTO_ASPECTS.map((a) => (
+                          <option key={a.value} value={a.value}>
+                            {a.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <button type="button" onClick={() => removeBlock(bi)} className={`${REMOVE_BTN} ml-auto`}>
                     Remove
                   </button>
@@ -413,8 +486,18 @@ export default function PageBlocksEditor({
                           {(photoHandle) => (
                             <>
                               {photoHandle}
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={photo.url} alt="" className="h-16 w-24 flex-shrink-0 rounded-lg border border-plum/20 object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => setAdjusting({ block: bi, photo: pi })}
+                                title="Adjust framing"
+                                className={`relative h-16 flex-shrink-0 overflow-hidden rounded-lg border border-plum/20 bg-plum/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                                  blockAspect(block).ratio >= 1 ? 'w-24' : 'w-12'
+                                }`}
+                                style={{ aspectRatio: blockAspect(block).ratio }}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={photo.url} alt="" className="absolute inset-0 h-full w-full" style={photoFrameStyle(photo.framing)} />
+                              </button>
                               <input
                                 type="text"
                                 value={photo.caption}
@@ -424,6 +507,13 @@ export default function PageBlocksEditor({
                                 placeholder="Caption (optional)"
                                 className={INPUT}
                               />
+                              <button
+                                type="button"
+                                onClick={() => setAdjusting({ block: bi, photo: pi })}
+                                className="flex-shrink-0 rounded px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-600/10"
+                              >
+                                Adjust
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => updateBlock(bi, { ...block, photos: block.photos.filter((_, xi) => xi !== pi) })}
@@ -466,6 +556,20 @@ export default function PageBlocksEditor({
       </div>
 
       <div className="border-t border-plum/10 pt-4">{actionBar}</div>
+
+      {adjusting && adjustingBlock && adjustingPhoto && (
+        <PhotoFrameEditor
+          url={adjustingPhoto.url}
+          initial={adjustingPhoto.framing}
+          ratio={blockAspect(adjustingBlock).ratio}
+          frameLabel={blockAspect(adjustingBlock).label}
+          onDone={(framing) => {
+            setPhotoFraming(adjusting.block, adjusting.photo, framing)
+            setAdjusting(null)
+          }}
+          onClose={() => setAdjusting(null)}
+        />
+      )}
     </div>
   )
 }

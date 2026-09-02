@@ -4,6 +4,8 @@ import { useState } from 'react'
 import type { PlantData, PlantFactField } from '@/lib/types'
 import PlantPage from '@/components/cert/PlantPage'
 import { updateCertPlantPage } from '@/app/cert-admin-actions'
+import { compactFraming, DEFAULT_FRAMING, framingOf, photoFrameStyle, type PhotoFraming } from '@/lib/photo-framing'
+import PhotoFrameEditor from './PhotoFrameEditor'
 import { newKey, SortableList, SortableRow } from './sortable'
 
 // ── Plant page form ───────────────────────────────────────────────────────
@@ -20,7 +22,8 @@ import { newKey, SortableList, SortableRow } from './sortable'
 
 type FactDraft = { value: string; note: string }
 type LineDraft = { key: string; text: string }
-type PhotoDraft = { key: string; url: string; caption: string }
+// framing = non-destructive crop (focus point, zoom, fill vs. show whole).
+type PhotoDraft = { key: string; url: string; caption: string; framing: PhotoFraming }
 type StepDraft = { key: string; title: string; body: string; why_label: string; why: string }
 type CardDraft = { key: string; title: string; body: string }
 type TipSectionDraft = { key: string; heading: string; sub: string; cards: CardDraft[] }
@@ -63,9 +66,9 @@ function normalize(data: PlantData | null): Draft {
   // when the photos array is empty. Saving/exporting writes photos only.
   const photos: PhotoDraft[] = (data?.photos ?? [])
     .filter((p) => !!p.url)
-    .map((p) => ({ key: newKey(), url: p.url, caption: p.caption ?? '' }))
+    .map((p) => ({ key: newKey(), url: p.url, caption: p.caption ?? '', framing: framingOf(p) }))
   if (photos.length === 0 && data?.photo_url) {
-    photos.push({ key: newKey(), url: data.photo_url, caption: '' })
+    photos.push({ key: newKey(), url: data.photo_url, caption: '', framing: DEFAULT_FRAMING })
   }
   return {
     common_name: data?.common_name ?? '',
@@ -105,7 +108,7 @@ function toPlantData(d: Draft): PlantData {
     pronunciation: d.pronunciation,
     botanical_name: d.botanical_name,
     plant_type: d.plant_type,
-    photos: d.photos.map(({ url, caption }) => ({ url, caption })),
+    photos: d.photos.map(({ url, caption, framing }) => ({ url, caption, ...compactFraming(framing) })),
     spot_it: d.spot_it.map((l) => l.text),
     also_called: d.also_called,
     mature_size: d.mature_size,
@@ -163,7 +166,11 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
           return
         }
         if ('caption' in p && !isStr(p.caption)) problems.push(`photos[${i + 1}].caption: expected text`)
-        draft.photos.push({ key: newKey(), url: p.url, caption: isStr(p.caption) ? p.caption : '' })
+        if ('fit' in p && p.fit !== 'cover' && p.fit !== 'contain') problems.push(`photos[${i + 1}].fit: expected "cover" or "contain"`)
+        ;(['focus_x', 'focus_y', 'zoom'] as const).forEach((k) => {
+          if (k in p && typeof p[k] !== 'number') problems.push(`photos[${i + 1}].${k}: expected a number`)
+        })
+        draft.photos.push({ key: newKey(), url: p.url, caption: isStr(p.caption) ? p.caption : '', framing: framingOf(p) })
       })
     }
   }
@@ -172,7 +179,7 @@ function importPlantJson(text: string): { draft: Draft; problems: string[] } {
   if ('photo_url' in raw) {
     if (!isStr(raw.photo_url)) problems.push('photo_url: expected text')
     else if (raw.photo_url && draft.photos.length === 0) {
-      draft.photos = [{ key: newKey(), url: raw.photo_url, caption: '' }]
+      draft.photos = [{ key: newKey(), url: raw.photo_url, caption: '', framing: DEFAULT_FRAMING }]
     }
   }
 
@@ -367,6 +374,9 @@ export default function PlantPageForm({
   const [pasteText, setPasteText] = useState('')
   const [importProblems, setImportProblems] = useState<string[] | null>(null)
   const [copied, setCopied] = useState(false)
+  // Index of the photo open in the framing dialog.
+  const [adjusting, setAdjusting] = useState<number | null>(null)
+  const adjustingPhoto = adjusting !== null ? draft.photos[adjusting] ?? null : null
 
   function patch(p: Partial<Draft>) {
     setSaved(false)
@@ -384,7 +394,7 @@ export default function PlantPageForm({
       // the failure are kept.
       for (const file of files) {
         const url = await uploadCertImage(file)
-        setDraft((prev) => ({ ...prev, photos: [...prev.photos, { key: newKey(), url, caption: '' }] }))
+        setDraft((prev) => ({ ...prev, photos: [...prev.photos, { key: newKey(), url, caption: '', framing: DEFAULT_FRAMING }] }))
         setSaved(false)
         setDirty(true)
       }
@@ -615,8 +625,15 @@ export default function PlantPageForm({
               {(handle) => (
                 <>
                   {handle}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo.url} alt="" className="h-16 w-24 flex-shrink-0 rounded-lg border border-plum/20 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setAdjusting(i)}
+                    title="Adjust framing"
+                    className="relative h-16 w-[85px] flex-shrink-0 overflow-hidden rounded-lg border border-plum/20 bg-plum/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photo.url} alt="" className="absolute inset-0 h-full w-full" style={photoFrameStyle(photo.framing)} />
+                  </button>
                   {i === 0 && (
                     <span className="flex-shrink-0 rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
                       Primary
@@ -629,6 +646,13 @@ export default function PlantPageForm({
                     placeholder="Caption (optional)"
                     className={INPUT}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setAdjusting(i)}
+                    className="flex-shrink-0 rounded px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-600/10"
+                  >
+                    Adjust
+                  </button>
                   <button type="button" onClick={() => patch({ photos: draft.photos.filter((_, xi) => xi !== i) })} className={REMOVE_BTN}>
                     Remove
                   </button>
@@ -884,6 +908,20 @@ export default function PlantPageForm({
       />
 
       <div className="border-t border-plum/10 pt-4">{actionBar}</div>
+
+      {adjusting !== null && adjustingPhoto && (
+        <PhotoFrameEditor
+          url={adjustingPhoto.url}
+          initial={adjustingPhoto.framing}
+          ratio={4 / 3}
+          frameLabel="Standard (4:3)"
+          onDone={(framing) => {
+            patch({ photos: draft.photos.map((x, xi) => (xi === adjusting ? { ...x, framing } : x)) })
+            setAdjusting(null)
+          }}
+          onClose={() => setAdjusting(null)}
+        />
+      )}
     </div>
   )
 }

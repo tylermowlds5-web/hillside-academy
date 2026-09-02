@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 import type { PageBlock } from '@/lib/types'
+import { photoAspect } from '@/lib/photo-framing'
+import FramedPhoto from './FramedPhoto'
 import PhotoLightbox from './PhotoLightbox'
 import { has, renderBold } from './renderBold'
 
@@ -95,10 +96,12 @@ export default function PageBlocks({ blocks, alt }: { blocks: PageBlock[]; alt: 
           case 'photos': {
             const photos = block.photos.filter((p) => has(p.url))
             if (photos.length === 0) return null
+            const single = photos.length === 1
+            const aspect = photoAspect(block.aspect, single ? 'wide' : 'standard')
             return (
               <div
                 key={bi}
-                className={photos.length === 1 ? '' : 'grid grid-cols-2 gap-3 sm:grid-cols-3'}
+                className={single ? '' : 'grid grid-cols-2 gap-3 sm:grid-cols-3'}
               >
                 {photos.map((photo, pi) => (
                   <figure key={pi} className="overflow-hidden rounded-xl border border-plum/10 bg-white shadow-sm">
@@ -106,16 +109,12 @@ export default function PageBlocks({ blocks, alt }: { blocks: PageBlock[]; alt: 
                       type="button"
                       onClick={() => setLightbox({ block: bi, index: pi })}
                       aria-label={`View photo full size: ${has(photo.caption) ? photo.caption : alt}`}
-                      className={`relative block w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
-                        photos.length === 1 ? 'aspect-[16/9]' : 'aspect-[4/3]'
-                      }`}
+                      className={`relative block w-full cursor-zoom-in overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${aspect.className}`}
                     >
-                      <Image
-                        src={photo.url}
+                      <FramedPhoto
+                        photo={photo}
                         alt={has(photo.caption) ? photo.caption : alt}
-                        fill
-                        sizes={photos.length === 1 ? '(min-width: 768px) 704px, 92vw' : '(min-width: 640px) 230px, 45vw'}
-                        className="object-cover"
+                        sizes={single ? '(min-width: 768px) 704px, 92vw' : '(min-width: 640px) 230px, 45vw'}
                       />
                     </button>
                     {has(photo.caption) && (

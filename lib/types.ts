@@ -402,9 +402,19 @@ export type PlantFactField = {
   note?: string
 }
 
+// Frame shape for a photo group (see lib/photo-framing PHOTO_ASPECTS).
+export type PhotoAspect = 'wide' | 'standard' | 'square' | 'tall'
+
 export type PlantPhoto = {
   url: string
   caption?: string
+  // Display framing — a non-destructive crop applied with CSS; the original
+  // file is untouched and the lightbox always shows the whole photo. All
+  // optional; absent = fill the frame centered at 1x. See lib/photo-framing.
+  fit?: 'cover' | 'contain'
+  focus_x?: number // 0–100
+  focus_y?: number // 0–100
+  zoom?: number    // 1–3
 }
 
 export type PlantStep = {
@@ -455,7 +465,8 @@ export type PageBlock =
   | { type: 'card'; title?: string; body: string }
   | { type: 'callout'; label?: string; body: string }
   | { type: 'bullets'; items: string[] }
-  | { type: 'photos'; photos: PlantPhoto[] }
+  // aspect = frame shape; absent = wide for a single photo, standard for a grid.
+  | { type: 'photos'; photos: PlantPhoto[]; aspect?: PhotoAspect }
 
 export type CertPageKind = 'video' | 'text' | 'plant'
 

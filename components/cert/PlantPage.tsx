@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 import type { PlantData } from '@/lib/types'
+import FramedPhoto from './FramedPhoto'
 import PhotoLightbox from './PhotoLightbox'
 import { has, renderBold } from './renderBold'
 
@@ -81,12 +81,10 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
                     aria-label={`View photo full size: ${has(primary.caption) ? primary.caption : plant.common_name}`}
                     className="relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-lg border border-plum/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
-                    <Image
-                      src={primary.url}
+                    <FramedPhoto
+                      photo={primary}
                       alt={has(primary.caption) ? primary.caption : plant.common_name}
-                      fill
                       sizes="(min-width: 640px) 260px, 90vw"
-                      className="object-cover"
                     />
                   </button>
                 )}
@@ -144,14 +142,12 @@ export default function PlantPage({ plant }: { plant: PlantData }) {
                 type="button"
                 onClick={() => setLightboxIndex(i + 1)}
                 aria-label={`View photo full size: ${has(photo.caption) ? photo.caption : plant.common_name}`}
-                className="relative block aspect-[4/3] w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
-                <Image
-                  src={photo.url}
+                <FramedPhoto
+                  photo={photo}
                   alt={has(photo.caption) ? photo.caption : plant.common_name}
-                  fill
                   sizes="(min-width: 640px) 230px, 45vw"
-                  className="object-cover"
                 />
               </button>
               {has(photo.caption) && (
