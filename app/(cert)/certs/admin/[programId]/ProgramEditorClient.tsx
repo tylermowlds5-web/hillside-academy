@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Video, Profile, JobRole, UserJobRole } from '@/lib/types'
 import EmployeeSelector from '@/app/(app)/admin/EmployeeSelector'
+import BulkPlantImport from './BulkPlantImport'
 import {
   addCertModule,
   removeCertModule,
@@ -36,6 +37,8 @@ export type EditorModule = {
   groupCount: number
   questionCount: number
   pageCount: number
+  // Plant pages flagged needs_review (hidden from employees until reviewed).
+  reviewCount: number
   videoId?: string
   lessonBody?: string
   lessonImageUrl?: string | null
@@ -149,12 +152,23 @@ function ModuleRow({
         <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">{mod.title}</p>
 
         {mod.kind === 'lesson' && (
-          <Link
-            href={`/certs/admin/${programId}/modules/${mod.id}/pages`}
-            className="flex-shrink-0 text-xs text-plum/70 hover:text-plum px-2.5 py-1.5 rounded bg-plum/10 hover:bg-plum/15"
-          >
-            Pages ({mod.pageCount})
-          </Link>
+          <>
+            {mod.reviewCount > 0 && (
+              <Link
+                href={`/certs/admin/${programId}/modules/${mod.id}/pages`}
+                title="Bulk-imported plant pages hidden from employees until reviewed"
+                className="flex-shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-500/20"
+              >
+                {mod.reviewCount} need{mod.reviewCount === 1 ? 's' : ''} review
+              </Link>
+            )}
+            <Link
+              href={`/certs/admin/${programId}/modules/${mod.id}/pages`}
+              className="flex-shrink-0 text-xs text-plum/70 hover:text-plum px-2.5 py-1.5 rounded bg-plum/10 hover:bg-plum/15"
+            >
+              Pages ({mod.pageCount})
+            </Link>
+          </>
         )}
         <Link
           href={`/certs/admin/${programId}/modules/${mod.id}`}
@@ -312,7 +326,7 @@ export default function ProgramEditorClient({
       const { id } = await addCertModule(programId, { kind: 'video', videoId: video.id })
       setModules((prev) => [
         ...prev,
-        { id, kind: 'video', title: video.title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, videoId: video.id },
+        { id, kind: 'video', title: video.title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, reviewCount: 0, videoId: video.id },
       ])
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : 'Add failed')
@@ -330,7 +344,7 @@ export default function ProgramEditorClient({
       const { id } = await addCertModule(programId, { kind: 'lesson', title })
       setModules((prev) => [
         ...prev,
-        { id, kind: 'lesson', title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, lessonBody: '', lessonImageUrl: null },
+        { id, kind: 'lesson', title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, reviewCount: 0, lessonBody: '', lessonImageUrl: null },
       ])
       setLessonTitle('')
     } catch (err) {
@@ -387,9 +401,25 @@ export default function ProgramEditorClient({
     <>
       {/* ── Modules ── */}
       <section className="rounded-2xl border border-plum/10 bg-white shadow-sm p-4 sm:p-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">Modules</h2>
-          <span className="text-xs text-plum/50">{modules.length} module{modules.length === 1 ? '' : 's'} · unlock in order</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-plum/50">{modules.length} module{modules.length === 1 ? '' : 's'} · unlock in order</span>
+            <BulkPlantImport
+              lessons={modules.filter((m) => m.kind === 'lesson').map((m) => ({ id: m.id, title: m.title }))}
+              onImported={(reqId, ids) => {
+                // Bump the lesson's counters locally; refresh syncs the rest.
+                setModules((prev) =>
+                  prev.map((m) =>
+                    m.id === reqId
+                      ? { ...m, pageCount: m.pageCount + ids.length, reviewCount: m.reviewCount + ids.length }
+                      : m
+                  )
+                )
+                router.refresh()
+              }}
+            />
+          </div>
         </div>
 
         {moduleError && (

@@ -51,12 +51,19 @@ export default async function ModulePage(props: {
   // loader and re-checked by the page actions).
   let learnerPages: LearnerPage[] | null = null
   if (mod.kind === 'lesson' && (mod.pages?.length ?? 0) > 0) {
-    const { data: pageRows } = await supabase
-      .from('cert_pages')
-      .select('*')
-      .eq('requirement_id', mod.requirementId)
-      .order('sort_order')
-      .returns<CertPage[]>()
+    const [{ data: allPageRows }, { data: profile }] = await Promise.all([
+      supabase
+        .from('cert_pages')
+        .select('*')
+        .eq('requirement_id', mod.requirementId)
+        .order('sort_order')
+        .returns<CertPage[]>(),
+      supabase.from('profiles').select('role').eq('id', user.id).maybeSingle<{ role: string }>(),
+    ])
+    // Drafts (needs_review) are hidden from employees — same rule as the
+    // state loader that built mod.pages. Admins see them to preview.
+    const isAdmin = profile?.role === 'admin'
+    const pageRows = (allPageRows ?? []).filter((p) => isAdmin || !p.needs_review)
 
     const videoIds = (pageRows ?? []).map((p) => p.video_id).filter(Boolean) as string[]
     const [videosRes, progressRes, categoriesRes] = await Promise.all([
@@ -95,6 +102,7 @@ export default async function ModulePage(props: {
         categoryLabel: p.category_id ? (categoryName.get(p.category_id) ?? null) : null,
         plantData: p.plant_data,
         blocks: p.blocks,
+        needsReview: p.needs_review,
         video: p.video_id ? (videoById.get(p.video_id) ?? null) : null,
         completed: prog?.completed ?? false,
         percent_watched: prog?.percent_watched ?? 0,

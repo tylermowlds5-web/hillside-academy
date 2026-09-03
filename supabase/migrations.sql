@@ -839,3 +839,14 @@ ALTER TABLE public.cert_pages ADD CONSTRAINT cert_pages_kind_check
 -- body/image exactly as before. Completion (mark-as-read) is unchanged.
 
 ALTER TABLE public.cert_pages ADD COLUMN IF NOT EXISTS blocks jsonb;
+
+-- ── Step 13: Plant page review workflow ───────────────────────────────────
+-- Bulk-imported plant pages land as DRAFTS: needs_review = true. Flagged
+-- pages are hidden from employees entirely (skipped in the lesson stepper
+-- and not counted toward module completion) until an admin saves the page
+-- from the plant form or clicks "Mark reviewed". Admins still see flagged
+-- pages when previewing the learner view. Default false keeps every
+-- existing page live.
+
+ALTER TABLE public.cert_pages ADD COLUMN IF NOT EXISTS needs_review boolean NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS cert_pages_needs_review_idx ON public.cert_pages (requirement_id) WHERE needs_review;

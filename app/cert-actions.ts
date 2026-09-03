@@ -93,20 +93,24 @@ async function pageOrderGate(
   pageId: string
 ): Promise<{ ok: boolean; kind: CertPageKind | null }> {
   const admin = createAdminClient()
-  const [{ data: pages }, { data: progress }] = await Promise.all([
+  const [{ data: pages }, { data: progress }, { data: profile }] = await Promise.all([
     admin
       .from('cert_pages')
-      .select('id, kind')
+      .select('id, kind, needs_review')
       .eq('requirement_id', requirementId)
       .order('sort_order')
-      .returns<{ id: string; kind: CertPageKind }[]>(),
+      .returns<{ id: string; kind: CertPageKind; needs_review: boolean }[]>(),
     admin
       .from('cert_page_progress')
       .select('page_id, completed')
       .eq('user_id', userId)
       .returns<{ page_id: string; completed: boolean }[]>(),
+    admin.from('profiles').select('role').eq('id', userId).maybeSingle<{ role: string }>(),
   ])
-  const ordered = pages ?? []
+  // Same visibility rule as the loader: drafts exist only for admins, so an
+  // employee can neither progress a draft nor be blocked by one.
+  const isAdmin = profile?.role === 'admin'
+  const ordered = (pages ?? []).filter((p) => isAdmin || !p.needs_review)
   const idx = ordered.findIndex((p) => p.id === pageId)
   if (idx === -1) return { ok: false, kind: null }
   const done = new Set((progress ?? []).filter((p) => p.completed).map((p) => p.page_id))

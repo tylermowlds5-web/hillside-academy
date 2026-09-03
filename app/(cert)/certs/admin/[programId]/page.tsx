@@ -70,8 +70,8 @@ export default async function EditCertProgramPage(props: {
       .returns<{ requirement_id: string }[]>(),
     supabase
       .from('cert_pages')
-      .select('requirement_id')
-      .returns<{ requirement_id: string }[]>(),
+      .select('requirement_id, needs_review')
+      .returns<{ requirement_id: string; needs_review: boolean }[]>(),
   ])
 
   const videoById = new Map((allVideos ?? []).map((v) => [v.id, v]))
@@ -89,8 +89,10 @@ export default async function EditCertProgramPage(props: {
     groupCountByReq.set(q.requirement_id, entry)
   }
   const pageCountByReq = new Map<string, number>()
+  const reviewCountByReq = new Map<string, number>()
   for (const p of pageRows ?? []) {
     pageCountByReq.set(p.requirement_id, (pageCountByReq.get(p.requirement_id) ?? 0) + 1)
+    if (p.needs_review) reviewCountByReq.set(p.requirement_id, (reviewCountByReq.get(p.requirement_id) ?? 0) + 1)
   }
 
   const modules: EditorModule[] = (requirements ?? []).map((r) => {
@@ -102,6 +104,7 @@ export default async function EditCertProgramPage(props: {
       groupCount: counts.groups,
       questionCount: counts.questions,
       pageCount: pageCountByReq.get(r.id) ?? 0,
+      reviewCount: reviewCountByReq.get(r.id) ?? 0,
     }
     if (r.lesson_title) {
       return {

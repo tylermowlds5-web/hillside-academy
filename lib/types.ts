@@ -488,6 +488,10 @@ export type CertPage = {
   plant_data: PlantData | null
   // Block content for text pages; null/empty = legacy body/image rendering.
   blocks: PageBlock[] | null
+  // Draft flag (Step 13): true = hidden from employees (skipped in the
+  // stepper, not counted toward completion) until an admin reviews it.
+  // Set by bulk import; cleared by saving the plant form or "Mark reviewed".
+  needs_review: boolean
 }
 
 // Admin-defined sub-category within a module, used purely to organize pages

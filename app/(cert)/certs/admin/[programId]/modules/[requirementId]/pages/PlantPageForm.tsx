@@ -5,6 +5,7 @@ import type { PlantData, PlantFactField } from '@/lib/types'
 import PlantPage from '@/components/cert/PlantPage'
 import { updateCertPlantPage } from '@/app/cert-admin-actions'
 import { compactFraming, DEFAULT_FRAMING, framingOf, photoFrameStyle, type PhotoFraming } from '@/lib/photo-framing'
+import { parseJsonText, parsePlantObject } from '@/lib/plant-import'
 import PhotoFrameEditor from './PhotoFrameEditor'
 import { newKey, SortableList, SortableRow } from './sortable'
 
@@ -126,157 +127,18 @@ function toPlantData(d: Draft): PlantData {
 }
 
 // ── Paste-import validation ───────────────────────────────────────────────
-// Walks the known PlantData shape. Valid fields land in the returned draft;
-// everything invalid, mistyped, or unrecognized is reported by name.
+// The validator itself lives in lib/plant-import (shared with the bulk
+// importer and re-run server-side there). Valid fields land in the returned
+// draft; everything invalid, mistyped, or unrecognized is reported by name.
 
-const isStr = (v: unknown): v is string => typeof v === 'string'
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 function importPlantJson(text: string): { draft: Draft; problems: string[] } {
-  const problems: string[] = []
-  let raw: unknown
-  try {
-    raw = JSON.parse(text)
-  } catch {
-    throw new Error('Not valid JSON — check for missing quotes, commas, or brackets.')
-  }
+  const raw = parseJsonText(text)
   if (!isObj(raw)) throw new Error('Expected a JSON object at the top level.')
-
-  const draft = normalize(null)
-
-  const takeStr = (
-    key: 'common_name' | 'pronunciation' | 'botanical_name' | 'plant_type' | 'trim_summary' | 'know_this_first'
-  ) => {
-    if (!(key in raw)) return
-    const v = raw[key]
-    if (isStr(v)) draft[key] = v
-    else problems.push(`${key}: expected text`)
-  }
-  ;(['common_name', 'pronunciation', 'botanical_name', 'plant_type', 'trim_summary', 'know_this_first'] as const).forEach(takeStr)
-
-  if ('photos' in raw) {
-    if (!Array.isArray(raw.photos)) {
-      problems.push('photos: expected a list of { url, caption }')
-    } else {
-      draft.photos = []
-      raw.photos.forEach((p, i) => {
-        if (!isObj(p) || !isStr(p.url) || !p.url) {
-          problems.push(`photos[${i + 1}]: expected { url } as text (photo skipped)`)
-          return
-        }
-        if ('caption' in p && !isStr(p.caption)) problems.push(`photos[${i + 1}].caption: expected text`)
-        if ('fit' in p && p.fit !== 'cover' && p.fit !== 'contain') problems.push(`photos[${i + 1}].fit: expected "cover" or "contain"`)
-        ;(['focus_x', 'focus_y', 'zoom'] as const).forEach((k) => {
-          if (k in p && typeof p[k] !== 'number') problems.push(`photos[${i + 1}].${k}: expected a number`)
-        })
-        draft.photos.push({ key: newKey(), url: p.url, caption: isStr(p.caption) ? p.caption : '', framing: framingOf(p) })
-      })
-    }
-  }
-  // Legacy shape: a bare photo_url becomes the primary photo when no photos
-  // list was given.
-  if ('photo_url' in raw) {
-    if (!isStr(raw.photo_url)) problems.push('photo_url: expected text')
-    else if (raw.photo_url && draft.photos.length === 0) {
-      draft.photos = [{ key: newKey(), url: raw.photo_url, caption: '', framing: DEFAULT_FRAMING }]
-    }
-  }
-
-  const takeStrList = (key: 'spot_it' | 'mistakes') => {
-    if (!(key in raw)) return
-    const v = raw[key]
-    if (!Array.isArray(v)) {
-      problems.push(`${key}: expected a list of text lines`)
-      return
-    }
-    draft[key] = toLines(v.filter(isStr))
-    v.forEach((item, i) => {
-      if (!isStr(item)) problems.push(`${key}[${i + 1}]: expected text`)
-    })
-  }
-  takeStrList('spot_it')
-  takeStrList('mistakes')
-
-  for (const key of FACT_KEYS) {
-    if (!(key in raw)) continue
-    const v = raw[key]
-    if (!isObj(v)) {
-      problems.push(`${key}: expected { value, note }`)
-      continue
-    }
-    if ('value' in v && !isStr(v.value)) problems.push(`${key}.value: expected text`)
-    if ('note' in v && !isStr(v.note)) problems.push(`${key}.note: expected text`)
-    draft[key] = {
-      value: isStr(v.value) ? v.value : '',
-      note: isStr(v.note) ? v.note : '',
-    }
-  }
-
-  if ('steps' in raw) {
-    if (!Array.isArray(raw.steps)) {
-      problems.push('steps: expected a list')
-    } else {
-      draft.steps = []
-      raw.steps.forEach((s, i) => {
-        if (!isObj(s) || !isStr(s.title) || !isStr(s.body)) {
-          problems.push(`steps[${i + 1}]: expected { title, body } as text (entry skipped)`)
-          return
-        }
-        if ('why_label' in s && !isStr(s.why_label)) problems.push(`steps[${i + 1}].why_label: expected text`)
-        if ('why' in s && !isStr(s.why)) problems.push(`steps[${i + 1}].why: expected text`)
-        draft.steps.push({
-          key: newKey(),
-          title: s.title,
-          body: s.body,
-          why_label: isStr(s.why_label) ? s.why_label : '',
-          why: isStr(s.why) ? s.why : '',
-        })
-      })
-    }
-  }
-
-  if ('tip_sections' in raw) {
-    if (!Array.isArray(raw.tip_sections)) {
-      problems.push('tip_sections: expected a list')
-    } else {
-      draft.tip_sections = []
-      raw.tip_sections.forEach((s, i) => {
-        if (!isObj(s) || !isStr(s.heading)) {
-          problems.push(`tip_sections[${i + 1}]: expected { heading } as text (section skipped)`)
-          return
-        }
-        if ('sub' in s && !isStr(s.sub)) problems.push(`tip_sections[${i + 1}].sub: expected text`)
-        const cards: CardDraft[] = []
-        if ('cards' in s) {
-          if (!Array.isArray(s.cards)) {
-            problems.push(`tip_sections[${i + 1}].cards: expected a list`)
-          } else {
-            s.cards.forEach((c, j) => {
-              if (!isObj(c) || !isStr(c.title) || !isStr(c.body)) {
-                problems.push(`tip_sections[${i + 1}].cards[${j + 1}]: expected { title, body } as text (card skipped)`)
-                return
-              }
-              cards.push({ key: newKey(), title: c.title, body: c.body })
-            })
-          }
-        }
-        draft.tip_sections.push({ key: newKey(), heading: s.heading, sub: isStr(s.sub) ? s.sub : '', cards })
-      })
-    }
-  }
-
-  const known = new Set<string>([
-    'common_name', 'pronunciation', 'botanical_name', 'plant_type', 'photos', 'photo_url',
-    'spot_it', 'mistakes', 'trim_summary', 'know_this_first', 'steps', 'tip_sections',
-    ...FACT_KEYS,
-  ])
-  for (const key of Object.keys(raw)) {
-    if (!known.has(key)) problems.push(`${key}: unrecognized field (ignored)`)
-  }
-  if (!draft.common_name.trim()) problems.push('common_name: missing — required before saving')
-
-  return { draft, problems }
+  const { data, problems } = parsePlantObject(raw)
+  return { draft: normalize(data), problems }
 }
 
 // Same R2 upload path as the question bank and text pages.
@@ -352,11 +214,14 @@ function StringListEditor({
 export default function PlantPageForm({
   pageId,
   initial,
+  needsReview = false,
   onSaved,
   onClose,
 }: {
   pageId: string
   initial: PlantData | null
+  // Draft flag — shown as a notice; saving clears it server-side.
+  needsReview?: boolean
   // Receives the exact payload that was saved so the host list can update
   // its local state — the form remounts from that state on reopen, and
   // without this a close-and-reopen showed the stale pre-save version.
@@ -506,6 +371,14 @@ export default function PlantPageForm({
   return (
     <div className="space-y-6">
       {actionBar}
+
+      {needsReview && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Needs review.</span> This page was bulk-imported and is hidden
+          from employees. Saving it publishes it; if nothing needs changing, use <span className="font-semibold">Mark reviewed</span> on
+          the list row instead.
+        </div>
+      )}
 
       {/* Import / export toolbar */}
       <div className="flex flex-wrap items-center gap-2">

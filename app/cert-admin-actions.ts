@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PageBlock, PlantData, QuizQuestion } from '@/lib/types'
+import { parsePlantObject } from '@/lib/plant-import'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -246,10 +247,83 @@ export async function updateCertPlantPage(pageId: string, data: PlantData) {
       plant_data: { ...data, common_name: commonName },
       // title mirrors common_name so listings/tooltips work everywhere.
       title: commonName,
+      // Saving from the form IS the review — the draft goes live.
+      needs_review: false,
     })
     .eq('id', pageId)
     .eq('kind', 'plant')
   if (error) throw new Error(error.message)
+}
+
+// "Mark reviewed" on a list row: the admin looked at a flagged draft and it
+// needs no changes. Publishes it to employees without touching content.
+export async function markCertPageReviewed(pageId: string) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase
+    .from('cert_pages')
+    .update({ needs_review: false })
+    .eq('id', pageId)
+  if (error) throw new Error(error.message)
+}
+
+// Bulk import: one plant page per entry, appended in order after the
+// lesson's existing pages, every one flagged needs_review so nothing goes
+// live until an admin looks at it. All-or-nothing: the client already ran
+// the validator, but it's re-run here and any problem aborts the whole
+// batch before a single row is written.
+export async function bulkAddCertPlantPages(
+  requirementId: string,
+  plants: unknown[]
+): Promise<{ ids: string[] }> {
+  const { supabase } = await requireAdmin()
+  if (plants.length === 0) throw new Error('Nothing to import')
+
+  const parsed = plants.map((raw, i) => ({ i, ...parsePlantObject(raw) }))
+  const failures = parsed.filter((p) => p.problems.length > 0)
+  if (failures.length > 0) {
+    const first = failures[0]
+    throw new Error(
+      `Entry ${first.i + 1}${first.data.common_name ? ` (${first.data.common_name})` : ''}: ${first.problems[0]}` +
+        (failures.length > 1 ? ` — and ${failures.length - 1} more entr${failures.length === 2 ? 'y' : 'ies'} with problems` : '')
+    )
+  }
+
+  // Confirm the target is a lesson module before appending.
+  const { data: req } = await supabase
+    .from('cert_requirements')
+    .select('id, lesson_title')
+    .eq('id', requirementId)
+    .maybeSingle<{ id: string; lesson_title: string | null }>()
+  if (!req?.lesson_title) throw new Error('Plant pages can only be added to a lesson module')
+
+  const { data: maxRow } = await supabase
+    .from('cert_pages')
+    .select('sort_order')
+    .eq('requirement_id', requirementId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ sort_order: number }>()
+  const start = (maxRow?.sort_order ?? -1) + 1
+
+  const rows = parsed.map(({ data }, i) => {
+    const commonName = data.common_name.trim()
+    return {
+      requirement_id: requirementId,
+      kind: 'plant',
+      title: commonName,
+      plant_data: { ...data, common_name: commonName },
+      sort_order: start + i,
+      needs_review: true,
+    }
+  })
+
+  const { data, error } = await supabase
+    .from('cert_pages')
+    .insert(rows)
+    .select('id, sort_order')
+    .returns<{ id: string; sort_order: number }[]>()
+  if (error || !data) throw new Error(error?.message ?? 'Import failed')
+  return { ids: data.slice().sort((a, b) => a.sort_order - b.sort_order).map((r) => r.id) }
 }
 
 export async function deleteCertPage(pageId: string) {

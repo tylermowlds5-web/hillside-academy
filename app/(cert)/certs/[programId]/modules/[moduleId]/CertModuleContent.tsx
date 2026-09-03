@@ -34,6 +34,9 @@ export type LearnerPage = {
   // Block content (text pages); non-empty = block rendering, else legacy
   // body/image. Completion unchanged either way.
   blocks: PageBlock[] | null
+  // Draft flag. Only ever true for admins previewing — the server strips
+  // flagged pages from employees' lists entirely.
+  needsReview?: boolean
   video: Video | null
   completed: boolean
   percent_watched: number
@@ -720,6 +723,14 @@ function PagedLesson({
           Page {current + 1} of {pages.length}
           {page.kind === 'video' ? ' · video' : ' · reading'}
         </span>
+        {page.needsReview && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700"
+            title="Bulk-imported draft. Employees can't see this page until an admin reviews it."
+          >
+            Needs review · hidden from employees
+          </span>
+        )}
       </div>
 
       {/* Current page */}

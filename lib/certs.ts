@@ -101,7 +101,7 @@ export async function loadCertStates(
 ): Promise<CertProgramState[]> {
   const admin = createAdminClient()
 
-  const [{ data: programs }, { data: awards }, { data: assignments }] = await Promise.all([
+  const [{ data: programs }, { data: awards }, { data: assignments }, { data: profile }] = await Promise.all([
     supabase
       .from('cert_programs')
       .select('*')
@@ -114,7 +114,10 @@ export async function loadCertStates(
       .select('program_id')
       .eq('user_id', userId)
       .returns<{ program_id: string }[]>(),
+    // Admins preview draft (needs_review) pages; employees never see them.
+    supabase.from('profiles').select('role').eq('id', userId).maybeSingle<{ role: string }>(),
   ])
+  const isAdmin = profile?.role === 'admin'
 
   if (!programs || programs.length === 0) return []
 
@@ -215,11 +218,11 @@ export async function loadCertStates(
       reqIds.length
         ? supabase
             .from('cert_pages')
-            .select('id, requirement_id, kind, video_id, title, sort_order')
+            .select('id, requirement_id, kind, video_id, title, sort_order, needs_review')
             .in('requirement_id', reqIds)
             .order('sort_order')
-            .returns<{ id: string; requirement_id: string; kind: CertPageKind; video_id: string | null; title: string | null; sort_order: number }[]>()
-        : Promise.resolve({ data: [] as { id: string; requirement_id: string; kind: CertPageKind; video_id: string | null; title: string | null; sort_order: number }[] }),
+            .returns<{ id: string; requirement_id: string; kind: CertPageKind; video_id: string | null; title: string | null; sort_order: number; needs_review: boolean }[]>()
+        : Promise.resolve({ data: [] as { id: string; requirement_id: string; kind: CertPageKind; video_id: string | null; title: string | null; sort_order: number; needs_review: boolean }[] }),
       reqIds.length
         ? admin
             .from('cert_page_progress')
@@ -248,6 +251,9 @@ export async function loadCertStates(
   )
   const pagesByReq = new Map<string, { id: string; kind: CertPageKind; video_id: string | null; title: string | null }[]>()
   for (const pg of pagesRes.data ?? []) {
+    // Drafts are invisible to employees: not in the stepper, not required
+    // for completion. Admins see them so they can preview.
+    if (pg.needs_review && !isAdmin) continue
     const list = pagesByReq.get(pg.requirement_id) ?? []
     list.push(pg)
     pagesByReq.set(pg.requirement_id, list)

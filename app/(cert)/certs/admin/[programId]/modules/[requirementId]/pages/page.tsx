@@ -60,6 +60,7 @@ export default async function CertPagesEditorPage(props: {
     categoryId: p.category_id,
     plantData: p.plant_data,
     blocks: p.blocks,
+    needsReview: p.needs_review,
   }))
 
   return (
@@ -83,6 +84,7 @@ export default async function CertPagesEditorPage(props: {
 
       <PagesEditorClient
         requirementId={requirementId}
+        lessonTitle={requirement.lesson_title}
         initialPages={adminPages}
         allVideos={allVideos ?? []}
         initialCategories={(categories ?? []).map((c) => ({ id: c.id, name: c.name }))}

@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import {
   addCertPage,
   deleteCertPage,
+  markCertPageReviewed,
   reorderCertPages,
   setCertPageCategory,
 } from '@/app/cert-admin-actions'
+import BulkPlantImport from '../../../BulkPlantImport'
 import CategoryManagerClient, { type EditorCategory } from '../CategoryManagerClient'
 import PlantPageForm from './PlantPageForm'
 import PageBlocksEditor from './PageBlocksEditor'
@@ -43,6 +45,9 @@ export type AdminPage = {
   categoryId: string | null
   plantData: PlantData | null
   blocks: PageBlock[] | null
+  // Draft flag: hidden from employees until reviewed (bulk imports start
+  // flagged; saving the plant form or "Mark reviewed" clears it).
+  needsReview: boolean
 }
 
 // Stable re-sort into canonical flat order; a page whose category no longer
@@ -67,6 +72,7 @@ function PageRow({
   categories,
   onSetCategory,
   onRemove,
+  onMarkReviewed,
   onTextSaved,
   onPlantSaved,
 }: {
@@ -75,6 +81,7 @@ function PageRow({
   categories: EditorCategory[]
   onSetCategory: (categoryId: string | null) => void
   onRemove: () => void
+  onMarkReviewed: () => void
   // Saves must patch the parent's pages state (not just refresh): the
   // editors remount from that state on reopen.
   onTextSaved: (title: string, blocks: PageBlock[]) => void
@@ -110,6 +117,24 @@ function PageRow({
         <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">
           {page.kind === 'video' ? page.videoTitle : title || 'Untitled page'}
         </p>
+        {page.needsReview && (
+          <>
+            <span
+              className="flex-shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700"
+              title="Hidden from employees until reviewed"
+            >
+              Needs review
+            </span>
+            <button
+              type="button"
+              onClick={onMarkReviewed}
+              title="Looked at it, no changes needed — publish to employees"
+              className="flex-shrink-0 text-xs text-emerald-700 hover:text-emerald-800 px-2.5 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15"
+            >
+              Mark reviewed
+            </button>
+          </>
+        )}
         {categories.length > 0 && (
           <select
             value={page.categoryId ?? ''}
@@ -163,6 +188,7 @@ function PageRow({
           <PlantPageForm
             pageId={page.id}
             initial={page.plantData}
+            needsReview={page.needsReview}
             onSaved={(name, data) => {
               setTitle(name)
               onPlantSaved(name, data)
@@ -177,11 +203,13 @@ function PageRow({
 
 export default function PagesEditorClient({
   requirementId,
+  lessonTitle,
   initialPages,
   allVideos,
   initialCategories,
 }: {
   requirementId: string
+  lessonTitle: string
   initialPages: AdminPage[]
   allVideos: PickerVideo[]
   initialCategories: EditorCategory[]
@@ -194,6 +222,54 @@ export default function PagesEditorClient({
   const [plantName, setPlantName] = useState('')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Review filter: show only flagged (needs_review) pages.
+  const [flaggedOnly, setFlaggedOnly] = useState(false)
+
+  const reviewCount = pages.filter((p) => p.needsReview).length
+  const showFlaggedOnly = flaggedOnly && reviewCount > 0
+  const visiblePages = showFlaggedOnly ? pages.filter((p) => p.needsReview) : pages
+
+  // "Mark reviewed": publish a draft as-is. Optimistic with rollback.
+  async function handleMarkReviewed(pageId: string) {
+    const prev = pages
+    setPages((p) => p.map((x) => (x.id === pageId ? { ...x, needsReview: false } : x)))
+    setError(null)
+    try {
+      await markCertPageReviewed(pageId)
+      router.refresh()
+    } catch (err) {
+      setPages(prev)
+      setError(err instanceof Error ? err.message : 'Could not mark reviewed')
+    }
+  }
+
+  // Bulk import appended rows at the global end (all flagged); mirror them
+  // locally and re-bucket like appendPage does.
+  async function handleBulkImported(_reqId: string, ids: string[], plants: PlantData[]) {
+    const added: AdminPage[] = ids.map((id, i) => ({
+      id,
+      kind: 'plant',
+      videoId: null,
+      videoTitle: null,
+      title: plants[i]?.common_name ?? 'Plant',
+      body: '',
+      imageUrl: null,
+      imagePosition: 'top',
+      categoryId: null,
+      plantData: plants[i] ?? null,
+      blocks: null,
+      needsReview: true,
+    }))
+    const next = flattenPages([...pages, ...added], categories)
+    setPages(next)
+    setError(null)
+    try {
+      if (categories.length > 0) await reorderCertPages(requirementId, next.map((p) => p.id))
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reorder failed — refresh and try again')
+    }
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -217,7 +293,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'video', videoId: video.id })
-      await appendPage({ id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null, blocks: null })
+      await appendPage({ id, kind: 'video', videoId: video.id, videoTitle: video.title, title: '', body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null, blocks: null, needsReview: false })
       setVideoSearch('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -233,7 +309,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'text', title })
-      await appendPage({ id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null, blocks: null })
+      await appendPage({ id, kind: 'text', videoId: null, videoTitle: null, title, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: null, blocks: null, needsReview: false })
       setTextTitle('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -249,7 +325,7 @@ export default function PagesEditorClient({
     setError(null)
     try {
       const { id } = await addCertPage(requirementId, { kind: 'plant', commonName: name })
-      await appendPage({ id, kind: 'plant', videoId: null, videoTitle: null, title: name, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: { common_name: name }, blocks: null })
+      await appendPage({ id, kind: 'plant', videoId: null, videoTitle: null, title: name, body: '', imageUrl: null, imagePosition: 'top', categoryId: null, plantData: { common_name: name }, blocks: null, needsReview: false })
       setPlantName('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add failed')
@@ -261,7 +337,8 @@ export default function PagesEditorClient({
   // Patch local pages state with saved payloads — the editors remount from
   // this state on reopen, so a refresh alone leaves them stale.
   function handlePlantSaved(pageId: string, name: string, data: PlantData) {
-    setPages((prev) => prev.map((x) => (x.id === pageId ? { ...x, title: name, plantData: data } : x)))
+    // Saving the plant form is the review — the server clears the flag too.
+    setPages((prev) => prev.map((x) => (x.id === pageId ? { ...x, title: name, plantData: data, needsReview: false } : x)))
     router.refresh()
   }
 
@@ -343,20 +420,36 @@ export default function PagesEditorClient({
 
   // Contiguous buckets of the canonical array, in display order. Sections
   // render only when categories exist; empty buckets are skipped.
-  const buckets: { categoryId: string | null; name: string; startIndex: number; pages: AdminPage[] }[] = []
+  // Buckets come from the visible (possibly filtered) list; positions always
+  // reflect the full learner order.
+  const buckets: { categoryId: string | null; name: string; pages: AdminPage[] }[] = []
   if (categories.length > 0) {
     for (const b of [null, ...categories.map((c) => c.id)]) {
       const name = b === null ? 'Uncategorized' : categories.find((c) => c.id === b)!.name
-      const bucketPages = pages.filter((p) =>
+      const bucketPages = visiblePages.filter((p) =>
         b === null
           ? !p.categoryId || !categories.some((c) => c.id === p.categoryId)
           : p.categoryId === b
       )
       if (bucketPages.length > 0) {
-        buckets.push({ categoryId: b, name, startIndex: pages.indexOf(bucketPages[0]), pages: bucketPages })
+        buckets.push({ categoryId: b, name, pages: bucketPages })
       }
     }
   }
+
+  const rowFor = (p: AdminPage) => (
+    <PageRow
+      key={p.id}
+      page={p}
+      position={pages.indexOf(p) + 1}
+      categories={categories}
+      onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
+      onRemove={() => handleRemove(p.id)}
+      onMarkReviewed={() => handleMarkReviewed(p.id)}
+      onTextSaved={(title, blocks) => handleTextSaved(p.id, title, blocks)}
+      onPlantSaved={(name, data) => handlePlantSaved(p.id, name, data)}
+    />
+  )
 
   return (
     <div className="space-y-5">
@@ -372,6 +465,33 @@ export default function PagesEditorClient({
         </div>
       )}
 
+      {/* Review status: count of flagged drafts + filter toggle */}
+      {pages.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-plum/50">
+            {pages.length} page{pages.length === 1 ? '' : 's'}
+          </span>
+          {reviewCount > 0 ? (
+            <>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                {reviewCount} need{reviewCount === 1 ? 's' : ''} review
+              </span>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-plum/70">
+                <input
+                  type="checkbox"
+                  checked={showFlaggedOnly}
+                  onChange={(e) => setFlaggedOnly(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-emerald-600"
+                />
+                Show only pages needing review
+              </label>
+            </>
+          ) : (
+            <span className="text-xs text-emerald-700">All pages reviewed</span>
+          )}
+        </div>
+      )}
+
       {pages.length === 0 ? (
         <div className="rounded-xl border border-dashed border-plum/20 px-4 py-8 text-center">
           <p className="text-sm text-plum/50">
@@ -381,21 +501,8 @@ export default function PagesEditorClient({
         </div>
       ) : categories.length === 0 ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={pages.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2">
-              {pages.map((p, i) => (
-                <PageRow
-                  key={p.id}
-                  page={p}
-                  position={i + 1}
-                  categories={categories}
-                  onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
-                  onRemove={() => handleRemove(p.id)}
-                  onTextSaved={(title, blocks) => handleTextSaved(p.id, title, blocks)}
-                  onPlantSaved={(name, data) => handlePlantSaved(p.id, name, data)}
-                />
-              ))}
-            </div>
+          <SortableContext items={visiblePages.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-2">{visiblePages.map(rowFor)}</div>
           </SortableContext>
         </DndContext>
       ) : (
@@ -409,20 +516,7 @@ export default function PagesEditorClient({
               </p>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={bucket.pages.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-2">
-                    {bucket.pages.map((p, i) => (
-                      <PageRow
-                        key={p.id}
-                        page={p}
-                        position={bucket.startIndex + i + 1}
-                        categories={categories}
-                        onSetCategory={(categoryId) => handleSetCategory(p.id, categoryId)}
-                        onRemove={() => handleRemove(p.id)}
-                        onTextSaved={(title, blocks) => handleTextSaved(p.id, title, blocks)}
-                        onPlantSaved={(name, data) => handlePlantSaved(p.id, name, data)}
-                      />
-                    ))}
-                  </div>
+                  <div className="space-y-2">{bucket.pages.map(rowFor)}</div>
                 </SortableContext>
               </DndContext>
             </div>
@@ -496,12 +590,21 @@ export default function PagesEditorClient({
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50 mb-2">
-            Add a plant page
-          </p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-plum/50">
+              Add a plant page
+            </p>
+            <BulkPlantImport
+              lessons={[{ id: requirementId, title: lessonTitle }]}
+              defaultLessonId={requirementId}
+              lockLesson
+              onImported={handleBulkImported}
+            />
+          </div>
           <p className="text-xs text-plum/40 mb-2">
             A structured plant reference — ID marks, quick facts, trim steps, tips, and common
-            mistakes. Completes on mark-as-read like a text page.
+            mistakes. Completes on mark-as-read like a text page. Bulk import creates many at
+            once from JSON, flagged for review until you check them.
           </p>
           <div className="flex gap-2">
             <input
