@@ -33,14 +33,25 @@ export default async function CertResultsPage(props: {
     .single<CertProgram>()
   if (!program) notFound()
 
-  const { data: requirements } = await supabase
-    .from('cert_requirements')
-    .select('*, videos ( title )')
+  // Modules in this program's order (membership lives in the join table).
+  const { data: links } = await supabase
+    .from('cert_program_modules')
+    .select('module_id, position')
     .eq('program_id', programId)
-    .order('sort_order')
-    .returns<(CertRequirement & { videos: { title: string } | null })[]>()
+    .order('position')
+    .returns<{ module_id: string; position: number }[]>()
+  const linkedIds = (links ?? []).map((l) => l.module_id)
+  const { data: requirements } = linkedIds.length
+    ? await supabase
+        .from('cert_requirements')
+        .select('*, videos ( title )')
+        .in('id', linkedIds)
+        .returns<(CertRequirement & { videos: { title: string } | null })[]>()
+    : { data: [] as (CertRequirement & { videos: { title: string } | null })[] }
 
-  const reqs = requirements ?? []
+  const reqs = linkedIds
+    .map((id) => (requirements ?? []).find((r) => r.id === id))
+    .filter((r): r is CertRequirement & { videos: { title: string } | null } => !!r)
   const reqIds = reqs.map((r) => r.id)
 
   const [{ data: assignments }, { data: awards }, lessonsRes, attemptsRes, banksRes, standaloneBankRes] = await Promise.all([

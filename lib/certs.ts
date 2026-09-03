@@ -121,14 +121,27 @@ export async function loadCertStates(
 
   if (!programs || programs.length === 0) return []
 
-  const { data: requirements } = await supabase
-    .from('cert_requirements')
-    .select('*')
+  // Membership + order come from the join table (a module can sit in several
+  // programs); the module rows themselves are fetched once by id.
+  const { data: links } = await supabase
+    .from('cert_program_modules')
+    .select('program_id, module_id, position')
     .in('program_id', programs.map((p) => p.id))
-    .order('sort_order', { ascending: true })
-    .returns<CertRequirement[]>()
+    .order('position', { ascending: true })
+    .returns<{ program_id: string; module_id: string; position: number }[]>()
+  const moduleIds = [...new Set((links ?? []).map((l) => l.module_id))]
+  const { data: requirements } = moduleIds.length
+    ? await supabase.from('cert_requirements').select('*').in('id', moduleIds).returns<CertRequirement[]>()
+    : { data: [] as CertRequirement[] }
 
   const reqs = requirements ?? []
+  const reqById = new Map(reqs.map((r) => [r.id, r]))
+  const linksByProgram = new Map<string, { module_id: string; position: number }[]>()
+  for (const l of links ?? []) {
+    const list = linksByProgram.get(l.program_id) ?? []
+    list.push(l)
+    linksByProgram.set(l.program_id, list)
+  }
   const reqIds = reqs.map((r) => r.id)
   const directVideoIds = [...new Set(reqs.map((r) => r.video_id).filter(Boolean))] as string[]
   const quizIds = [...new Set(reqs.map((r) => r.standalone_quiz_id).filter(Boolean))] as string[]
@@ -274,7 +287,11 @@ export async function loadCertStates(
   }
 
   return programs.map((program) => {
-    const programReqs = reqs.filter((r) => r.program_id === program.id)
+    const programReqs = (linksByProgram.get(program.id) ?? [])
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((l) => reqById.get(l.module_id))
+      .filter((r): r is CertRequirement => !!r)
     const award = awardByProgram.get(program.id) ?? null
 
     // Renewal cycle cutoff: once a renewal has been started, attempts made
@@ -515,4 +532,24 @@ export function topBarProgress(state: CertProgramState, currentIndex?: number) {
           ? undefined
           : firstIncomplete + 1,
   }
+}
+
+// Completing a SHARED module can finish more than one program at once.
+// Loads every program state once, awards each program that contains the
+// module and is now complete, and returns whether `currentProgramId` (the
+// one the employee is working in) just earned its cert.
+export async function maybeAwardCertForModule(
+  supabase: SupabaseClient,
+  userId: string,
+  requirementId: string,
+  currentProgramId: string
+): Promise<boolean> {
+  const states = await loadCertStates(supabase, userId)
+  let currentEarned = false
+  for (const state of states) {
+    if (!state.modules.some((m) => m.requirementId === requirementId)) continue
+    const earned = await maybeAwardCert(supabase, userId, state.program.id, state)
+    if (state.program.id === currentProgramId) currentEarned = earned
+  }
+  return currentEarned
 }

@@ -366,9 +366,12 @@ export type CertProgram = {
 
 // Exactly one target per row (DB CHECK constraint cert_requirements_one_target):
 // video_id, standalone_quiz_id, path_id, or lesson_title (a text/image lesson).
+// A module. Membership in programs lives in cert_program_modules (a module
+// can be shared by several programs); program_id is only the HOME program
+// where it was created (informational, nullable).
 export type CertRequirement = {
   id: string
-  program_id: string
+  program_id: string | null
   video_id: string | null
   standalone_quiz_id: string | null
   path_id: string | null
@@ -381,6 +384,15 @@ export type CertRequirement = {
   // Module quiz settings (used when the module has a question bank).
   quiz_pass_score: number
   quiz_draw_count: number
+}
+
+// One program ↔ module link; position orders modules within that program
+// (gating follows this order per program).
+export type CertProgramModule = {
+  program_id: string
+  module_id: string
+  position: number
+  created_at: string
 }
 
 export type CertAssignment = {

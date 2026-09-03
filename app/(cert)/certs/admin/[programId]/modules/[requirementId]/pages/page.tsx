@@ -22,12 +22,14 @@ export default async function CertPagesEditorPage(props: {
   const [{ data: program }, { data: requirement }, { data: pages }, { data: allVideos }, { data: categories }] =
     await Promise.all([
       supabase.from('cert_programs').select('*').eq('id', programId).single<CertProgram>(),
+      // Module must be linked into THIS program (shared modules live in several).
       supabase
-        .from('cert_requirements')
-        .select('*')
-        .eq('id', requirementId)
+        .from('cert_program_modules')
+        .select('cert_requirements ( * )')
         .eq('program_id', programId)
-        .single<CertRequirement>(),
+        .eq('module_id', requirementId)
+        .maybeSingle<{ cert_requirements: CertRequirement | null }>()
+        .then((res) => ({ data: res.data?.cert_requirements ?? null })),
       supabase
         .from('cert_pages')
         .select('*')

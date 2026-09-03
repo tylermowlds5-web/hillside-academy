@@ -27,8 +27,13 @@ export default async function EditCertProgramPage(props: {
     .single<CertProgram>()
   if (!program) notFound()
 
+  // Every module + every program↔module link: this program's list comes from
+  // its links (in position order); every other module feeds the "Add
+  // existing module" picker, labeled with the programs it already lives in.
   const [
-    { data: requirements },
+    { data: allModules },
+    { data: allLinks },
+    { data: allPrograms },
     { data: allVideos },
     { data: employees },
     { data: roles },
@@ -38,12 +43,12 @@ export default async function EditCertProgramPage(props: {
     { data: standaloneQs },
     { data: pageRows },
   ] = await Promise.all([
+    supabase.from('cert_requirements').select('*').order('created_at').returns<CertRequirement[]>(),
     supabase
-      .from('cert_requirements')
-      .select('*')
-      .eq('program_id', programId)
-      .order('sort_order')
-      .returns<CertRequirement[]>(),
+      .from('cert_program_modules')
+      .select('program_id, module_id, position')
+      .returns<{ program_id: string; module_id: string; position: number }[]>(),
+    supabase.from('cert_programs').select('id, name').returns<{ id: string; name: string }[]>(),
     supabase.from('videos').select('*').order('title').returns<Video[]>(),
     supabase
       .from('profiles')
@@ -95,7 +100,20 @@ export default async function EditCertProgramPage(props: {
     if (p.needs_review) reviewCountByReq.set(p.requirement_id, (reviewCountByReq.get(p.requirement_id) ?? 0) + 1)
   }
 
-  const modules: EditorModule[] = (requirements ?? []).map((r) => {
+  const programName = new Map((allPrograms ?? []).map((p) => [p.id, p.name]))
+  const linksByModule = new Map<string, { program_id: string; position: number }[]>()
+  for (const l of allLinks ?? []) {
+    const list = linksByModule.get(l.module_id) ?? []
+    list.push(l)
+    linksByModule.set(l.module_id, list)
+  }
+  const myLinks = (allLinks ?? [])
+    .filter((l) => l.program_id === programId)
+    .sort((a, b) => a.position - b.position)
+  const inProgram = new Set(myLinks.map((l) => l.module_id))
+  const moduleById = new Map((allModules ?? []).map((r) => [r.id, r]))
+
+  const toEditorModule = (r: CertRequirement): EditorModule => {
     const counts = groupCountByReq.get(r.id) ?? { groups: 0, questions: 0 }
     const base = {
       id: r.id,
@@ -105,6 +123,10 @@ export default async function EditCertProgramPage(props: {
       questionCount: counts.questions,
       pageCount: pageCountByReq.get(r.id) ?? 0,
       reviewCount: reviewCountByReq.get(r.id) ?? 0,
+      // Other programs this module also appears in (shared rows, not copies).
+      sharedWith: (linksByModule.get(r.id) ?? [])
+        .filter((l) => l.program_id !== programId)
+        .map((l) => programName.get(l.program_id) ?? 'Unknown program'),
     }
     if (r.lesson_title) {
       return {
@@ -127,9 +149,21 @@ export default async function EditCertProgramPage(props: {
       return { ...base, kind: 'hu-quiz' as const, title: 'HU standalone quiz' }
     }
     return { ...base, kind: 'hu-path' as const, title: 'HU learning path' }
-  })
+  }
 
-  const usedVideoIds = (requirements ?? []).map((r) => r.video_id).filter(Boolean) as string[]
+  const modules: EditorModule[] = myLinks
+    .map((l) => moduleById.get(l.module_id))
+    .filter((r): r is CertRequirement => !!r)
+    .map(toEditorModule)
+
+  // Picker for "Add existing module": every module not already in this
+  // program (sharedWith = the programs it currently lives in).
+  const availableModules: EditorModule[] = (allModules ?? [])
+    .filter((r) => !inProgram.has(r.id))
+    .map(toEditorModule)
+    .sort((a, b) => a.title.localeCompare(b.title))
+
+  const usedVideoIds = modules.map((m) => m.videoId).filter(Boolean) as string[]
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
@@ -170,6 +204,7 @@ export default async function EditCertProgramPage(props: {
         <ProgramEditorClient
           programId={program.id}
           initialModules={modules}
+          availableModules={availableModules}
           allVideos={allVideos ?? []}
           usedVideoIds={usedVideoIds}
           employees={employees ?? []}

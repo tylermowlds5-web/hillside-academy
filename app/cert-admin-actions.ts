@@ -64,10 +64,47 @@ export async function saveCertProgram(input: {
 
 export async function deleteCertProgram(programId: string) {
   const { supabase } = await requireAdmin()
-  // Requirements, banks, attempts, lesson progress, assignments, and awards
-  // all cascade from the program row.
+  // Modules that live ONLY in this program go with it (their banks, pages,
+  // attempts, and progress cascade). Modules shared with other programs are
+  // just unlinked (the link rows cascade from the program row).
+  const { data: mine } = await supabase
+    .from('cert_program_modules')
+    .select('module_id')
+    .eq('program_id', programId)
+    .returns<{ module_id: string }[]>()
+  const moduleIds = (mine ?? []).map((m) => m.module_id)
+  if (moduleIds.length > 0) {
+    const { data: elsewhere } = await supabase
+      .from('cert_program_modules')
+      .select('module_id')
+      .in('module_id', moduleIds)
+      .neq('program_id', programId)
+      .returns<{ module_id: string }[]>()
+    const shared = new Set((elsewhere ?? []).map((m) => m.module_id))
+    const exclusive = moduleIds.filter((id) => !shared.has(id))
+    if (exclusive.length > 0) {
+      const { error } = await supabase.from('cert_requirements').delete().in('id', exclusive)
+      if (error) throw new Error(error.message)
+    }
+  }
+  // Links, assignments, and awards cascade from the program row.
   const { error } = await supabase.from('cert_programs').delete().eq('id', programId)
   if (error) throw new Error(error.message)
+}
+
+// Next free position at the end of a program's module list.
+async function nextModulePosition(
+  supabase: Awaited<ReturnType<typeof requireAdmin>>['supabase'],
+  programId: string
+): Promise<number> {
+  const { data } = await supabase
+    .from('cert_program_modules')
+    .select('position')
+    .eq('program_id', programId)
+    .order('position', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ position: number }>()
+  return (data?.position ?? -1) + 1
 }
 
 // ── Modules (requirements) ────────────────────────────────────────────────
@@ -77,20 +114,15 @@ export async function addCertModule(
   target: { kind: 'video'; videoId: string } | { kind: 'lesson'; title: string }
 ): Promise<{ id: string }> {
   const { supabase } = await requireAdmin()
+  const position = await nextModulePosition(supabase, programId)
 
-  const { data: maxRow } = await supabase
-    .from('cert_requirements')
-    .select('sort_order')
-    .eq('program_id', programId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle<{ sort_order: number }>()
-  const nextOrder = (maxRow?.sort_order ?? -1) + 1
-
+  // program_id = home program (informational). Membership is the link row,
+  // written explicitly below (the DB trigger would add it too; the upsert
+  // makes the position authoritative either way).
   const row =
     target.kind === 'video'
-      ? { program_id: programId, video_id: target.videoId, sort_order: nextOrder }
-      : { program_id: programId, lesson_title: target.title.trim() || 'New lesson', sort_order: nextOrder }
+      ? { program_id: programId, video_id: target.videoId, sort_order: position }
+      : { program_id: programId, lesson_title: target.title.trim() || 'New lesson', sort_order: position }
 
   const { data, error } = await supabase
     .from('cert_requirements')
@@ -98,28 +130,186 @@ export async function addCertModule(
     .select('id')
     .single<{ id: string }>()
   if (error || !data) throw new Error(error?.message ?? 'Add module failed')
+
+  const { error: linkError } = await supabase
+    .from('cert_program_modules')
+    .upsert({ program_id: programId, module_id: data.id, position }, { onConflict: 'program_id,module_id' })
+  if (linkError) throw new Error(linkError.message)
   return { id: data.id }
 }
 
-export async function removeCertModule(requirementId: string) {
+// Removes a module FROM THIS PROGRAM. If no other program still contains it,
+// the module row is deleted too (bank groups/questions, pages, attempts, and
+// lesson progress cascade). A module shared elsewhere is only unlinked —
+// its content and every employee's progress on it stay intact.
+export async function removeCertModule(programId: string, requirementId: string) {
   const { supabase } = await requireAdmin()
-  // Bank groups/questions, attempts, and lesson progress cascade with it.
-  const { error } = await supabase.from('cert_requirements').delete().eq('id', requirementId)
+  const { error } = await supabase
+    .from('cert_program_modules')
+    .delete()
+    .eq('program_id', programId)
+    .eq('module_id', requirementId)
   if (error) throw new Error(error.message)
+
+  const { count } = await supabase
+    .from('cert_program_modules')
+    .select('module_id', { count: 'exact', head: true })
+    .eq('module_id', requirementId)
+  if ((count ?? 0) === 0) {
+    const { error: delError } = await supabase.from('cert_requirements').delete().eq('id', requirementId)
+    if (delError) throw new Error(delError.message)
+  }
 }
 
 export async function reorderCertModules(programId: string, orderedIds: string[]) {
   const { supabase } = await requireAdmin()
-  // Targeted updates (not upsert) so no other column is touched; scoped to
-  // the program so a stale id from another program can't be moved.
+  // Order is per program (the link's position); scoped so a stale id from
+  // another program can't be moved.
   for (let i = 0; i < orderedIds.length; i++) {
     const { error } = await supabase
-      .from('cert_requirements')
-      .update({ sort_order: i })
-      .eq('id', orderedIds[i])
+      .from('cert_program_modules')
+      .update({ position: i })
       .eq('program_id', programId)
+      .eq('module_id', orderedIds[i])
     if (error) throw new Error(error.message)
   }
+}
+
+// "Add existing module": links a module that already lives in another
+// program into this one, at the end. Same rows, not a copy — lessons, pages,
+// plant pages, and quiz questions are shared, and each employee's progress
+// on the module counts here too.
+export async function addExistingCertModule(programId: string, moduleId: string) {
+  const { supabase } = await requireAdmin()
+
+  const { data: existing } = await supabase
+    .from('cert_program_modules')
+    .select('module_id')
+    .eq('program_id', programId)
+    .eq('module_id', moduleId)
+    .maybeSingle<{ module_id: string }>()
+  if (existing) throw new Error('That module is already in this program')
+
+  const { data: mod } = await supabase
+    .from('cert_requirements')
+    .select('id')
+    .eq('id', moduleId)
+    .maybeSingle<{ id: string }>()
+  if (!mod) throw new Error('Module not found')
+
+  const position = await nextModulePosition(supabase, programId)
+  const { error } = await supabase
+    .from('cert_program_modules')
+    .insert({ program_id: programId, module_id: moduleId, position })
+  if (error) throw new Error(error.message)
+}
+
+// "Duplicate module": an INDEPENDENT copy — new module row (home = this
+// program) with copies of its categories, pages, question groups, and
+// questions, linked at the end of this program. Employee progress and
+// attempts are not copied (they belong to the original).
+export async function duplicateCertModule(programId: string, moduleId: string): Promise<{ id: string }> {
+  const { supabase } = await requireAdmin()
+
+  const { data: src } = await supabase
+    .from('cert_requirements')
+    .select('*')
+    .eq('id', moduleId)
+    .maybeSingle<Record<string, unknown>>()
+  if (!src) throw new Error('Module not found')
+
+  const position = await nextModulePosition(supabase, programId)
+  // Copy every column except identity ones so new columns are carried along.
+  const strip = (row: Record<string, unknown>) =>
+    Object.fromEntries(Object.entries(row).filter(([k]) => k !== 'id' && k !== 'created_at'))
+  const copyRow: Record<string, unknown> = { ...strip(src), program_id: programId, sort_order: position }
+  if (typeof copyRow.lesson_title === 'string') copyRow.lesson_title = `${copyRow.lesson_title} (copy)`
+
+  const { data: copy, error } = await supabase
+    .from('cert_requirements')
+    .insert(copyRow)
+    .select('id')
+    .single<{ id: string }>()
+  if (error || !copy) throw new Error(error?.message ?? 'Duplicate failed')
+  const newId = copy.id
+
+  // The insert trigger links the copy at sort_order; make position explicit.
+  const { error: linkError } = await supabase
+    .from('cert_program_modules')
+    .upsert({ program_id: programId, module_id: newId, position }, { onConflict: 'program_id,module_id' })
+  if (linkError) throw new Error(linkError.message)
+
+  // Categories first so pages / bank units can be remapped onto the copies.
+  const categoryMap = new Map<string, string>()
+  const { data: cats } = await supabase
+    .from('cert_categories')
+    .select('*')
+    .eq('requirement_id', moduleId)
+    .order('sort_order')
+    .returns<Record<string, unknown>[]>()
+  for (const cat of cats ?? []) {
+    const { data: newCat, error: catErr } = await supabase
+      .from('cert_categories')
+      .insert({ ...strip(cat), requirement_id: newId })
+      .select('id')
+      .single<{ id: string }>()
+    if (catErr || !newCat) throw new Error(catErr?.message ?? 'Duplicate failed (categories)')
+    categoryMap.set(cat.id as string, newCat.id)
+  }
+  const remapCategory = (row: Record<string, unknown>) => ({
+    ...row,
+    category_id: row.category_id ? (categoryMap.get(row.category_id as string) ?? null) : null,
+  })
+
+  const { data: pages } = await supabase
+    .from('cert_pages')
+    .select('*')
+    .eq('requirement_id', moduleId)
+    .order('sort_order')
+    .returns<Record<string, unknown>[]>()
+  if ((pages ?? []).length > 0) {
+    const { error: pErr } = await supabase
+      .from('cert_pages')
+      .insert((pages ?? []).map((p) => ({ ...remapCategory(strip(p)), requirement_id: newId })))
+    if (pErr) throw new Error(pErr.message)
+  }
+
+  const { data: groups } = await supabase
+    .from('cert_question_groups')
+    .select('*, cert_questions ( * )')
+    .eq('requirement_id', moduleId)
+    .order('sort_order')
+    .returns<(Record<string, unknown> & { cert_questions: Record<string, unknown>[] })[]>()
+  for (const g of groups ?? []) {
+    const { cert_questions: qs, ...groupRow } = g
+    const { data: newGroup, error: gErr } = await supabase
+      .from('cert_question_groups')
+      .insert({ ...remapCategory(strip(groupRow)), requirement_id: newId })
+      .select('id')
+      .single<{ id: string }>()
+    if (gErr || !newGroup) throw new Error(gErr?.message ?? 'Duplicate failed (question groups)')
+    if (qs.length > 0) {
+      const { error: qErr } = await supabase
+        .from('cert_questions')
+        .insert(qs.map((q) => ({ ...remapCategory(strip(q)), group_id: newGroup.id, requirement_id: null })))
+      if (qErr) throw new Error(qErr.message)
+    }
+  }
+
+  const { data: standalone } = await supabase
+    .from('cert_questions')
+    .select('*')
+    .eq('requirement_id', moduleId)
+    .order('sort_order')
+    .returns<Record<string, unknown>[]>()
+  if ((standalone ?? []).length > 0) {
+    const { error: sErr } = await supabase
+      .from('cert_questions')
+      .insert((standalone ?? []).map((q) => ({ ...remapCategory(strip(q)), requirement_id: newId, group_id: null })))
+    if (sErr) throw new Error(sErr.message)
+  }
+
+  return { id: newId }
 }
 
 export async function updateCertModule(

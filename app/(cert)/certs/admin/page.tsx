@@ -17,7 +17,7 @@ export default async function AdminCertsPage() {
 
   const [{ data: programs }, { data: reqCounts }, { data: assignCounts }] = await Promise.all([
     supabase.from('cert_programs').select('*').order('created_at').returns<CertProgram[]>(),
-    supabase.from('cert_requirements').select('program_id').returns<{ program_id: string }[]>(),
+    supabase.from('cert_program_modules').select('program_id').returns<{ program_id: string }[]>(),
     supabase.from('cert_assignments').select('program_id').returns<{ program_id: string }[]>(),
   ])
 

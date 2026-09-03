@@ -850,3 +850,69 @@ ALTER TABLE public.cert_pages ADD COLUMN IF NOT EXISTS blocks jsonb;
 
 ALTER TABLE public.cert_pages ADD COLUMN IF NOT EXISTS needs_review boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS cert_pages_needs_review_idx ON public.cert_pages (requirement_id) WHERE needs_review;
+
+-- ── Step 14: Shared modules across programs ───────────────────────────────
+-- A module (cert_requirements row) can now belong to SEVERAL programs via
+-- cert_program_modules (program_id, module_id, position). The module's
+-- lessons, pages, plant pages, question bank, and settings are the same
+-- rows everywhere — an edit anywhere shows everywhere. Progress (lesson,
+-- page, quiz attempts) is already keyed per employee per module, so
+-- completing a shared module counts in every program it belongs to;
+-- gating and the exam still run per program from that program's ordered
+-- module list. cert_requirements.program_id stays as the module's HOME
+-- program (where it was created; informational) and becomes nullable.
+-- Existing modules are migrated into the join table 1:1.
+
+CREATE TABLE IF NOT EXISTS public.cert_program_modules (
+  program_id uuid not null references public.cert_programs(id) on delete cascade,
+  module_id uuid not null references public.cert_requirements(id) on delete cascade,
+  position integer not null default 0,
+  created_at timestamp with time zone default now(),
+  PRIMARY KEY (program_id, module_id)
+);
+CREATE INDEX IF NOT EXISTS cert_program_modules_module_idx ON public.cert_program_modules (module_id);
+CREATE INDEX IF NOT EXISTS cert_program_modules_program_pos_idx ON public.cert_program_modules (program_id, position);
+
+-- Backfill: every existing module appears in its program at its old sort_order.
+INSERT INTO public.cert_program_modules (program_id, module_id, position)
+SELECT program_id, id, sort_order FROM public.cert_requirements WHERE program_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+-- program_id is now the home program only; sharing lives in the join table.
+ALTER TABLE public.cert_requirements ALTER COLUMN program_id DROP NOT NULL;
+-- Per-program target uniqueness no longer describes membership — drop it
+-- (membership uniqueness is the join table's primary key).
+ALTER TABLE public.cert_requirements DROP CONSTRAINT IF EXISTS cert_requirements_program_id_video_id_key;
+ALTER TABLE public.cert_requirements DROP CONSTRAINT IF EXISTS cert_requirements_program_id_standalone_quiz_id_key;
+ALTER TABLE public.cert_requirements DROP CONSTRAINT IF EXISTS cert_requirements_program_id_path_id_key;
+
+-- Safety net for legacy inserts (seed scripts, hand SQL) that only set
+-- program_id: link the new module into that program automatically.
+CREATE OR REPLACE FUNCTION public.cert_requirements_autolink()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.program_id IS NOT NULL THEN
+    INSERT INTO public.cert_program_modules (program_id, module_id, position)
+    VALUES (NEW.program_id, NEW.id, NEW.sort_order)
+    ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS cert_requirements_autolink ON public.cert_requirements;
+CREATE TRIGGER cert_requirements_autolink
+  AFTER INSERT ON public.cert_requirements
+  FOR EACH ROW EXECUTE FUNCTION public.cert_requirements_autolink();
+
+-- Quiz attempts remember which program they were started from, so scoring
+-- can re-run that program's gate (a shared module has no single program).
+ALTER TABLE public.cert_quiz_attempts
+  ADD COLUMN IF NOT EXISTS program_id uuid references public.cert_programs(id) on delete set null;
+
+ALTER TABLE public.cert_program_modules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "cert_program_modules_read" ON public.cert_program_modules;
+CREATE POLICY "cert_program_modules_read" ON public.cert_program_modules
+  FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "cert_program_modules_admin_write" ON public.cert_program_modules;
+CREATE POLICY "cert_program_modules_admin_write" ON public.cert_program_modules
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());

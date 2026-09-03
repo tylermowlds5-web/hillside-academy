@@ -28,12 +28,14 @@ export default async function CertBankEditorPage(props: {
     { data: categories },
   ] = await Promise.all([
     supabase.from('cert_programs').select('*').eq('id', programId).single<CertProgram>(),
+    // Module must be linked into THIS program (shared modules live in several).
     supabase
-      .from('cert_requirements')
-      .select('*')
-      .eq('id', requirementId)
+      .from('cert_program_modules')
+      .select('cert_requirements ( * )')
       .eq('program_id', programId)
-      .single<CertRequirement>(),
+      .eq('module_id', requirementId)
+      .maybeSingle<{ cert_requirements: CertRequirement | null }>()
+      .then((res) => ({ data: res.data?.cert_requirements ?? null })),
     supabase
       .from('cert_question_groups')
       .select('id, label, image_url, sort_order, category_id, cert_questions ( id, question, sort_order )')

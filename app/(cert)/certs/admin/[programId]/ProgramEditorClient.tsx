@@ -8,6 +8,8 @@ import EmployeeSelector from '@/app/(app)/admin/EmployeeSelector'
 import BulkPlantImport from './BulkPlantImport'
 import {
   addCertModule,
+  addExistingCertModule,
+  duplicateCertModule,
   removeCertModule,
   reorderCertModules,
   updateCertModule,
@@ -39,6 +41,9 @@ export type EditorModule = {
   pageCount: number
   // Plant pages flagged needs_review (hidden from employees until reviewed).
   reviewCount: number
+  // Names of the OTHER programs this module also appears in (same rows, not
+  // copies). For picker entries: the programs it currently lives in.
+  sharedWith: string[]
   videoId?: string
   lessonBody?: string
   lessonImageUrl?: string | null
@@ -68,12 +73,14 @@ function ModuleRow({
   mod,
   position,
   onRemove,
+  onDuplicate,
   onSaved,
 }: {
   programId: string
   mod: EditorModule
   position: number
   onRemove: () => void
+  onDuplicate: () => void
   onSaved: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: mod.id })
@@ -151,6 +158,15 @@ function ModuleRow({
         </span>
         <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">{mod.title}</p>
 
+        {mod.sharedWith.length > 0 && (
+          <span
+            className="flex-shrink-0 rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700"
+            title={`Also in: ${mod.sharedWith.join(', ')}. Same lessons, pages, and questions — an edit here shows there too.`}
+          >
+            Shared · {mod.sharedWith.length + 1} programs
+          </span>
+        )}
+
         {mod.kind === 'lesson' && (
           <>
             {mod.reviewCount > 0 && (
@@ -185,7 +201,16 @@ function ModuleRow({
         </button>
         <button
           type="button"
+          onClick={onDuplicate}
+          title="Make an independent copy of this module (lessons, pages, questions) in this program"
+          className="flex-shrink-0 text-xs text-plum/60 hover:text-plum px-2 py-1.5 rounded hover:bg-plum/5"
+        >
+          Duplicate
+        </button>
+        <button
+          type="button"
           onClick={onRemove}
+          title={mod.sharedWith.length > 0 ? 'Remove from this program only — it stays in the others' : 'Remove and delete this module'}
           className="flex-shrink-0 text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
         >
           Remove
@@ -281,6 +306,7 @@ function ModuleRow({
 export default function ProgramEditorClient({
   programId,
   initialModules,
+  availableModules,
   allVideos,
   usedVideoIds,
   employees,
@@ -290,6 +316,8 @@ export default function ProgramEditorClient({
 }: {
   programId: string
   initialModules: EditorModule[]
+  // Modules in other programs (or in none) that can be linked in as-is.
+  availableModules: EditorModule[]
   allVideos: Video[]
   usedVideoIds: string[]
   employees: Profile[]
@@ -326,7 +354,7 @@ export default function ProgramEditorClient({
       const { id } = await addCertModule(programId, { kind: 'video', videoId: video.id })
       setModules((prev) => [
         ...prev,
-        { id, kind: 'video', title: video.title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, reviewCount: 0, videoId: video.id },
+        { id, kind: 'video', title: video.title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, reviewCount: 0, sharedWith: [], videoId: video.id },
       ])
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : 'Add failed')
@@ -344,7 +372,7 @@ export default function ProgramEditorClient({
       const { id } = await addCertModule(programId, { kind: 'lesson', title })
       setModules((prev) => [
         ...prev,
-        { id, kind: 'lesson', title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, reviewCount: 0, lessonBody: '', lessonImageUrl: null },
+        { id, kind: 'lesson', title, passScore: 80, drawCount: 4, groupCount: 0, questionCount: 0, pageCount: 0, reviewCount: 0, sharedWith: [], lessonBody: '', lessonImageUrl: null },
       ])
       setLessonTitle('')
     } catch (err) {
@@ -355,15 +383,67 @@ export default function ProgramEditorClient({
   }
 
   async function handleRemove(id: string) {
-    if (!confirm('Remove this module? Its question bank, attempts, and progress go with it.')) return
+    const target = modules.find((m) => m.id === id)
+    const shared = (target?.sharedWith.length ?? 0) > 0
+    if (
+      !confirm(
+        shared
+          ? `Remove this module from this program? It stays in ${target!.sharedWith.join(', ')} with all its content and employee progress.`
+          : 'Remove this module? It is in no other program, so its question bank, pages, attempts, and progress are deleted with it.'
+      )
+    )
+      return
     setModuleError(null)
     const prev = modules
     setModules((m) => m.filter((x) => x.id !== id))
     try {
-      await removeCertModule(id)
+      await removeCertModule(programId, id)
     } catch (err) {
       setModules(prev)
       setModuleError(err instanceof Error ? err.message : 'Remove failed')
+    }
+  }
+
+  // "Add existing module": link a module from another program (same rows,
+  // not a copy). Picker = every module not already in this program.
+  const [available, setAvailable] = useState(availableModules)
+  const [existingSearch, setExistingSearch] = useState('')
+  const existingMatches = available.filter((m) =>
+    m.title.toLowerCase().includes(existingSearch.toLowerCase()) ||
+    m.sharedWith.some((p) => p.toLowerCase().includes(existingSearch.toLowerCase()))
+  )
+
+  async function handleAddExisting(mod: EditorModule) {
+    setAdding(true)
+    setModuleError(null)
+    try {
+      await addExistingCertModule(programId, mod.id)
+      setModules((m) => [...m, mod])
+      setAvailable((a) => a.filter((x) => x.id !== mod.id))
+      setExistingSearch('')
+      router.refresh()
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : 'Add failed')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  // "Duplicate": an independent copy appended to this program.
+  async function handleDuplicate(mod: EditorModule) {
+    setAdding(true)
+    setModuleError(null)
+    try {
+      const { id } = await duplicateCertModule(programId, mod.id)
+      setModules((m) => [
+        ...m,
+        { ...mod, id, title: mod.kind === 'lesson' ? `${mod.title} (copy)` : mod.title, sharedWith: [] },
+      ])
+      router.refresh()
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : 'Duplicate failed')
+    } finally {
+      setAdding(false)
     }
   }
 
@@ -443,6 +523,7 @@ export default function ProgramEditorClient({
                     mod={m}
                     position={i + 1}
                     onRemove={() => handleRemove(m.id)}
+                    onDuplicate={() => handleDuplicate(m)}
                     onSaved={() => router.refresh()}
                   />
                 ))}
@@ -453,6 +534,61 @@ export default function ProgramEditorClient({
 
         {/* Add video module */}
         <div className="border-t border-plum/10 pt-4 space-y-4">
+          {/* Add existing module (shared, not copied) */}
+          <div>
+            <p className="text-xs font-semibold text-plum/50 uppercase tracking-wider mb-2">Add existing module</p>
+            <p className="text-[11px] text-plum/40 mb-2">
+              Pick a module from another program. It&apos;s the same module, not a copy — its lessons,
+              pages, plant pages, and questions are shared, so an edit anywhere shows everywhere, and an
+              employee who completed it elsewhere has completed it here. Use <span className="font-semibold">Duplicate</span> on
+              a module row when you want an independent copy instead.
+            </p>
+            {available.length === 0 ? (
+              <p className="text-sm text-plum/50">No other modules exist yet.</p>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={existingSearch}
+                  onChange={(e) => setExistingSearch(e.target.value)}
+                  placeholder={`Search ${available.length} module${available.length === 1 ? '' : 's'} in other programs…`}
+                  className="w-full px-3 py-2.5 rounded-lg bg-white border border-plum/20 text-plum placeholder-plum/40 text-sm focus:outline-none focus:border-emerald-600 mb-2"
+                />
+                {existingSearch.trim() !== '' && (
+                  existingMatches.length > 0 ? (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {existingMatches.slice(0, 20).map((m) => (
+                        <div key={m.id} className="flex items-center gap-3 bg-plum/5 rounded-lg p-2.5">
+                          <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider bg-plum/10 text-plum/60 px-2 py-0.5 rounded-full">
+                            {KIND_LABEL[m.kind]}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-plum/80 truncate">{m.title}</p>
+                            <p className="text-[11px] text-plum/40 truncate">
+                              {m.sharedWith.length > 0 ? `In: ${m.sharedWith.join(', ')}` : 'Not in any program'}
+                              {m.kind === 'lesson' ? ` · ${m.pageCount} page${m.pageCount === 1 ? '' : 's'}` : ''}
+                              {` · ${m.questionCount} question${m.questionCount === 1 ? '' : 's'}`}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAddExisting(m)}
+                            disabled={adding}
+                            className="text-xs text-emerald-700 hover:text-emerald-800 px-3 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15 flex-shrink-0 disabled:opacity-50"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-plum/50">No modules match your search.</p>
+                  )
+                )}
+              </>
+            )}
+          </div>
+
           <div>
             <p className="text-xs font-semibold text-plum/50 uppercase tracking-wider mb-2">Add a video module</p>
             <input

@@ -11,7 +11,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireUnlockedModule, maybeAwardCert, loadProgramState } from '@/lib/certs'
+import { requireUnlockedModule, maybeAwardCertForModule, loadProgramState } from '@/lib/certs'
 import { scoreQuiz, toReview } from '@/lib/quiz-scoring'
 import type {
   QuizQuestion,
@@ -78,7 +78,7 @@ export async function updateCertLessonProgress(
 
   // Finishing a bank-less final video can complete the whole program.
   if (completed && !wasCompleted) {
-    await maybeAwardCert(supabase, user.id, programId)
+    await maybeAwardCertForModule(supabase, user.id, requirementId, programId)
   }
 }
 
@@ -162,7 +162,7 @@ export async function updateCertPageProgress(
 
   // Completing the final page of the final module can finish the program.
   if (completed && !wasCompleted) {
-    await maybeAwardCert(supabase, user.id, programId)
+    await maybeAwardCertForModule(supabase, user.id, requirementId, programId)
   }
 }
 
@@ -199,7 +199,7 @@ export async function markCertPageRead(
     return { error: 'Could not save. Try again.' }
   }
 
-  await maybeAwardCert(supabase, user.id, programId)
+  await maybeAwardCertForModule(supabase, user.id, requirementId, programId)
   return {}
 }
 
@@ -229,7 +229,7 @@ export async function markCertLessonRead(programId: string, requirementId: strin
   }
 
   // Reading a bank-less final lesson can complete the whole program.
-  await maybeAwardCert(supabase, user.id, programId)
+  await maybeAwardCertForModule(supabase, user.id, requirementId, programId)
   return {}
 }
 
@@ -395,7 +395,9 @@ export async function startCertQuizAttempt(
 
   const { data: attempt, error } = await admin
     .from('cert_quiz_attempts')
-    .insert({ user_id: user.id, requirement_id: requirementId, questions: served })
+    // program_id: which program this attempt was taken in (a shared module
+    // has several); scoring re-runs that program's gate.
+    .insert({ user_id: user.id, requirement_id: requirementId, program_id: programId, questions: served })
     .select('id')
     .single<{ id: string }>()
 
@@ -428,12 +430,13 @@ export async function submitCertQuizAttempt(
   const admin = createAdminClient()
   const { data: attempt } = await admin
     .from('cert_quiz_attempts')
-    .select('id, user_id, requirement_id, questions, submitted_at')
+    .select('id, user_id, requirement_id, program_id, questions, submitted_at')
     .eq('id', attemptId)
     .single<{
       id: string
       user_id: string
       requirement_id: string
+      program_id: string | null
       questions: CertServedGroup[]
       submitted_at: string | null
     }>()
@@ -445,10 +448,25 @@ export async function submitCertQuizAttempt(
     .from('cert_requirements')
     .select('program_id, quiz_pass_score')
     .eq('id', attempt.requirement_id)
-    .single<{ program_id: string; quiz_pass_score: number }>()
+    .single<{ program_id: string | null; quiz_pass_score: number }>()
   if (!req) return { error: 'Module not found.' }
 
-  const gate = await requireUnlockedModule(supabase, user.id, req.program_id, attempt.requirement_id)
+  // The program this attempt was taken in. Attempts from before Step 14 have
+  // no program_id; fall back to the module's home program, then to any
+  // program that contains the module.
+  let programId: string | null = attempt.program_id ?? req.program_id
+  if (!programId) {
+    const { data: link } = await admin
+      .from('cert_program_modules')
+      .select('program_id')
+      .eq('module_id', attempt.requirement_id)
+      .limit(1)
+      .maybeSingle<{ program_id: string }>()
+    programId = link?.program_id ?? null
+  }
+  if (!programId) return { error: 'This module is not part of any program.' }
+
+  const gate = await requireUnlockedModule(supabase, user.id, programId, attempt.requirement_id)
   if (!gate) return { error: 'This module is locked.' }
 
   const flat = attempt.questions.flatMap((g) => g.questions)
@@ -473,7 +491,7 @@ export async function submitCertQuizAttempt(
   // the award (the official pass record) the moment it happens.
   const moduleCompleted = passed && gate.module.lessonCompleted
   const certEarned = moduleCompleted
-    ? await maybeAwardCert(supabase, user.id, req.program_id)
+    ? await maybeAwardCertForModule(supabase, user.id, attempt.requirement_id, programId)
     : false
 
   return {
