@@ -916,3 +916,25 @@ CREATE POLICY "cert_program_modules_read" ON public.cert_program_modules
 DROP POLICY IF EXISTS "cert_program_modules_admin_write" ON public.cert_program_modules;
 CREATE POLICY "cert_program_modules_admin_write" ON public.cert_program_modules
   FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- Home program is informational: deleting a program must NOT take shared
+-- modules with it (the app deletes a program's exclusive modules itself,
+-- and link rows cascade). Re-point the program_id FK from CASCADE to SET
+-- NULL, dropping whatever name the original inline FK got.
+DO $$
+DECLARE c record;
+BEGIN
+  FOR c IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)
+    WHERE con.conrelid = 'public.cert_requirements'::regclass
+      AND con.contype = 'f'
+      AND a.attname = 'program_id'
+  LOOP
+    EXECUTE format('ALTER TABLE public.cert_requirements DROP CONSTRAINT %I', c.conname);
+  END LOOP;
+END $$;
+ALTER TABLE public.cert_requirements
+  ADD CONSTRAINT cert_requirements_program_id_fkey
+  FOREIGN KEY (program_id) REFERENCES public.cert_programs(id) ON DELETE SET NULL;
