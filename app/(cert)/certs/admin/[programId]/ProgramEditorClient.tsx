@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Video, Profile, JobRole, UserJobRole } from '@/lib/types'
@@ -94,6 +94,25 @@ function ModuleRow({
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close the "…" menu on outside click or Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    function onPointer(e: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
 
   async function handleSave() {
     setError(null)
@@ -140,11 +159,11 @@ function ModuleRow({
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
       className="rounded-2xl border border-plum/10 bg-white shadow-sm"
     >
-      <div className="flex items-center gap-3 p-3">
+      <div className="flex items-start gap-2 sm:gap-3 p-3">
         <div
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-plum/40 hover:text-plum/60 px-1 touch-none select-none"
+          className="cursor-grab active:cursor-grabbing text-plum/40 hover:text-plum/60 px-1 py-1 touch-none select-none flex-shrink-0"
         >
           <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">
             <circle cx="3" cy="3" r="1.5" /><circle cx="9" cy="3" r="1.5" />
@@ -152,69 +171,113 @@ function ModuleRow({
             <circle cx="3" cy="13" r="1.5" /><circle cx="9" cy="13" r="1.5" />
           </svg>
         </div>
-        <span className="flex-shrink-0 w-6 text-sm font-semibold text-plum/50 text-center">{position}</span>
-        <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider bg-plum/10 text-plum/60 px-2 py-0.5 rounded-full">
-          {KIND_LABEL[mod.kind]}
-        </span>
-        <p className="flex-1 min-w-0 text-sm font-medium text-plum truncate">{mod.title}</p>
+        <span className="flex-shrink-0 w-5 sm:w-6 py-0.5 text-sm font-semibold text-plum/50 text-center">{position}</span>
 
-        {mod.sharedWith.length > 0 && (
-          <span
-            className="flex-shrink-0 rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700"
-            title={`Also in: ${mod.sharedWith.join(', ')}. Same lessons, pages, and questions — an edit here shows there too.`}
-          >
-            Shared · {mod.sharedWith.length + 1} programs
-          </span>
-        )}
+        <div className="flex-1 min-w-0">
+          {/* Title line */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider bg-plum/10 text-plum/60 px-2 py-0.5 rounded-full">
+              {KIND_LABEL[mod.kind]}
+            </span>
+            <p className="min-w-0 text-sm font-semibold text-plum truncate" title={mod.title}>{mod.title}</p>
+          </div>
 
-        {mod.kind === 'lesson' && (
-          <>
-            {mod.reviewCount > 0 && (
+          {/* Muted status line: sharing, review backlog, group count */}
+          {(mod.sharedWith.length > 0 || mod.reviewCount > 0 || mod.groupCount > 0) && (
+            <p className="mt-0.5 text-xs text-plum/50 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              {mod.sharedWith.length > 0 && (
+                <span
+                  className="text-sky-700"
+                  title={`Also in: ${mod.sharedWith.join(', ')}. Same lessons, pages, and questions — an edit here shows there too.`}
+                >
+                  Shared with {mod.sharedWith.join(', ')}
+                </span>
+              )}
+              {mod.sharedWith.length > 0 && mod.reviewCount > 0 && <span aria-hidden>·</span>}
+              {mod.reviewCount > 0 && (
+                <Link
+                  href={`/certs/admin/${programId}/modules/${mod.id}/pages`}
+                  title="Bulk-imported plant pages hidden from employees until reviewed"
+                  className="text-amber-700 hover:underline"
+                >
+                  {mod.reviewCount} page{mod.reviewCount === 1 ? '' : 's'} need{mod.reviewCount === 1 ? 's' : ''} review
+                </Link>
+              )}
+              {(mod.sharedWith.length > 0 || mod.reviewCount > 0) && mod.groupCount > 0 && <span aria-hidden>·</span>}
+              {mod.groupCount > 0 && (
+                <span title="Photo groups in the question bank. Each group is drawn as one unit on the quiz.">
+                  {mod.groupCount} photo group{mod.groupCount === 1 ? '' : 's'}
+                </span>
+              )}
+            </p>
+          )}
+
+          {/* Actions */}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {mod.kind === 'lesson' && (
               <Link
                 href={`/certs/admin/${programId}/modules/${mod.id}/pages`}
-                title="Bulk-imported plant pages hidden from employees until reviewed"
-                className="flex-shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-500/20"
+                className="text-xs text-plum/70 hover:text-plum px-2.5 py-1.5 rounded bg-plum/10 hover:bg-plum/15"
               >
-                {mod.reviewCount} need{mod.reviewCount === 1 ? 's' : ''} review
+                Pages ({mod.pageCount})
               </Link>
             )}
             <Link
-              href={`/certs/admin/${programId}/modules/${mod.id}/pages`}
-              className="flex-shrink-0 text-xs text-plum/70 hover:text-plum px-2.5 py-1.5 rounded bg-plum/10 hover:bg-plum/15"
+              href={`/certs/admin/${programId}/modules/${mod.id}`}
+              className="text-xs text-emerald-700 hover:text-emerald-800 px-2.5 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15"
             >
-              Pages ({mod.pageCount})
+              Questions ({mod.questionCount})
             </Link>
-          </>
-        )}
-        <Link
-          href={`/certs/admin/${programId}/modules/${mod.id}`}
-          className="flex-shrink-0 text-xs text-emerald-700 hover:text-emerald-800 px-2.5 py-1.5 rounded bg-emerald-600/10 hover:bg-emerald-600/15"
-        >
-          Questions ({mod.groupCount}·{mod.questionCount})
-        </Link>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex-shrink-0 text-xs text-plum/60 hover:text-plum px-2 py-1.5 rounded hover:bg-plum/5"
-        >
-          {expanded ? 'Close' : 'Settings'}
-        </button>
-        <button
-          type="button"
-          onClick={onDuplicate}
-          title="Make an independent copy of this module (lessons, pages, questions) in this program"
-          className="flex-shrink-0 text-xs text-plum/60 hover:text-plum px-2 py-1.5 rounded hover:bg-plum/5"
-        >
-          Duplicate
-        </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          title={mod.sharedWith.length > 0 ? 'Remove from this program only — it stays in the others' : 'Remove and delete this module'}
-          className="flex-shrink-0 text-xs text-red-600 hover:text-red-500 px-2 py-1.5 rounded hover:bg-red-500/10"
-        >
-          Remove
-        </button>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="text-xs text-plum/60 hover:text-plum px-2.5 py-1.5 rounded hover:bg-plum/5"
+            >
+              {expanded ? 'Close' : 'Settings'}
+            </button>
+          </div>
+        </div>
+
+        {/* "…" menu: Duplicate / Remove */}
+        <div ref={menuRef} className="relative flex-shrink-0 self-start">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-plum/50 hover:text-plum hover:bg-plum/5"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+              <circle cx="3" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="13" cy="8" r="1.5" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-9 z-20 w-44 rounded-xl border border-plum/10 bg-white shadow-lg py-1"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setMenuOpen(false); onDuplicate() }}
+                title="Make an independent copy of this module (lessons, pages, questions) in this program"
+                className="w-full text-left text-sm text-plum/80 hover:bg-plum/5 px-3 py-2"
+              >
+                Duplicate
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setMenuOpen(false); onRemove() }}
+                title={mod.sharedWith.length > 0 ? 'Remove from this program only — it stays in the others' : 'Remove and delete this module'}
+                className="w-full text-left text-sm text-red-600 hover:bg-red-500/10 px-3 py-2"
+              >
+                {mod.sharedWith.length > 0 ? 'Remove from program' : 'Remove'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {expanded && (
