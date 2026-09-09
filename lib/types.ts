@@ -590,6 +590,13 @@ export type CertQuizAttempt = {
   passed: boolean | null
   started_at: string
   submitted_at: string | null
+  // One-sitting rules (Step 16): bumped as the employee answers; an attempt
+  // idle past EXAM_IDLE_MINUTES, or explicitly abandoned (left the page,
+  // closed the tab, started another attempt), is dead — answers are never
+  // stored for it. Open = submitted_at null AND abandoned_at null AND
+  // last_activity_at within the idle window.
+  last_activity_at: string
+  abandoned_at: string | null
 }
 
 // Sanitized quiz payload sent to the taker (answer key stripped: every

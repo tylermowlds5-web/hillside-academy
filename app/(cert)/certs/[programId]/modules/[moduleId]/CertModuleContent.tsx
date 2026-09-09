@@ -12,7 +12,10 @@ import {
   markCertPageRead,
   startCertQuizAttempt,
   submitCertQuizAttempt,
+  abandonCertQuizAttempt,
+  touchCertQuizAttempt,
 } from '@/app/cert-actions'
+import { EXAM_IDLE_MINUTES, EXAM_IDLE_MS } from '@/lib/exam-rules'
 import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult, PageBlock, PlantData } from '@/lib/types'
 import PlantPage from '@/components/cert/PlantPage'
 import PageBlocks from '@/components/cert/PageBlocks'
@@ -240,6 +243,27 @@ export default function CertModuleContent({
 // Each drawn group renders its plant photo ONCE with the linked questions
 // beneath it. Answers are keyed by flat question index across all groups so
 // the shared QuestionBlock/scorer contract is unchanged.
+//
+// ONE SITTING. An attempt lives only while this card is on screen with the
+// questions up. Leaving the page (unmount), closing or reloading the tab
+// (pagehide → beacon), or EXAM_IDLE_MINUTES without answering (client timer)
+// abandons it — the server never stores answers for an abandoned attempt
+// and refuses to score one, so the employee starts over with a fresh draw.
+// While the attempt is live, Ricky Bobby is switched off for this employee.
+
+// Tells the server the attempt is dead even as the page is being torn down.
+function beaconAbandon(attemptId: string) {
+  try {
+    const body = new Blob([JSON.stringify({ attemptId })], { type: 'application/json' })
+    if (!navigator.sendBeacon?.('/api/exam/abandon', body)) {
+      abandonCertQuizAttempt(attemptId).catch(() => {})
+    }
+  } catch {
+    abandonCertQuizAttempt(attemptId).catch(() => {})
+  }
+}
+
+const IDLE_TIMEOUT_MESSAGE = `Timed out — ${EXAM_IDLE_MINUTES} minutes without activity, so that attempt was abandoned and your answers were cleared. Start over when you're ready.`
 
 function CertQuizCard({
   programId,
@@ -259,19 +283,97 @@ function CertQuizCard({
   const [result, setResult] = useState<CertQuizResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Why the last attempt ended without a score (timeout / abandoned).
+  const [notice, setNotice] = useState<string | null>(null)
+
+  // Refs so teardown handlers see the live attempt without re-binding.
+  const servedRef = useRef<ServedCertQuiz | null>(null)
+  const idleTimer = useRef<number | null>(null)
+  const lastTouch = useRef(0)
+
+  const clearIdle = useCallback(() => {
+    if (idleTimer.current !== null) {
+      window.clearTimeout(idleTimer.current)
+      idleTimer.current = null
+    }
+  }, [])
+
+  // (Re)arm the idle clock. Fires → abandon server-side, wipe answers.
+  const armIdle = useCallback(() => {
+    clearIdle()
+    idleTimer.current = window.setTimeout(() => {
+      const live = servedRef.current
+      if (!live) return
+      abandonCertQuizAttempt(live.attemptId).catch(() => {})
+      servedRef.current = null
+      setServed(null)
+      setAnswers({})
+      setNotice(IDLE_TIMEOUT_MESSAGE)
+    }, EXAM_IDLE_MS)
+  }, [clearIdle])
+
+  // Unmount = the employee navigated away mid-attempt. Abandon it.
+  useEffect(() => {
+    return () => {
+      clearIdle()
+      const live = servedRef.current
+      if (live) {
+        servedRef.current = null
+        beaconAbandon(live.attemptId)
+      }
+    }
+  }, [clearIdle])
+
+  // Tab close / reload / leaving the site: beacon the abandon, and let the
+  // browser ask "leave site?" so a stray swipe doesn't cost the attempt.
+  useEffect(() => {
+    if (!served) return
+    const attemptId = served.attemptId
+    const onPageHide = () => {
+      if (servedRef.current?.attemptId === attemptId) {
+        servedRef.current = null
+        beaconAbandon(attemptId)
+      }
+    }
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('beforeunload', onBeforeUnload)
+    }
+  }, [served])
 
   const start = async () => {
     setBusy(true)
     setError(null)
+    setNotice(null)
     const res = await startCertQuizAttempt(programId, requirementId)
     setBusy(false)
     if ('error' in res) {
       setError(res.error)
       return
     }
+    servedRef.current = res
+    lastTouch.current = Date.now()
     setServed(res)
     setAnswers({})
     setResult(null)
+    armIdle()
+  }
+
+  // Every answer change is activity: re-arm the idle clock and (at most
+  // once a minute) tell the server so its own idle check agrees.
+  const recordAnswer = (i: number, a: QuizSubmittedAnswer) => {
+    setAnswers((prev) => ({ ...prev, [i]: a }))
+    armIdle()
+    const live = servedRef.current
+    if (live && Date.now() - lastTouch.current > 60_000) {
+      lastTouch.current = Date.now()
+      touchCertQuizAttempt(live.attemptId).catch(() => {})
+    }
   }
 
   const submit = async () => {
@@ -281,9 +383,20 @@ function CertQuizCard({
     const res = await submitCertQuizAttempt(served.attemptId, answers)
     setBusy(false)
     if ('error' in res) {
+      if (res.abandoned) {
+        // Server says the attempt is dead — drop it here too.
+        clearIdle()
+        servedRef.current = null
+        setServed(null)
+        setAnswers({})
+        setNotice(res.error)
+        return
+      }
       setError(res.error)
       return
     }
+    clearIdle()
+    servedRef.current = null
     setResult(res)
     setServed(null)
     if (res.passed) onPassed()
@@ -338,7 +451,7 @@ function CertQuizCard({
 
     return (
       <div className="rounded-2xl bg-zinc-950 p-4 sm:p-6">
-        <div className="mb-5 flex items-center justify-between px-1">
+        <div className="mb-3 flex items-center justify-between px-1">
           <p className="text-sm font-semibold text-zinc-300">
             {allQuestions.length} questions · pass mark {passScore}%
           </p>
@@ -346,6 +459,10 @@ function CertQuizCard({
             {Object.keys(answers).length}/{allQuestions.length} answered
           </p>
         </div>
+        <p className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          One sitting: leaving this page, closing the tab, or {EXAM_IDLE_MINUTES} minutes without answering
+          abandons the attempt and clears your answers. Ricky Bobby is off until you submit or leave.
+        </p>
 
         {/* One card per drawn unit. Photo groups: photo beside (desktop) /
             above (mobile) the linked questions as one bordered plant card.
@@ -384,7 +501,7 @@ function CertQuizCard({
                           q={q}
                           qi={i}
                           answer={answers[i]}
-                          onChange={(a) => setAnswers((prev) => ({ ...prev, [i]: a }))}
+                          onChange={(a) => recordAnswer(i, a)}
                         />
                       </div>
                     )
@@ -418,6 +535,15 @@ function CertQuizCard({
         shuffled — retakes get a different set. Pass mark {passScore}%.
         {attemptCount > 0 && <> You&apos;ve made {attemptCount} attempt{attemptCount === 1 ? '' : 's'} so far.</>}
       </p>
+      <p className="mx-auto mt-2 max-w-md text-xs text-plum/50">
+        The exam is one sitting: leaving the page, closing the tab, or {EXAM_IDLE_MINUTES} minutes idle
+        abandons it and you start over. Ricky Bobby is unavailable while your exam is open.
+      </p>
+      {notice && (
+        <p className="mx-auto mt-3 max-w-md rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800">
+          {notice}
+        </p>
+      )}
       {error && <p className="mt-3 text-sm font-medium text-red-500">{error}</p>}
       <button
         type="button"

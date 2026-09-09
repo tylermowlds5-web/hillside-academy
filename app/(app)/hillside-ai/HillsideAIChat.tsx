@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { EXAM_LOCK_MESSAGE } from '@/lib/exam-rules'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -44,11 +45,15 @@ function AssistantText({ content }: { content: string }) {
   )
 }
 
-export default function HillsideAIChat() {
+export default function HillsideAIChat({ initialExamLocked = false }: { initialExamLocked?: boolean }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Exam lock: the route answers 423 while the employee has a cert exam
+  // open. Shown as a banner with the input disabled; "Check again" simply
+  // lets them try (the route re-checks every request).
+  const [examLocked, setExamLocked] = useState(initialExamLocked)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -84,6 +89,13 @@ export default function HillsideAIChat() {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
+        if (res.status === 423) {
+          // Put the question back in the box so nothing is lost.
+          setMessages(messages)
+          setInput(text)
+          setExamLocked(true)
+          return
+        }
         throw new Error(body?.error ?? `Request failed (${res.status})`)
       }
       if (!res.body) throw new Error('No response stream')
@@ -186,6 +198,20 @@ export default function HillsideAIChat() {
         )}
       </div>
 
+      {/* Exam lock banner */}
+      {examLocked && (
+        <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/40 text-amber-200 text-sm rounded-lg px-3 py-2">
+          <span>{EXAM_LOCK_MESSAGE}</span>
+          <button
+            type="button"
+            onClick={() => setExamLocked(false)}
+            className="flex-none rounded-md border border-amber-500/40 px-2.5 py-1 text-xs font-semibold hover:bg-amber-500/15 transition-colors"
+          >
+            Check again
+          </button>
+        </div>
+      )}
+
       {/* Error banner */}
       {error && (
         <div className="bg-burgundy/15 border border-burgundy/50 text-red-400 text-sm rounded-lg px-3 py-2">
@@ -206,13 +232,13 @@ export default function HillsideAIChat() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={1}
-          placeholder="Ask Ricky…"
-          disabled={streaming}
+          placeholder={examLocked ? 'Ricky is off during your exam' : 'Ask Ricky…'}
+          disabled={streaming || examLocked}
           className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 resize-none disabled:opacity-50"
         />
         <button
           type="submit"
-          disabled={streaming || input.trim().length === 0}
+          disabled={streaming || examLocked || input.trim().length === 0}
           className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-plum-dark font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
         >
           Send

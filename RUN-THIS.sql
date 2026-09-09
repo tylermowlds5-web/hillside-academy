@@ -1,6 +1,6 @@
--- ═══ RUN-THIS.sql — Step 15 runbook ═══════════════════════════════════════
+-- ═══ RUN-THIS.sql — Steps 15 + 16 runbook ═════════════════════════════════
 -- Paste the whole file into the Supabase SQL editor. Re-run safe.
--- Contents = the Step 15 section of supabase/migrations.sql, verbatim.
+-- Contents = the Step 15 and 16 sections of supabase/migrations.sql, verbatim.
 -- After it runs: open /admin/ricky and press "Rebuild index" (or curl the
 -- /api/cron/knowledge-rebuild route with the CRON_SECRET) to backfill.
 
@@ -111,3 +111,29 @@ ALTER TABLE public.ricky_questions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "ricky_questions_admin_read" ON public.ricky_questions;
 CREATE POLICY "ricky_questions_admin_read" ON public.ricky_questions
   FOR SELECT TO authenticated USING (public.is_admin());
+
+-- ── Step 16: Exams are one sitting ────────────────────────────────────────
+-- A cert module quiz attempt is live from start until it is submitted OR
+-- abandoned. Leaving the page, closing the tab, or 30 minutes without
+-- activity abandons it (answers are never stored for an abandoned attempt
+-- — the employee starts over). Starting a new attempt abandons any other
+-- open one. While an employee has a live attempt, Ricky Bobby refuses to
+-- answer (checked server-side in the chat route: open = submitted_at IS
+-- NULL AND abandoned_at IS NULL AND last_activity_at within 30 minutes).
+
+ALTER TABLE public.cert_quiz_attempts
+  ADD COLUMN IF NOT EXISTS last_activity_at timestamp with time zone not null default now(),
+  ADD COLUMN IF NOT EXISTS abandoned_at timestamp with time zone;
+
+CREATE INDEX IF NOT EXISTS cert_quiz_attempts_open_idx
+  ON public.cert_quiz_attempts (user_id, last_activity_at)
+  WHERE submitted_at IS NULL AND abandoned_at IS NULL;
+
+-- Attempts left open before this rule existed are dead: mark them
+-- abandoned (only ones older than the idle window, so a re-run never
+-- touches a live attempt).
+UPDATE public.cert_quiz_attempts
+SET abandoned_at = now()
+WHERE submitted_at IS NULL
+  AND abandoned_at IS NULL
+  AND started_at < now() - interval '30 minutes';

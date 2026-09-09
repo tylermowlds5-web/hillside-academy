@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SYSTEM_PROMPT, FALLBACK_CONTEXT } from '@/lib/hillside-ai-prompt'
+import { hasOpenExamAttempt } from '@/lib/exam-lock'
+import { EXAM_LOCK_MESSAGE } from '@/lib/exam-rules'
 import {
   formatSiteContent,
   retrievalQuery,
@@ -64,6 +66,14 @@ export async function POST(request: Request) {
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'ANTHROPIC_API_KEY is not configured' }, { status: 500 })
+  }
+
+  // Exam lock: no answers anywhere while this employee has a live cert exam
+  // attempt. Checked here, server-side, on every request — not just in the
+  // exam tab. Quiz answers are in the index, so this is what keeps them out
+  // of reach mid-exam.
+  if (await hasOpenExamAttempt(user.id)) {
+    return Response.json({ error: EXAM_LOCK_MESSAGE, examLocked: true }, { status: 423 })
   }
 
   let body: { messages?: unknown }

@@ -13,6 +13,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireUnlockedModule, maybeAwardCertForModule, loadProgramState } from '@/lib/certs'
 import { scoreQuiz, toReview } from '@/lib/quiz-scoring'
+import { abandonOpenExamAttempts } from '@/lib/exam-lock'
+import { EXAM_ABANDONED_MESSAGE, EXAM_IDLE_MS } from '@/lib/exam-rules'
 import type {
   QuizQuestion,
   QuizSubmittedAnswer,
@@ -329,6 +331,9 @@ function sanitizeQuestion(q: QuizQuestion): QuizQuestion {
 // group order and option order, SNAPSHOTS exactly what was served into the
 // attempt row (including the key, server-side only), and returns a sanitized
 // copy for the taker. Retakes call this again and get a fresh draw.
+//
+// One sitting: starting abandons any other open attempt of this employee
+// (in any module) — there is never more than one live exam per person.
 export async function startCertQuizAttempt(
   programId: string,
   requirementId: string
@@ -393,11 +398,19 @@ export async function startCertQuizAttempt(
     .slice(0, drawCount)
     .map((u) => ({ ...u, questions: u.questions.map(shuffleQuestionOptions) }))
 
+  await abandonOpenExamAttempts(user.id)
+
   const { data: attempt, error } = await admin
     .from('cert_quiz_attempts')
     // program_id: which program this attempt was taken in (a shared module
     // has several); scoring re-runs that program's gate.
-    .insert({ user_id: user.id, requirement_id: requirementId, program_id: programId, questions: served })
+    .insert({
+      user_id: user.id,
+      requirement_id: requirementId,
+      program_id: programId,
+      questions: served,
+      last_activity_at: new Date().toISOString(),
+    })
     .select('id')
     .single<{ id: string }>()
 
@@ -416,21 +429,60 @@ export async function startCertQuizAttempt(
   }
 }
 
+// ── One-sitting attempt lifecycle ─────────────────────────────────────────
+
+// The employee left the exam (page unmount, tab close via the beacon
+// route, or the client idle timer fired). Answers are never stored for an
+// abandoned attempt.
+export async function abandonCertQuizAttempt(attemptId: string): Promise<void> {
+  const { user } = await getUser()
+  if (!user) return
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('cert_quiz_attempts')
+    .update({ abandoned_at: new Date().toISOString() })
+    .eq('id', attemptId)
+    .eq('user_id', user.id)
+    .is('submitted_at', null)
+    .is('abandoned_at', null)
+  if (error) console.error('[abandonCertQuizAttempt] update error:', error.message)
+}
+
+// Activity heartbeat (the client sends one as answers change, throttled).
+// Keeps the attempt inside the idle window; an attempt already past it is
+// not revived.
+export async function touchCertQuizAttempt(attemptId: string): Promise<void> {
+  const { user } = await getUser()
+  if (!user) return
+  const admin = createAdminClient()
+  const cutoff = new Date(Date.now() - EXAM_IDLE_MS).toISOString()
+  const { error } = await admin
+    .from('cert_quiz_attempts')
+    .update({ last_activity_at: new Date().toISOString() })
+    .eq('id', attemptId)
+    .eq('user_id', user.id)
+    .is('submitted_at', null)
+    .is('abandoned_at', null)
+    .gt('last_activity_at', cutoff)
+  if (error) console.error('[touchCertQuizAttempt] update error:', error.message)
+}
+
 // Scores an attempt against ITS OWN stored snapshot (never against what the
 // client claims was asked), re-checking the gate first. Flattens the groups
 // into one question list so each linked question is scored separately by the
-// shared scorer.
+// shared scorer. A dead attempt (abandoned, or idle past the window) is
+// refused with `abandoned: true` so the client clears its answers.
 export async function submitCertQuizAttempt(
   attemptId: string,
   answers: Record<number, QuizSubmittedAnswer>
-): Promise<CertQuizResult | { error: string }> {
+): Promise<CertQuizResult | { error: string; abandoned?: true }> {
   const { supabase, user } = await getUser()
   if (!user) return { error: 'Not signed in.' }
 
   const admin = createAdminClient()
   const { data: attempt } = await admin
     .from('cert_quiz_attempts')
-    .select('id, user_id, requirement_id, program_id, questions, submitted_at')
+    .select('id, user_id, requirement_id, program_id, questions, submitted_at, abandoned_at, last_activity_at')
     .eq('id', attemptId)
     .single<{
       id: string
@@ -439,10 +491,20 @@ export async function submitCertQuizAttempt(
       program_id: string | null
       questions: CertServedGroup[]
       submitted_at: string | null
+      abandoned_at: string | null
+      last_activity_at: string
     }>()
 
   if (!attempt || attempt.user_id !== user.id) return { error: 'Attempt not found.' }
   if (attempt.submitted_at) return { error: 'This attempt was already submitted.' }
+  if (attempt.abandoned_at) return { error: EXAM_ABANDONED_MESSAGE, abandoned: true }
+  if (Date.now() - Date.parse(attempt.last_activity_at) > EXAM_IDLE_MS) {
+    await admin
+      .from('cert_quiz_attempts')
+      .update({ abandoned_at: new Date().toISOString() })
+      .eq('id', attempt.id)
+    return { error: EXAM_ABANDONED_MESSAGE, abandoned: true }
+  }
 
   const { data: req } = await admin
     .from('cert_requirements')
