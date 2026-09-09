@@ -14,8 +14,13 @@ import type { LearnerPage } from './CertModuleContent'
 // actions (lesson progress, quiz start/submit) re-run the same gate.
 export default async function ModulePage(props: {
   params: Promise<{ programId: string; moduleId: string }>
+  // ?page=<cert_pages.id> opens a specific lesson page (Ricky Bobby's source
+  // links use it). Honored only if the page is reachable for this user.
+  searchParams: Promise<{ page?: string | string[] }>
 }) {
   const { programId, moduleId } = await props.params
+  const { page: pageParam } = await props.searchParams
+  const initialPageId = typeof pageParam === 'string' ? pageParam : null
   const supabase = await createClient()
   const {
     data: { user },
@@ -153,6 +158,7 @@ export default async function ModulePage(props: {
             lessonBody={mod.lessonBody}
             lessonImageUrl={mod.lessonImageUrl}
             pages={learnerPages}
+            initialPageId={initialPageId}
             initialLesson={{
               percent_watched: mod.lessonPercent,
               actual_seconds_watched: mod.lessonSeconds,

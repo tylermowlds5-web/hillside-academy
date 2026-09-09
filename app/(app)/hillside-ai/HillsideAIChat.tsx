@@ -1,8 +1,48 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
+
+// Ricky cites sources as "From: [Title (Kind)](/path)" lines. Render those
+// markdown links as in-app links; everything else stays plain text. Only
+// same-site paths become links — anything else is left as written.
+const LINK_RE = /\[([^\]\n]+)\]\((\/[^)\s]*)\)/g
+
+function AssistantText({ content }: { content: string }) {
+  const lines = content.split('\n')
+  return (
+    <>
+      {lines.map((line, li) => {
+        const isSource = /^\s*From:/.test(line)
+        const parts: React.ReactNode[] = []
+        let last = 0
+        for (const m of line.matchAll(LINK_RE)) {
+          const start = m.index ?? 0
+          if (start > last) parts.push(line.slice(last, start))
+          parts.push(
+            <Link
+              key={`${li}-${start}`}
+              href={m[2]}
+              className="text-emerald-400 underline decoration-emerald-500/50 underline-offset-2 hover:text-emerald-300"
+            >
+              {m[1]}
+            </Link>
+          )
+          last = start + m[0].length
+        }
+        if (last < line.length) parts.push(line.slice(last))
+        return (
+          <span key={li} className={isSource ? 'block text-xs text-tan/70 first:mt-0 mt-1' : undefined}>
+            {parts}
+            {!isSource && li < lines.length - 1 ? '\n' : null}
+          </span>
+        )
+      })}
+    </>
+  )
+}
 
 export default function HillsideAIChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -100,7 +140,7 @@ export default function HillsideAIChat() {
         </span>
         <div>
           <h1 className="text-xl font-bold text-zinc-50">Ricky Bobby</h1>
-          <p className="text-sm text-zinc-400">Your crew AI — ask about jobs, routes, and plants</p>
+          <p className="text-sm text-zinc-400">Your crew AI — answers from Hillside University, with links to the source</p>
         </div>
       </div>
 
@@ -135,7 +175,7 @@ export default function HillsideAIChat() {
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse [animation-delay:300ms]" />
                       </span>
                     ) : (
-                      message.content
+                      <AssistantText content={message.content} />
                     )}
                   </div>
                 </div>

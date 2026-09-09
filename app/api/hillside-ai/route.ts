@@ -1,6 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { SYSTEM_PROMPT } from '@/lib/hillside-ai-prompt'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { SYSTEM_PROMPT, FALLBACK_CONTEXT } from '@/lib/hillside-ai-prompt'
+import {
+  formatSiteContent,
+  retrievalQuery,
+  retrieveKnowledge,
+  toStoredSources,
+} from '@/lib/knowledge-retrieval'
 
 // User-selected model for the crew chat. Thinking is disabled deliberately:
 // claude-sonnet-5 runs adaptive thinking when the field is omitted, which
@@ -71,6 +78,17 @@ export async function POST(request: Request) {
     return Response.json({ error: messages }, { status: 400 })
   }
 
+  // Retrieve the site content for this question and put it in the latest
+  // user turn. Earlier turns go through as plain text — their context was
+  // only ever in the request that produced them.
+  const question = messages[messages.length - 1].content
+  const retrieval = await retrieveKnowledge(retrievalQuery(messages))
+  const apiMessages: Anthropic.MessageParam[] = messages.map((m, i) =>
+    i === messages.length - 1
+      ? { role: 'user', content: `${formatSiteContent(retrieval.hits)}\n\nQUESTION: ${question}` }
+      : { role: m.role, content: m.content }
+  )
+
   // maxRetries: 2 = up to 3 attempts total. The SDK retries 429 (rate limit),
   // 529 (overloaded), and other 5xx/connection errors automatically with
   // exponential backoff before the stream ever starts.
@@ -78,19 +96,17 @@ export async function POST(request: Request) {
   const stream = anthropic.messages.stream({
     model: CLAUDE_MODEL,
     max_tokens: 1024,
-    // The system prompt (persona + full knowledge base) is identical on every
-    // request, so cache it server-side: first request writes the cache
-    // (~1.25x), every request within the 5-min TTL reads it at ~0.1x input
-    // cost instead of re-processing the whole KB.
+    // Persona + fallback handbook are identical on every request, so cache
+    // them server-side: first request writes the cache (~1.25x), every
+    // request within the TTL reads it at ~0.1x input cost. The retrieved
+    // site content varies per question and lives in the messages, after
+    // the cached prefix.
     system: [
-      {
-        type: 'text',
-        text: SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' },
-      },
+      { type: 'text', text: SYSTEM_PROMPT },
+      { type: 'text', text: FALLBACK_CONTEXT, cache_control: { type: 'ephemeral' } },
     ],
     thinking: { type: 'disabled' },
-    messages,
+    messages: apiMessages,
   })
 
   // Pull the first event before building the Response so API-level failures
@@ -125,33 +141,53 @@ export async function POST(request: Request) {
     )
   }
 
+  // Question log for /admin/ricky: what was asked, what was retrieved, and
+  // (once the stream ends) what Ricky said.
+  const logQuestion = async (answer: string) => {
+    try {
+      const { error } = await createAdminClient().from('ricky_questions').insert({
+        user_id: user.id,
+        question,
+        answer: answer || null,
+        retrieved: toStoredSources(retrieval.hits),
+      })
+      if (error) console.error('[hillside-ai] question log failed:', error.message)
+    } catch (err) {
+      console.error('[hillside-ai] question log failed:', err)
+    }
+  }
+
   const encoder = new TextEncoder()
   const readable = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let answer = ''
       try {
         let result = first
         while (!result.done) {
           const event = result.value
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            answer += event.delta.text
             controller.enqueue(encoder.encode(event.delta.text))
           }
           result = await iterator.next()
         }
         const final = await stream.finalMessage()
-        // Cache verification: cache_write > 0 on the first request in a 5-min
+        // Cache verification: cache_write > 0 on the first request in a
         // window, cache_read > 0 (and small input) on the ones after it.
         const u = final.usage
         console.log(
-          `[hillside-ai] usage: input=${u.input_tokens} cache_write=${u.cache_creation_input_tokens} cache_read=${u.cache_read_input_tokens} output=${u.output_tokens}`
+          `[hillside-ai] usage: input=${u.input_tokens} cache_write=${u.cache_creation_input_tokens} cache_read=${u.cache_read_input_tokens} output=${u.output_tokens} hits=${retrieval.hits.length} provider=${retrieval.provider ?? 'text-only'}`
         )
         if (final.stop_reason === 'max_tokens') {
           controller.enqueue(encoder.encode('\n\n[Answer cut off — ask a follow-up for the rest.]'))
         }
+        await logQuestion(answer)
         controller.close()
       } catch (err) {
         // Status is already sent (200), so the only channel left is the body.
         console.error('[hillside-ai] mid-stream error:', err)
         controller.enqueue(encoder.encode('\n\n[Connection dropped — try again.]'))
+        await logQuestion(answer)
         controller.close()
       }
     },

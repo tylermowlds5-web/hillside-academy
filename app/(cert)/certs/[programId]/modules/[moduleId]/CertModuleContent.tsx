@@ -66,6 +66,7 @@ export default function CertModuleContent({
   lessonBody,
   lessonImageUrl,
   pages,
+  initialPageId,
   initialLesson,
   quiz,
 }: {
@@ -77,6 +78,8 @@ export default function CertModuleContent({
   lessonImageUrl?: string | null
   // Non-empty = paged lesson: pages replace the single-body lesson view.
   pages?: LearnerPage[] | null
+  // Page to open first (from ?page=); ignored when not yet reachable.
+  initialPageId?: string | null
   initialLesson: { percent_watched: number; actual_seconds_watched: number; completed: boolean }
   quiz: QuizMeta
 }) {
@@ -130,6 +133,7 @@ export default function CertModuleContent({
           programId={programId}
           requirementId={requirementId}
           pages={pages}
+          initialPageId={initialPageId ?? null}
           onAllComplete={() => {
             setLessonDone(true)
             router.refresh()
@@ -651,20 +655,26 @@ function PagedLesson({
   programId,
   requirementId,
   pages,
+  initialPageId,
   onAllComplete,
 }: {
   programId: string
   requirementId: string
   pages: LearnerPage[]
+  initialPageId: string | null
   onAllComplete: () => void
 }) {
   const [done, setDone] = useState<Set<string>>(
     () => new Set(pages.filter((p) => p.completed).map((p) => p.id))
   )
   const firstIncomplete = pages.findIndex((p) => !done.has(p.id))
-  const [current, setCurrent] = useState(() =>
-    firstIncomplete === -1 ? Math.max(0, pages.length - 1) : firstIncomplete
-  )
+  const [current, setCurrent] = useState(() => {
+    const fallback = firstIncomplete === -1 ? Math.max(0, pages.length - 1) : firstIncomplete
+    // A linked page (?page=) opens directly when it's already reachable —
+    // completed pages and the first incomplete one; locked pages fall back.
+    const requested = initialPageId ? pages.findIndex((p) => p.id === initialPageId) : -1
+    return requested !== -1 && requested <= fallback ? requested : fallback
+  })
 
   const markDone = useCallback(
     (pageId: string) => {
