@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cert-expiry",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/knowledge-rebuild",
+      "schedule": "0 9 * * *"
     }
   ]
 }

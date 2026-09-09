@@ -9,6 +9,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import type { QuizQuestion, Category, SubCategory, QuizSubmittedAnswer } from '@/lib/types'
 import { scoreQuiz, toReview } from '@/lib/quiz-scoring'
+import { syncKnowledge } from '@/lib/knowledge-sync'
 
 // ── Email rate limiting ─────────────────────────────────────────────────────
 // Resend caps us at 5 requests/second. Sending bulk assignment emails one at a
@@ -263,18 +264,23 @@ export async function createVideo(formData: FormData) {
 
   if (!title?.trim() || !url?.trim()) throw new Error('Title and URL are required')
 
-  const { error: insertError } = await supabase.from('videos').insert({
-    title: title.trim(),
-    description: description?.trim() || null,
-    url: url.trim(),
-    thumbnail_url: thumbnail_url?.trim() || null,
-    duration: duration && !isNaN(duration) ? duration : null,
-    category: category?.trim() || null,
-    sub_category: sub_category?.trim() || null,
-    created_by: user.id,
-  })
+  const { data: inserted, error: insertError } = await supabase
+    .from('videos')
+    .insert({
+      title: title.trim(),
+      description: description?.trim() || null,
+      url: url.trim(),
+      thumbnail_url: thumbnail_url?.trim() || null,
+      duration: duration && !isNaN(duration) ? duration : null,
+      category: category?.trim() || null,
+      sub_category: sub_category?.trim() || null,
+      created_by: user.id,
+    })
+    .select('id')
+    .single<{ id: string }>()
 
   if (insertError) throw new Error(`Database error: ${insertError.message}`)
+  if (inserted) syncKnowledge({ reindex: [{ table: 'videos', ids: [inserted.id] }] })
 
   revalidatePath('/admin/videos')
   redirect('/admin/videos')
@@ -326,6 +332,8 @@ export async function createVideoFromUpload({
   }
 
   console.log('[createVideoFromUpload] insert succeeded, row:', data?.[0])
+  const newId = (data?.[0] as { id?: string } | undefined)?.id
+  if (newId) syncKnowledge({ reindex: [{ table: 'videos', ids: [newId] }] })
 
   revalidatePath('/admin/videos')
   revalidatePath('/dashboard')
@@ -356,6 +364,7 @@ export async function updateVideo(videoId: string, formData: FormData) {
     })
     .eq('id', videoId)
 
+  syncKnowledge({ reindex: [{ table: 'videos', ids: [videoId] }] })
   revalidatePath('/admin/videos')
   redirect('/admin/videos')
 }
@@ -384,6 +393,8 @@ export async function deleteVideo(videoId: string) {
   if (video) {
     await deleteR2Files([video.url, video.thumbnail_url])
   }
+  // The video's quiz cascades with it.
+  syncKnowledge({ prune: ['videos', 'quizzes'] })
 
   // Revalidate every surface that lists videos/assignments so deleted videos
   // don't linger as un-clickable "ghosts" on employees' dashboards.
@@ -567,11 +578,12 @@ export async function saveQuiz(videoId: string, payload: QuizPayload) {
     updated_at: new Date().toISOString(),
   }
 
-  const { error } = existing
-    ? await supabase.from('quizzes').update(row).eq('id', existing.id)
-    : await supabase.from('quizzes').insert({ ...row, video_id: videoId })
+  const { data: saved, error } = existing
+    ? await supabase.from('quizzes').update(row).eq('id', existing.id).select('id').single<{ id: string }>()
+    : await supabase.from('quizzes').insert({ ...row, video_id: videoId }).select('id').single<{ id: string }>()
 
   if (error) throw new Error(error.message ?? 'Failed to save quiz')
+  if (saved) syncKnowledge({ reindex: [{ table: 'quizzes', ids: [saved.id] }] })
 
   revalidatePath(`/admin/videos/${videoId}/quiz`)
   revalidatePath(`/watch/${videoId}`)
@@ -580,6 +592,7 @@ export async function saveQuiz(videoId: string, payload: QuizPayload) {
 export async function deleteQuiz(quizId: string, videoId: string) {
   const { supabase } = await requireAdmin()
   await supabase.from('quizzes').delete().eq('id', quizId)
+  syncKnowledge({ prune: ['quizzes'] })
   revalidatePath(`/admin/videos/${videoId}/quiz`)
   revalidatePath(`/watch/${videoId}`)
 }
@@ -694,6 +707,7 @@ export async function saveStandaloneQuiz(payload: StandaloneQuizPayload): Promis
       .select('id')
       .single<{ id: string }>()
     if (error || !data) throw new Error(error?.message ?? 'Failed to update quiz')
+    syncKnowledge({ reindex: [{ table: 'standalone_quizzes', ids: [data.id] }] })
     revalidatePath('/admin/quizzes')
     revalidatePath('/dashboard')
     return { id: data.id }
@@ -705,6 +719,7 @@ export async function saveStandaloneQuiz(payload: StandaloneQuizPayload): Promis
     .select('id')
     .single<{ id: string }>()
   if (error || !data) throw new Error(error?.message ?? 'Failed to create quiz')
+  syncKnowledge({ reindex: [{ table: 'standalone_quizzes', ids: [data.id] }] })
   revalidatePath('/admin/quizzes')
   return { id: data.id }
 }
@@ -713,6 +728,7 @@ export async function deleteStandaloneQuiz(quizId: string) {
   const { supabase } = await requireAdmin()
   const { error } = await supabase.from('standalone_quizzes').delete().eq('id', quizId)
   if (error) throw new Error(error.message)
+  syncKnowledge({ prune: ['standalone_quizzes'] })
   revalidatePath('/admin/quizzes')
   revalidatePath('/dashboard')
 }
@@ -1053,6 +1069,7 @@ export async function updateVideoMetadata(
     .eq('id', videoId)
 
   if (error) throw new Error(error.message)
+  syncKnowledge({ reindex: [{ table: 'videos', ids: [videoId] }] })
 
   revalidatePath('/admin/videos')
   revalidatePath('/dashboard')
@@ -1080,6 +1097,7 @@ export async function createLearningPath(data: {
     .single<{ id: string }>()
 
   if (error || !row) throw new Error(error?.message ?? 'Failed to create path')
+  syncKnowledge({ reindex: [{ table: 'learning_paths', ids: [row.id] }] })
 
   revalidatePath('/admin/paths')
   return row
@@ -1100,6 +1118,7 @@ export async function updateLearningPath(
     })
     .eq('id', pathId)
 
+  syncKnowledge({ reindex: [{ table: 'learning_paths', ids: [pathId] }] })
   revalidatePath('/admin/paths')
   revalidatePath(`/admin/paths/${pathId}`)
   revalidatePath('/paths')
@@ -1108,6 +1127,7 @@ export async function updateLearningPath(
 export async function deleteLearningPath(pathId: string) {
   const { supabase } = await requireAdmin()
   await supabase.from('learning_paths').delete().eq('id', pathId)
+  syncKnowledge({ prune: ['learning_paths'] })
   revalidatePath('/admin/paths')
   revalidatePath('/paths')
   revalidatePath('/dashboard')
@@ -1149,6 +1169,7 @@ export async function addVideoToPath(pathId: string, videoId: string) {
 
   console.log('[addVideoToPath] inserted item id:', inserted?.id, 'for path:', pathId, 'video:', videoId)
 
+  syncKnowledge({ reindex: [{ table: 'learning_paths', ids: [pathId] }] })
   revalidatePath(`/admin/paths/${pathId}`)
   revalidatePath('/paths')
 }
@@ -1161,6 +1182,7 @@ export async function removeVideoFromPath(pathId: string, videoId: string) {
     .eq('path_id', pathId)
     .eq('video_id', videoId)
 
+  syncKnowledge({ reindex: [{ table: 'learning_paths', ids: [pathId] }] })
   revalidatePath(`/admin/paths/${pathId}`)
   revalidatePath('/paths')
 }
@@ -1359,6 +1381,7 @@ export async function createDocument(data: {
     .single<{ id: string }>()
 
   if (error || !row) throw new Error(error?.message ?? 'Failed to create document')
+  syncKnowledge({ reindex: [{ table: 'documents', ids: [row.id] }] })
 
   revalidatePath('/admin/documents')
   revalidatePath('/documents')
@@ -1379,6 +1402,7 @@ export async function updateDocument(
     })
     .eq('id', documentId)
 
+  syncKnowledge({ reindex: [{ table: 'documents', ids: [documentId] }] })
   revalidatePath('/admin/documents')
   revalidatePath('/documents')
 }
@@ -1398,6 +1422,7 @@ export async function deleteDocument(documentId: string) {
   if (doc?.file_url) {
     await deleteR2Files([doc.file_url])
   }
+  syncKnowledge({ prune: ['documents'] })
 
   revalidatePath('/admin/documents')
   revalidatePath('/documents')
@@ -1562,6 +1587,7 @@ export async function savePathWithDetails(data: {
     }
   }
 
+  syncKnowledge({ reindex: [{ table: 'learning_paths', ids: [pathId] }] })
   revalidatePath('/admin/paths')
   revalidatePath(`/admin/paths/${pathId}`)
   revalidatePath('/paths')

@@ -158,6 +158,9 @@ export type QuizQuestion = {
   // any of those three items. Groups must be contiguous in the canonical
   // order and an index can belong to at most one group.
   sequence_groups?: number[][]
+  // Optional teaching note. Not shown in the quiz UI yet; indexed for Ricky
+  // Bobby alongside the correct answer when present.
+  explanation?: string
 }
 
 // Helper so the rest of the codebase doesn't have to handle the optional
@@ -624,4 +627,41 @@ export type CertAward = {
   // Cycle is open while renewal_started_at > earned_at; re-earning updates
   // earned_at (closing it).
   renewal_started_at: string | null
+}
+
+// ── Ricky Bobby knowledge index ───────────────────────────────────────────
+// One searchable row per content item (see lib/knowledge-index.ts).
+
+export type KnowledgeIndexRow = {
+  id: string
+  source_table: string
+  source_id: string
+  kind: string
+  title: string
+  url: string
+  text: string
+  aliases: string[]
+  text_hash: string | null
+  updated_at: string
+}
+
+// One source Ricky retrieved for a question (stored in ricky_questions.retrieved).
+export type RickyRetrievedSource = {
+  title: string
+  kind: string
+  url: string
+  source_table: string
+  source_id: string
+  // How it was found: exact plant-name match, vector similarity, or full-text.
+  via: 'plant' | 'vector' | 'text'
+  score: number
+}
+
+export type RickyQuestion = {
+  id: string
+  user_id: string | null
+  question: string
+  answer: string | null
+  retrieved: RickyRetrievedSource[]
+  created_at: string
 }

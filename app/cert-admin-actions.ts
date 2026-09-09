@@ -8,6 +8,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PageBlock, PlantData, QuizQuestion } from '@/lib/types'
 import { parsePlantObject } from '@/lib/plant-import'
+import { syncKnowledge, syncCertModule } from '@/lib/knowledge-sync'
+
+// Ricky Bobby's knowledge index follows every save below (syncKnowledge /
+// syncCertModule run after the response via next/server after()).
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -50,6 +54,7 @@ export async function saveCertProgram(input: {
   if (input.programId) {
     const { error } = await supabase.from('cert_programs').update(row).eq('id', input.programId)
     if (error) throw new Error(error.message)
+    syncKnowledge({ reindex: [{ table: 'cert_programs', ids: [input.programId] }] })
     return { id: input.programId }
   }
 
@@ -59,6 +64,7 @@ export async function saveCertProgram(input: {
     .select('id')
     .single<{ id: string }>()
   if (error || !data) throw new Error(error?.message ?? 'Create failed')
+  syncKnowledge({ reindex: [{ table: 'cert_programs', ids: [data.id] }] })
   return { id: data.id }
 }
 
@@ -90,6 +96,7 @@ export async function deleteCertProgram(programId: string) {
   // Links, assignments, and awards cascade from the program row.
   const { error } = await supabase.from('cert_programs').delete().eq('id', programId)
   if (error) throw new Error(error.message)
+  syncKnowledge({ prune: ['cert_programs', 'cert_requirements', 'cert_pages', 'cert_questions'] })
 }
 
 // Next free position at the end of a program's module list.
@@ -135,6 +142,12 @@ export async function addCertModule(
     .from('cert_program_modules')
     .upsert({ program_id: programId, module_id: data.id, position }, { onConflict: 'program_id,module_id' })
   if (linkError) throw new Error(linkError.message)
+  syncKnowledge({
+    reindex: [
+      { table: 'cert_requirements', ids: [data.id] },
+      { table: 'cert_programs', ids: [programId] },
+    ],
+  })
   return { id: data.id }
 }
 
@@ -159,6 +172,15 @@ export async function removeCertModule(programId: string, requirementId: string)
     const { error: delError } = await supabase.from('cert_requirements').delete().eq('id', requirementId)
     if (delError) throw new Error(delError.message)
   }
+  // A still-shared module keeps its content but its URL may now point at a
+  // different program; a deleted one leaves the index entirely.
+  syncKnowledge({
+    reindex: [
+      { table: 'cert_requirements', ids: [requirementId] },
+      { table: 'cert_programs', ids: [programId] },
+    ],
+    prune: ['cert_requirements', 'cert_pages', 'cert_questions'],
+  })
 }
 
 export async function reorderCertModules(programId: string, orderedIds: string[]) {
@@ -202,6 +224,12 @@ export async function addExistingCertModule(programId: string, moduleId: string)
     .from('cert_program_modules')
     .insert({ program_id: programId, module_id: moduleId, position })
   if (error) throw new Error(error.message)
+  syncKnowledge({
+    reindex: [
+      { table: 'cert_requirements', ids: [moduleId] },
+      { table: 'cert_programs', ids: [programId] },
+    ],
+  })
 }
 
 // "Duplicate module": an INDEPENDENT copy — new module row (home = this
@@ -309,6 +337,8 @@ export async function duplicateCertModule(programId: string, moduleId: string): 
     if (sErr) throw new Error(sErr.message)
   }
 
+  syncCertModule(newId)
+  syncKnowledge({ reindex: [{ table: 'cert_programs', ids: [programId] }] })
   return { id: newId }
 }
 
@@ -341,6 +371,8 @@ export async function updateCertModule(
 
   const { error } = await supabase.from('cert_requirements').update(row).eq('id', requirementId)
   if (error) throw new Error(error.message)
+  // Pages and bank questions carry the module title, so refresh them too.
+  syncCertModule(requirementId)
 }
 
 // ── Lesson pages ──────────────────────────────────────────────────────────
@@ -395,6 +427,7 @@ export async function addCertPage(
     .select('id')
     .single<{ id: string }>()
   if (error || !data) throw new Error(error?.message ?? 'Add page failed')
+  syncKnowledge({ reindex: [{ table: 'cert_pages', ids: [data.id] }] })
   return { id: data.id }
 }
 
@@ -421,6 +454,7 @@ export async function saveCertTextPage(
     .eq('id', pageId)
     .eq('kind', 'text')
   if (error) throw new Error(error.message)
+  syncKnowledge({ reindex: [{ table: 'cert_pages', ids: [pageId] }] })
 }
 
 // Saves a plant page's structured content. plant_data strings render as
@@ -443,6 +477,7 @@ export async function updateCertPlantPage(pageId: string, data: PlantData) {
     .eq('id', pageId)
     .eq('kind', 'plant')
   if (error) throw new Error(error.message)
+  syncKnowledge({ reindex: [{ table: 'cert_pages', ids: [pageId] }] })
 }
 
 // "Mark reviewed" on a list row: the admin looked at a flagged draft and it
@@ -454,6 +489,8 @@ export async function markCertPageReviewed(pageId: string) {
     .update({ needs_review: false })
     .eq('id', pageId)
   if (error) throw new Error(error.message)
+  // Publishing is what makes a draft indexable.
+  syncKnowledge({ reindex: [{ table: 'cert_pages', ids: [pageId] }] })
 }
 
 // Bulk import: one plant page per entry, appended in order after the
@@ -520,6 +557,7 @@ export async function deleteCertPage(pageId: string) {
   const { supabase } = await requireAdmin()
   const { error } = await supabase.from('cert_pages').delete().eq('id', pageId)
   if (error) throw new Error(error.message)
+  syncKnowledge({ prune: ['cert_pages'] })
 }
 
 export async function reorderCertPages(requirementId: string, orderedIds: string[]) {
@@ -613,6 +651,7 @@ export async function setCertPageCategory(pageId: string, categoryId: string | n
     .update({ category_id: categoryId })
     .eq('id', pageId)
   if (error) throw new Error(error.message)
+  syncKnowledge({ reindex: [{ table: 'cert_pages', ids: [pageId] }] })
 }
 
 // ── Question bank ─────────────────────────────────────────────────────────
@@ -637,6 +676,8 @@ export async function saveCertGroup(input: {
       .update(row)
       .eq('id', input.groupId)
     if (error) throw new Error(error.message)
+    // The label is part of every linked question's index text.
+    syncCertModule(input.requirementId)
     return { id: input.groupId }
   }
 
@@ -665,6 +706,7 @@ export async function deleteCertGroup(groupId: string) {
   const { supabase } = await requireAdmin()
   const { error } = await supabase.from('cert_question_groups').delete().eq('id', groupId)
   if (error) throw new Error(error.message)
+  syncKnowledge({ prune: ['cert_questions'] })
 }
 
 // Replaces a group's questions wholesale. Safe: attempts snapshot the exact
@@ -672,17 +714,25 @@ export async function deleteCertGroup(groupId: string) {
 export async function saveCertGroupQuestions(groupId: string, questions: QuizQuestion[]) {
   const { supabase } = await requireAdmin()
 
+  const { data: group } = await supabase
+    .from('cert_question_groups')
+    .select('requirement_id')
+    .eq('id', groupId)
+    .maybeSingle<{ requirement_id: string }>()
+
   const { error: delError } = await supabase
     .from('cert_questions')
     .delete()
     .eq('group_id', groupId)
   if (delError) throw new Error(delError.message)
 
-  if (questions.length === 0) return
-
-  const rows = questions.map((q, i) => ({ group_id: groupId, question: q, sort_order: i }))
-  const { error } = await supabase.from('cert_questions').insert(rows)
-  if (error) throw new Error(error.message)
+  if (questions.length > 0) {
+    const rows = questions.map((q, i) => ({ group_id: groupId, question: q, sort_order: i }))
+    const { error } = await supabase.from('cert_questions').insert(rows)
+    if (error) throw new Error(error.message)
+  }
+  if (group) syncCertModule(group.requirement_id)
+  else syncKnowledge({ prune: ['cert_questions'] })
 }
 
 // Replaces a module's STANDALONE questions (rows attached directly to the
@@ -710,16 +760,17 @@ export async function saveCertStandaloneQuestions(
     .eq('requirement_id', requirementId)
   if (delError) throw new Error(delError.message)
 
-  if (questions.length === 0) return
-
-  const rows = questions.map((q, i) => ({
-    requirement_id: requirementId,
-    question: q.question,
-    category_id: q.categoryId && validIds.has(q.categoryId) ? q.categoryId : null,
-    sort_order: i,
-  }))
-  const { error } = await supabase.from('cert_questions').insert(rows)
-  if (error) throw new Error(error.message)
+  if (questions.length > 0) {
+    const rows = questions.map((q, i) => ({
+      requirement_id: requirementId,
+      question: q.question,
+      category_id: q.categoryId && validIds.has(q.categoryId) ? q.categoryId : null,
+      sort_order: i,
+    }))
+    const { error } = await supabase.from('cert_questions').insert(rows)
+    if (error) throw new Error(error.message)
+  }
+  syncCertModule(requirementId)
 }
 
 // ── Awards ────────────────────────────────────────────────────────────────
