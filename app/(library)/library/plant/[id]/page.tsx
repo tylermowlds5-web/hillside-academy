@@ -4,6 +4,7 @@ import { loadReferencePage, unbold } from '@/lib/library'
 import LibraryTopBar from '../../../LibraryTopBar'
 import ReferencePageBody from '@/components/cert/ReferencePageBody'
 import ReferenceFootnote from '../../ReferenceFootnote'
+import { DraftTag } from '../../LibraryBrowser'
 
 // Standalone plant reference page. Same PlantPage rendering as the cert
 // stepper, but read-only: no module gate, no progress, no next/back.
@@ -33,8 +34,9 @@ export default async function LibraryPlantPage(props: { params: Promise<{ id: st
       <LibraryTopBar title={title} subtitle={context || undefined} backHref="/library" />
 
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-700">
+        <p className="mb-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-700">
           Plant ID
+          {page.needs_review && <DraftTag />}
         </p>
         <ReferencePageBody page={page} />
         <ReferenceFootnote />

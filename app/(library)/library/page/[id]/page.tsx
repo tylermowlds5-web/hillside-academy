@@ -4,6 +4,7 @@ import { loadReferencePage } from '@/lib/library'
 import LibraryTopBar from '../../../LibraryTopBar'
 import ReferencePageBody from '@/components/cert/ReferencePageBody'
 import ReferenceFootnote from '../../ReferenceFootnote'
+import { DraftTag } from '../../LibraryBrowser'
 
 // Standalone lesson (text) page. Same block / rich-text rendering as the
 // cert stepper, read-only. Ricky Bobby's lesson-page citations land here.
@@ -31,8 +32,9 @@ export default async function LibraryTextPage(props: { params: Promise<{ id: str
       <LibraryTopBar title={title} subtitle={context || undefined} backHref="/library" />
 
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-700">
+        <p className="mb-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-700">
           Lesson page
+          {page.needs_review && <DraftTag />}
         </p>
         <ReferencePageBody page={page} />
         <ReferenceFootnote />

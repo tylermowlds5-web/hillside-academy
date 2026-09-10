@@ -12,6 +12,7 @@ type PageRow = {
   requirement_id: string
   category_id: string | null
   plant_data: PlantData | null
+  needs_review: boolean
 }
 
 type VideoRow = {
@@ -24,8 +25,9 @@ type VideoRow = {
 }
 
 // Browsable reference library: every published plant page, training video,
-// and lesson page on the site, searchable, outside any certification. Same
-// visibility rule as Ricky Bobby's index — drafts (needs_review) are absent.
+// and lesson page on the site, searchable, outside any certification. Drafts
+// (needs_review) are listed too, with a "Draft" tag — the flag only hides a
+// page from the cert stepper.
 export default async function LibraryIndexPage() {
   const supabase = await createClient()
   const {
@@ -36,8 +38,7 @@ export default async function LibraryIndexPage() {
   const [pagesRes, videosRes, modulesRes, catsRes] = await Promise.all([
     supabase
       .from('cert_pages')
-      .select('id, kind, title, requirement_id, category_id, plant_data')
-      .eq('needs_review', false)
+      .select('id, kind, title, requirement_id, category_id, plant_data, needs_review')
       .in('kind', ['plant', 'text'])
       .order('sort_order')
       .returns<PageRow[]>(),
@@ -73,12 +74,13 @@ export default async function LibraryIndexPage() {
         photo: photos[0]?.url ?? p.plant_data.photo_url ?? null,
         lesson,
         section,
+        draft: p.needs_review,
       })
       continue
     }
     const title = p.title || lesson
     if (!title) continue
-    pages.push({ id: p.id, title, lesson, section })
+    pages.push({ id: p.id, title, lesson, section, draft: p.needs_review })
   }
   plants.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
   pages.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))

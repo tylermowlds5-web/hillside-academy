@@ -12,6 +12,9 @@ export type LibraryPlant = {
   photo: string | null
   lesson: string | null
   section: string | null
+  // needs_review: still being polished. Fully readable here; only the cert
+  // stepper hides it.
+  draft: boolean
 }
 
 export type LibraryVideo = {
@@ -27,6 +30,7 @@ export type LibraryPage = {
   title: string
   lesson: string | null
   section: string | null
+  draft: boolean
 }
 
 type Tab = 'all' | 'plants' | 'videos' | 'pages'
@@ -45,6 +49,18 @@ function fmtDuration(seconds: number | null): string | null {
 function shelfLetter(name: string): string {
   const c = name.trim().charAt(0).toUpperCase()
   return /[A-Z]/.test(c) ? c : '#'
+}
+
+// Small muted marker for pages still flagged needs_review.
+export function DraftTag({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border border-plum/15 bg-plum/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-plum/50 ${className}`}
+      title="Still being polished by an admin"
+    >
+      Draft
+    </span>
+  )
 }
 
 function SectionHeading({ title, count, id }: { title: string; count: number; id: string }) {
@@ -85,8 +101,11 @@ function PlantCard({ plant }: { plant: LibraryPlant }) {
         )}
       </div>
       <div className="min-w-0 flex-1 py-0.5">
-        <p className="truncate font-serif text-lg font-semibold leading-tight text-plum group-hover:text-plum-dark">
-          {plant.name}
+        <p className="flex items-center gap-2">
+          <span className="truncate font-serif text-lg font-semibold leading-tight text-plum group-hover:text-plum-dark">
+            {plant.name}
+          </span>
+          {plant.draft && <DraftTag className="shrink-0" />}
         </p>
         {plant.botanical && <p className="mt-0.5 truncate text-sm italic text-plum/60">{plant.botanical}</p>}
         {plant.alsoCalled && (
@@ -153,7 +172,10 @@ function PageRow({ page }: { page: LibraryPage }) {
         </svg>
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-plum group-hover:text-plum-dark">{page.title}</span>
+        <span className="flex items-center gap-2">
+          <span className="truncate text-sm font-semibold text-plum group-hover:text-plum-dark">{page.title}</span>
+          {page.draft && <DraftTag className="shrink-0" />}
+        </span>
         {context && <span className="block truncate text-xs text-plum/50">{context}</span>}
       </span>
       <svg className="h-4 w-4 shrink-0 text-plum/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

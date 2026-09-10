@@ -5,7 +5,7 @@ import type { Profile } from '@/lib/types'
 // Reference library shell (/library). Same light tan/plum theme as the
 // certification area — plant pages and lesson pages are designed for it —
 // and no everyday-HU sidebar. Any signed-in, active employee can read
-// everything here; nothing in the library is gated or tracked.
+// everything here, drafts included; nothing in the library is gated or tracked.
 export default async function LibraryLayout({
   children,
 }: {

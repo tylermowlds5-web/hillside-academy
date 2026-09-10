@@ -13,7 +13,9 @@ import { quizAcceptedAnswers, quizQuestionType } from './types'
 //   • reindex(table, ids)  — after an admin save (lib/knowledge-sync.ts)
 //   • prune(table)         — drop index rows whose source is gone
 //   • rebuildKnowledgeIndex() — nightly full rebuild (and the admin button)
-// Pages flagged needs_review are drafts and are never indexed.
+// Pages flagged needs_review (drafts) ARE indexed: the flag only hides a
+// page from the cert stepper and cert completion; Ricky answers from and
+// cites drafts like any other page (they open at /library).
 //
 // Everything here runs with the service-role client (the index is admin-only
 // under RLS and the bank tables hold answer keys) — server-side only.
@@ -320,7 +322,6 @@ async function buildCertPages(db: SupabaseClient, ctx: CertContext, ids?: string
 
   const entries: KnowledgeEntry[] = []
   for (const p of data ?? []) {
-    if (p.needs_review) continue // drafts are invisible to employees
     if (p.kind === 'video') continue // the video itself is indexed from the library
     const mod = ctx.moduleById.get(p.requirement_id)
     const modTitle = mod ? moduleTitle(mod, ctx) : null

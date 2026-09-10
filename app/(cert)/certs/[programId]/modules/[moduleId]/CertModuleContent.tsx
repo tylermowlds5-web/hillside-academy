@@ -860,9 +860,9 @@ function PagedLesson({
         {page.needsReview && (
           <span
             className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700"
-            title="Bulk-imported draft. Employees can't see this page until an admin reviews it."
+            title="Draft. Skipped in the cert stepper until an admin reviews it; still readable in the Library."
           >
-            Needs review · hidden from employees
+            Needs review · skipped in the stepper
           </span>
         )}
       </div>

@@ -9,11 +9,12 @@ export type ReferencePage = CertPage & {
 }
 
 // Loads a cert page for the reference library. Returns null when the page
-// doesn't exist, the id isn't a uuid, or the page is still a draft
-// (needs_review) — drafts are invisible outside admin, so they 404 here.
+// doesn't exist or the id isn't a uuid. Drafts (needs_review) load like any
+// other page — the flag only hides a page from the cert stepper — and the
+// caller shows a "Draft" tag.
 export async function loadReferencePage(db: SupabaseClient, id: string): Promise<ReferencePage | null> {
   const { data: page } = await db.from('cert_pages').select('*').eq('id', id).maybeSingle<CertPage>()
-  if (!page || page.needs_review) return null
+  if (!page) return null
 
   const [modRes, catRes] = await Promise.all([
     db

@@ -503,8 +503,9 @@ export type CertPage = {
   plant_data: PlantData | null
   // Block content for text pages; null/empty = legacy body/image rendering.
   blocks: PageBlock[] | null
-  // Draft flag (Step 13): true = hidden from employees (skipped in the
-  // stepper, not counted toward completion) until an admin reviews it.
+  // Draft flag (Step 13): true = skipped in the cert stepper and not counted
+  // toward completion until an admin reviews it. Everywhere else (Library,
+  // Ricky Bobby's index) a draft is a normal page with a "Draft" tag.
   // Set by bulk import; cleared by saving the plant form or "Mark reviewed".
   needs_review: boolean
 }
