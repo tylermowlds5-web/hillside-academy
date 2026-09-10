@@ -14,8 +14,9 @@ import type { LearnerPage } from './CertModuleContent'
 // actions (lesson progress, quiz start/submit) re-run the same gate.
 export default async function ModulePage(props: {
   params: Promise<{ programId: string; moduleId: string }>
-  // ?page=<cert_pages.id> opens a specific lesson page (Ricky Bobby's source
-  // links use it). Honored only if the page is reachable for this user.
+  // ?page=<cert_pages.id> opens a specific lesson page. Honored only if the
+  // page is reachable for this user. (Ricky Bobby's citations now open the
+  // ungated /library copy instead.)
   searchParams: Promise<{ page?: string | string[] }>
 }) {
   const { programId, moduleId } = await props.params

@@ -325,7 +325,9 @@ async function buildCertPages(db: SupabaseClient, ctx: CertContext, ids?: string
     const mod = ctx.moduleById.get(p.requirement_id)
     const modTitle = mod ? moduleTitle(mod, ctx) : null
     const section = p.category_id ? ctx.categoryNameById.get(p.category_id) : null
-    const url = `${moduleUrl(p.requirement_id, ctx)}?page=${p.id}`
+    // Citations open the standalone reference copy (/library), never the
+    // gated cert stepper — see app/(library).
+    const url = p.kind === 'plant' ? `/library/plant/${p.id}` : `/library/page/${p.id}`
     const where = joinLines([modTitle && `Lesson: ${modTitle}`, section && `Section: ${section}`])
 
     if (p.kind === 'plant') {
@@ -460,7 +462,7 @@ async function buildVideos(db: SupabaseClient, ids?: string[]): Promise<Knowledg
     source_id: v.id,
     kind: 'Video',
     title: v.title,
-    url: `/watch/${v.id}`,
+    url: `/library/video/${v.id}`,
     text: clip(
       joinLines([
         `Training video: ${v.title}`,
@@ -490,7 +492,7 @@ async function buildVideoQuizzes(db: SupabaseClient, ids?: string[]): Promise<Kn
         source_id: `${quiz.id}:${i}`,
         kind: 'Video quiz',
         title: `${videoTitle} quiz`,
-        url: quiz.video_id ? `/watch/${quiz.video_id}` : '/videos',
+        url: quiz.video_id ? `/library/video/${quiz.video_id}` : '/videos',
         text: clip(questionToText(q, `Quiz for the video "${videoTitle}"`)),
         aliases: [],
       })

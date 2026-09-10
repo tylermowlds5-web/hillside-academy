@@ -19,6 +19,7 @@ import { EXAM_IDLE_MINUTES, EXAM_IDLE_MS } from '@/lib/exam-rules'
 import type { Video, QuizSubmittedAnswer, ServedCertQuiz, CertQuizResult, PageBlock, PlantData } from '@/lib/types'
 import PlantPage from '@/components/cert/PlantPage'
 import PageBlocks from '@/components/cert/PageBlocks'
+import { RICH_TEXT_CLASSES } from '@/components/cert/richText'
 
 // One page of a paged lesson module, with this user's progress.
 export type LearnerPage = {
@@ -563,9 +564,6 @@ function CertQuizCard({
 // VideoPlayer (95% rule); text pages complete on reaching the bottom
 // (IntersectionObserver) with a Mark-as-read fallback button. All of it is
 // re-verified server-side by the page actions.
-
-const RICH_TEXT_CLASSES =
-  'text-sm leading-relaxed text-plum/80 sm:text-base [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-plum [&_h3]:mb-1.5 [&_h3]:mt-4 [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-plum [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6'
 
 // Shared read-to-complete mechanics for text and plant pages: auto-complete
 // when a bottom sentinel scrolls into view, with a manual mark-as-read

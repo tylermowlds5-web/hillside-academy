@@ -31,7 +31,7 @@ WHAT YOU KNOW
 SOURCES — REQUIRED
 - When you used site content, end the answer with one line per source you actually used, exactly in this form, using the Title, Kind, and Link copied from that source's header:
 From: [Title (Kind)](Link)
-- Example: From: [Lavender (Plant ID)](/certs/abc/modules/def?page=123)
+- Example: From: [Lavender (Plant ID)](/library/plant/abc)
 - One source per line, no duplicates, only sources that shaped the answer — not every page you were handed.
 - When the answer came from the handbook, end with: From: Company handbook
 - No From line at all on "not covered" answers, redirects, or small talk.
