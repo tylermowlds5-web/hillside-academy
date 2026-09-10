@@ -10,6 +10,7 @@ import {
   retrieveKnowledge,
   toStoredSources,
 } from '@/lib/knowledge-retrieval'
+import { rickyChatTitle } from '@/lib/ricky-chat'
 
 // User-selected model for the crew chat. Thinking is disabled deliberately:
 // claude-sonnet-5 runs adaptive thinking when the field is omitted, which
@@ -28,7 +29,7 @@ function validateMessages(value: unknown): ChatMessage[] | string {
     return 'messages must be a non-empty array'
   }
   if (value.length > MAX_MESSAGES) {
-    return 'Conversation is too long — refresh the page to start a new chat'
+    return 'Conversation is too long — start a new chat'
   }
   let totalChars = 0
   for (const entry of value) {
@@ -48,7 +49,7 @@ function validateMessages(value: unknown): ChatMessage[] | string {
     totalChars += content.length
   }
   if (totalChars > MAX_TOTAL_CHARS) {
-    return 'Conversation is too long — refresh the page to start a new chat'
+    return 'Conversation is too long — start a new chat'
   }
   const messages = value as ChatMessage[]
   if (messages[0].role !== 'user' || messages[messages.length - 1].role !== 'user') {
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
     return Response.json({ error: EXAM_LOCK_MESSAGE, examLocked: true }, { status: 423 })
   }
 
-  let body: { messages?: unknown }
+  let body: { messages?: unknown; chatId?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -86,6 +87,30 @@ export async function POST(request: Request) {
   const messages = validateMessages(body.messages)
   if (typeof messages === 'string') {
     return Response.json({ error: messages }, { status: 400 })
+  }
+
+  // Chat history (Step 17). chatId = a saved chat being continued (must be
+  // this employee's — RLS on the user client hides everyone else's), or
+  // null/absent for a new chat, which is created once the answer starts.
+  // If the tables aren't there yet the chat still works, just unsaved.
+  if (body.chatId != null && typeof body.chatId !== 'string') {
+    return Response.json({ error: 'chatId must be a string' }, { status: 400 })
+  }
+  let chatId: string | null = body.chatId ?? null
+  let historyAvailable = true
+  if (chatId) {
+    const { data: chat, error } = await supabase
+      .from('ricky_chats')
+      .select('id')
+      .eq('id', chatId)
+      .maybeSingle<{ id: string }>()
+    if (error) {
+      console.error('[hillside-ai] chat lookup failed:', error.message)
+      historyAvailable = false
+      chatId = null
+    } else if (!chat) {
+      return Response.json({ error: 'That chat is gone — start a new one.' }, { status: 404 })
+    }
   }
 
   // Retrieve the site content for this question and put it in the latest
@@ -151,11 +176,59 @@ export async function POST(request: Request) {
     )
   }
 
+  // Save the employee's turn now that the answer has started (so a failed
+  // start leaves nothing behind). New chat → create the row, titled from
+  // this first question, and hand the id back in a header.
+  const admin = createAdminClient()
+  if (historyAvailable) {
+    try {
+      if (!chatId) {
+        const { data, error } = await admin
+          .from('ricky_chats')
+          .insert({ user_id: user.id, title: rickyChatTitle(question) })
+          .select('id')
+          .single<{ id: string }>()
+        if (error) throw error
+        chatId = data.id
+      }
+      const { error } = await admin
+        .from('ricky_messages')
+        .insert({ chat_id: chatId, role: 'user', content: question })
+      if (error) throw error
+    } catch (err) {
+      console.error('[hillside-ai] saving user turn failed:', err instanceof Error ? err.message : JSON.stringify(err))
+      historyAvailable = false
+      chatId = null
+    }
+  }
+
+  // Ricky's turn, once the stream ends: the answer with what was retrieved
+  // for it, and the chat bumped to the top of the history list.
+  const saveAnswer = async (answer: string) => {
+    if (!historyAvailable || !chatId || !answer) return
+    try {
+      const { error } = await admin.from('ricky_messages').insert({
+        chat_id: chatId,
+        role: 'assistant',
+        content: answer,
+        sources: toStoredSources(retrieval.hits),
+      })
+      if (error) throw error
+      const { error: bumpErr } = await admin
+        .from('ricky_chats')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', chatId)
+      if (bumpErr) throw bumpErr
+    } catch (err) {
+      console.error('[hillside-ai] saving answer failed:', err instanceof Error ? err.message : JSON.stringify(err))
+    }
+  }
+
   // Question log for /admin/ricky: what was asked, what was retrieved, and
-  // (once the stream ends) what Ricky said.
+  // (once the stream ends) what Ricky said. Unchanged by chat history.
   const logQuestion = async (answer: string) => {
     try {
-      const { error } = await createAdminClient().from('ricky_questions').insert({
+      const { error } = await admin.from('ricky_questions').insert({
         user_id: user.id,
         question,
         answer: answer || null,
@@ -189,15 +262,16 @@ export async function POST(request: Request) {
           `[hillside-ai] usage: input=${u.input_tokens} cache_write=${u.cache_creation_input_tokens} cache_read=${u.cache_read_input_tokens} output=${u.output_tokens} hits=${retrieval.hits.length} provider=${retrieval.provider ?? 'text-only'}`
         )
         if (final.stop_reason === 'max_tokens') {
+          answer += '\n\n[Answer cut off — ask a follow-up for the rest.]'
           controller.enqueue(encoder.encode('\n\n[Answer cut off — ask a follow-up for the rest.]'))
         }
-        await logQuestion(answer)
+        await Promise.all([saveAnswer(answer), logQuestion(answer)])
         controller.close()
       } catch (err) {
         // Status is already sent (200), so the only channel left is the body.
         console.error('[hillside-ai] mid-stream error:', err)
         controller.enqueue(encoder.encode('\n\n[Connection dropped — try again.]'))
-        await logQuestion(answer)
+        await Promise.all([saveAnswer(answer), logQuestion(answer)])
         controller.close()
       }
     },
@@ -211,6 +285,9 @@ export async function POST(request: Request) {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-store',
+      // The saved chat this answer belongs to (absent when history is
+      // unavailable). The client swaps it into the URL for a new chat.
+      ...(chatId ? { 'X-Chat-Id': chatId } : {}),
     },
   })
 }
